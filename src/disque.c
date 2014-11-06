@@ -99,39 +99,26 @@ struct disqueServer server; /* server global state */
  * r: read command  (will never modify the key space).
  * m: may increase memory usage once called. Don't allow if out of memory.
  * a: admin command, like SAVE or SHUTDOWN.
- * p: Pub/Sub related command.
- * f: force replication of this command, regardless of server.dirty.
- * s: command not allowed in scripts.
- * R: random command. Command is not deterministic, that is, the same command
- *    with the same arguments, with the same key space, may have different
- *    results. For instance SPOP and RANDOMKEY are two random commands.
- * S: Sort command output array if called from script, so that the output
- *    is deterministic.
  * l: Allow command while loading the database.
- * t: Allow command while a slave has stale data but is not allowed to
- *    server this data. Normally no command is accepted in this condition
- *    but just a few.
  * M: Do not automatically propagate the command on MONITOR.
- * k: Perform an implicit ASKING for this command, so the command will be
- *    accepted in cluster mode if the slot is marked as 'importing'.
  * F: Fast command: O(1) or O(log(N)) command that should never delay
  *    its execution as long as the kernel scheduler is giving us time.
  *    Note that commands that may trigger a DEL as a side effect (like SET)
  *    are not fast commands.
  */
 struct serverCommand serverCommandTable[] = {
-    {"auth",authCommand,2,"rsltF",0,NULL,0,0,0,0,0},
-    {"ping",pingCommand,-1,"rtF",0,NULL,0,0,0,0,0},
-    {"shutdown",shutdownCommand,-1,"arlt",0,NULL,0,0,0,0,0},
-    {"monitor",monitorCommand,1,"ars",0,NULL,0,0,0,0,0},
-    {"debug",debugCommand,-2,"as",0,NULL,0,0,0,0,0},
-    {"config",configCommand,-2,"art",0,NULL,0,0,0,0,0},
+    {"auth",authCommand,2,"rlF",0,NULL,0,0,0,0,0},
+    {"ping",pingCommand,-1,"rF",0,NULL,0,0,0,0,0},
+    {"shutdown",shutdownCommand,-1,"arl",0,NULL,0,0,0,0,0},
+    {"monitor",monitorCommand,1,"ar",0,NULL,0,0,0,0,0},
+    {"debug",debugCommand,-2,"a",0,NULL,0,0,0,0,0},
+    {"config",configCommand,-2,"ar",0,NULL,0,0,0,0,0},
     {"cluster",clusterCommand,-2,"ar",0,NULL,0,0,0,0,0},
-    {"client",clientCommand,-2,"ars",0,NULL,0,0,0,0,0},
+    {"client",clientCommand,-2,"ar",0,NULL,0,0,0,0,0},
     {"slowlog",slowlogCommand,-2,"r",0,NULL,0,0,0,0,0},
-    {"time",timeCommand,1,"rRF",0,NULL,0,0,0,0,0},
-    {"command",commandCommand,0,"rlt",0,NULL,0,0,0,0,0},
-    {"latency",latencyCommand,-2,"arslt",0,NULL,0,0,0,0,0}
+    {"time",timeCommand,1,"rF",0,NULL,0,0,0,0,0},
+    {"command",commandCommand,0,"rl",0,NULL,0,0,0,0,0},
+    {"latency",latencyCommand,-2,"arl",0,NULL,0,0,0,0,0}
 };
 
 struct evictionPoolEntry *evictionPoolAlloc(void);

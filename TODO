@@ -1,0 +1,3 @@
+- Remove Lua as dep.
+- Remove Redis tests, and only leave the cluster testing framework.
+- Adapt the testing framework removing the cluster.tcl stuff, no redir here.

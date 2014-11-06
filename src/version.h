@@ -1,0 +1,1 @@
+#define DISQUE_VERSION "0.0.1"

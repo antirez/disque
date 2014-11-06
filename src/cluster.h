@@ -5,7 +5,6 @@
  * Disque cluster data structures, defines, exported API.
  *----------------------------------------------------------------------------*/
 
-#define DISQUE_CLUSTER_SLOTS 16384
 #define DISQUE_CLUSTER_OK 0          /* Everything looks ok */
 #define DISQUE_CLUSTER_FAIL 1        /* The cluster can't work */
 #define DISQUE_CLUSTER_NAMELEN 40    /* sha1 hex length */
@@ -14,22 +13,8 @@
 /* The following defines are amount of time, sometimes expressed as
  * multiplicators of the node timeout value (when ending with MULT). */
 #define DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT 15000
-#define DISQUE_CLUSTER_DEFAULT_SLAVE_VALIDITY 10 /* Slave max data age factor. */
-#define DISQUE_CLUSTER_DEFAULT_REQUIRE_FULL_COVERAGE 1
 #define DISQUE_CLUSTER_FAIL_REPORT_VALIDITY_MULT 2 /* Fail report validity. */
 #define DISQUE_CLUSTER_FAIL_UNDO_TIME_MULT 2 /* Undo fail if master is back. */
-#define DISQUE_CLUSTER_FAIL_UNDO_TIME_ADD 10 /* Some additional time. */
-#define DISQUE_CLUSTER_FAILOVER_DELAY 5 /* Seconds */
-#define DISQUE_CLUSTER_DEFAULT_MIGRATION_BARRIER 1
-#define DISQUE_CLUSTER_MF_TIMEOUT 5000 /* Milliseconds to do a manual failover. */
-#define DISQUE_CLUSTER_MF_PAUSE_MULT 2 /* Master pause manual failover mult. */
-
-/* Redirection errors returned by getNodeByQuery(). */
-#define DISQUE_CLUSTER_REDIR_NONE 0          /* Node can serve the request. */
-#define DISQUE_CLUSTER_REDIR_CROSS_SLOT 1    /* Keys in different slots. */
-#define DISQUE_CLUSTER_REDIR_UNSTABLE 2      /* Keys in slot resharding. */
-#define DISQUE_CLUSTER_REDIR_ASK 3           /* -ASK redirection required. */
-#define DISQUE_CLUSTER_REDIR_MOVED 4         /* -MOVED redirection required. */
 
 struct clusterNode;
 
@@ -43,32 +28,19 @@ typedef struct clusterLink {
 } clusterLink;
 
 /* Cluster node flags and macros. */
-#define DISQUE_NODE_MASTER 1     /* The node is a master */
-#define DISQUE_NODE_SLAVE 2      /* The node is a slave */
-#define DISQUE_NODE_PFAIL 4      /* Failure? Need acknowledge */
-#define DISQUE_NODE_FAIL 8       /* The node is believed to be malfunctioning */
-#define DISQUE_NODE_MYSELF 16    /* This node is myself */
-#define DISQUE_NODE_HANDSHAKE 32 /* We have still to exchange the first ping */
-#define DISQUE_NODE_NOADDR   64  /* We don't know the address of this node */
-#define DISQUE_NODE_MEET 128     /* Send a MEET message to this node */
-#define DISQUE_NODE_PROMOTED 256 /* Master was a slave promoted by failover */
+#define DISQUE_NODE_PFAIL     (1<<0) /* Failure? Need acknowledge */
+#define DISQUE_NODE_FAIL      (1<<1) /* The node is believed to be malfunctioning */
+#define DISQUE_NODE_MYSELF    (1<<2) /* This node is myself */
+#define DISQUE_NODE_HANDSHAKE (1<<3) /* Node in handshake state. */
+#define DISQUE_NODE_NOADDR    (1<<4) /* Node address unknown */
+#define DISQUE_NODE_MEET      (1<<5) /* Send a MEET message to this node */
 #define DISQUE_NODE_NULL_NAME "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
 
-#define nodeIsMaster(n) ((n)->flags & DISQUE_NODE_MASTER)
-#define nodeIsSlave(n) ((n)->flags & DISQUE_NODE_SLAVE)
 #define nodeInHandshake(n) ((n)->flags & DISQUE_NODE_HANDSHAKE)
 #define nodeHasAddr(n) (!((n)->flags & DISQUE_NODE_NOADDR))
 #define nodeWithoutAddr(n) ((n)->flags & DISQUE_NODE_NOADDR)
 #define nodeTimedOut(n) ((n)->flags & DISQUE_NODE_PFAIL)
 #define nodeFailed(n) ((n)->flags & DISQUE_NODE_FAIL)
-
-/* Reasons why a slave is not able to failover. */
-#define DISQUE_CLUSTER_CANT_FAILOVER_NONE 0
-#define DISQUE_CLUSTER_CANT_FAILOVER_DATA_AGE 1
-#define DISQUE_CLUSTER_CANT_FAILOVER_WAITING_DELAY 2
-#define DISQUE_CLUSTER_CANT_FAILOVER_EXPIRED 3
-#define DISQUE_CLUSTER_CANT_FAILOVER_WAITING_VOTES 4
-#define DISQUE_CLUSTER_CANT_FAILOVER_RELOG_PERIOD (60*5) /* seconds. */
 
 /* This structure represent elements of node->fail_reports. */
 typedef struct clusterNodeFailReport {
@@ -80,18 +52,9 @@ typedef struct clusterNode {
     mstime_t ctime; /* Node object creation time. */
     char name[DISQUE_CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
     int flags;      /* DISQUE_NODE_... */
-    uint64_t configEpoch; /* Last configEpoch observed for this node */
-    unsigned char slots[DISQUE_CLUSTER_SLOTS/8]; /* slots handled by this node */
-    int numslots;   /* Number of slots handled by this node */
-    int numslaves;  /* Number of slave nodes, if this is a master */
-    struct clusterNode **slaves; /* pointers to slave nodes */
-    struct clusterNode *slaveof; /* pointer to the master node */
     mstime_t ping_sent;      /* Unix time we sent latest ping */
     mstime_t pong_received;  /* Unix time we received the pong */
     mstime_t fail_time;      /* Unix time when FAIL flag was set */
-    mstime_t voted_time;     /* Last time we voted for a slave of this master */
-    mstime_t repl_offset_time;  /* Unix time we received offset for this node */
-    long long repl_offset;      /* Last known repl offset for this node. */
     char ip[DISQUE_IP_STR_LEN];  /* Latest known IP address of this node */
     int port;                   /* Latest known port of this node */
     clusterLink *link;          /* TCP/IP link with this node */
@@ -100,44 +63,20 @@ typedef struct clusterNode {
 
 typedef struct clusterState {
     clusterNode *myself;  /* This node */
-    uint64_t currentEpoch;
     int state;            /* DISQUE_CLUSTER_OK, DISQUE_CLUSTER_FAIL, ... */
-    int size;             /* Num of master nodes with at least one slot */
+    int size;             /* Num of known cluster nodes */
     dict *nodes;          /* Hash table of name -> clusterNode structures */
     dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
-    clusterNode *migrating_slots_to[DISQUE_CLUSTER_SLOTS];
-    clusterNode *importing_slots_from[DISQUE_CLUSTER_SLOTS];
-    clusterNode *slots[DISQUE_CLUSTER_SLOTS];
-    /* The following fields are used to take the slave state on elections. */
-    mstime_t failover_auth_time; /* Time of previous or next election. */
-    int failover_auth_count;    /* Number of votes received so far. */
-    int failover_auth_sent;     /* True if we already asked for votes. */
-    int failover_auth_rank;     /* This slave rank for current auth request. */
-    uint64_t failover_auth_epoch; /* Epoch of the current election. */
-    int cant_failover_reason;   /* Why a slave is currently not able to
-                                   failover. See the CANT_FAILOVER_* macros. */
-    /* Manual failover state in common. */
-    mstime_t mf_end;            /* Manual failover time limit (ms unixtime).
-                                   It is zero if there is no MF in progress. */
-    /* Manual failover state of master. */
-    clusterNode *mf_slave;      /* Slave performing the manual failover. */
-    /* Manual failover state of slave. */
-    long long mf_master_offset; /* Master offset the slave needs to start MF
-                                   or zero if stil not received. */
-    int mf_can_start;           /* If non-zero signal that the manual failover
-                                   can start requesting masters vote. */
-    /* The followign fields are used by masters to take state on elections. */
-    uint64_t lastVoteEpoch;     /* Epoch of the last vote granted. */
     int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
+    /* Statistics. */
     long long stats_bus_messages_sent;  /* Num of msg sent via cluster bus. */
     long long stats_bus_messages_received; /* Num of msg rcvd via cluster bus.*/
 } clusterState;
 
 /* clusterState todo_before_sleep flags. */
-#define CLUSTER_TODO_HANDLE_FAILOVER (1<<0)
-#define CLUSTER_TODO_UPDATE_STATE (1<<1)
-#define CLUSTER_TODO_SAVE_CONFIG (1<<2)
-#define CLUSTER_TODO_FSYNC_CONFIG (1<<3)
+#define CLUSTER_TODO_UPDATE_STATE (1<<0)
+#define CLUSTER_TODO_SAVE_CONFIG (1<<1)
+#define CLUSTER_TODO_FSYNC_CONFIG (1<<2)
 
 /* Disque cluster messages header */
 
@@ -149,11 +88,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_PONG 1          /* Pong (reply to Ping) */
 #define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message */
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing */
-#define CLUSTERMSG_TYPE_PUBLISH 4       /* Pub/Sub Publish propagation */
-#define CLUSTERMSG_TYPE_FAILOVER_AUTH_REQUEST 5 /* May I failover? */
-#define CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK 6     /* Yes, you have my vote */
-#define CLUSTERMSG_TYPE_UPDATE 7        /* Another node slots configuration */
-#define CLUSTERMSG_TYPE_MFSTART 8       /* Pause clients for manual failover */
+#define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -173,16 +108,10 @@ typedef struct {
 } clusterMsgDataFail;
 
 typedef struct {
-    uint32_t channel_len;
-    uint32_t message_len;
+    uint32_t queue_len;
+    uint32_t job_len;
     unsigned char bulk_data[8]; /* defined as 8 just for alignment concerns. */
-} clusterMsgDataPublish;
-
-typedef struct {
-    uint64_t configEpoch; /* Config epoch of the specified instance. */
-    char nodename[DISQUE_CLUSTER_NAMELEN]; /* Name of the slots owner. */
-    unsigned char slots[DISQUE_CLUSTER_SLOTS/8]; /* Slots bitmap. */
-} clusterMsgDataUpdate;
+} clusterMsgDataJob;
 
 union clusterMsgData {
     /* PING, MEET and PONG */
@@ -196,17 +125,11 @@ union clusterMsgData {
         clusterMsgDataFail about;
     } fail;
 
-    /* PUBLISH */
+    /* JOB related messages */
     struct {
-        clusterMsgDataPublish msg;
-    } publish;
-
-    /* UPDATE */
-    struct {
-        clusterMsgDataUpdate nodecfg;
-    } update;
+        clusterMsgDataJob job;
+    } job;
 };
-
 
 typedef struct {
     char sig[4];        /* Siganture "DbuZ" (Disque Cluster message bus). */
@@ -215,15 +138,7 @@ typedef struct {
     uint16_t notused0;  /* 2 bytes not used. */
     uint16_t type;      /* Message type */
     uint16_t count;     /* Only used for some kind of messages. */
-    uint64_t currentEpoch;  /* The epoch accordingly to the sending node. */
-    uint64_t configEpoch;   /* The config epoch if it's a master, or the last
-                               epoch advertised by its master if it is a
-                               slave. */
-    uint64_t offset;    /* Master replication offset if node is a master or
-                           processed replication offset if node is a slave. */
     char sender[DISQUE_CLUSTER_NAMELEN]; /* Name of the sender node */
-    unsigned char myslots[DISQUE_CLUSTER_SLOTS/8];
-    char slaveof[DISQUE_CLUSTER_NAMELEN];
     char notused1[32];  /* 32 bytes reserved for future usage. */
     uint16_t port;      /* Sender TCP base port */
     uint16_t flags;     /* Sender node flags */
@@ -236,11 +151,7 @@ typedef struct {
 
 /* Message flags better specify the packet content or are used to
  * provide some information about the node state. */
-#define CLUSTERMSG_FLAG0_PAUSED (1<<0) /* Master paused for manual failover. */
-#define CLUSTERMSG_FLAG0_FORCEACK (1<<1) /* Give ACK to AUTH_REQUEST even if
-                                            master is up. */
-
-/* ---------------------- API exported outside cluster.c -------------------- */
-clusterNode *getNodeByQuery(client *c, struct serverCommand *cmd, robj **argv, int argc, int *hashslot, int *ask);
+#define CLUSTERMSG_FLAG0_ONE (1<<0) /* Not used. */
+#define CLUSTERMSG_FLAG0_TWO (1<<1) /* Not used. */
 
 #endif /* __DISQUE_CLUSTER_H */

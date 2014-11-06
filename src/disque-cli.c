@@ -816,7 +816,7 @@ static void usage(void) {
 "\n"
 "Usage: disque-cli [OPTIONS] [cmd [arg [arg ...]]]\n"
 "  -h <hostname>      Server hostname (default: 127.0.0.1).\n"
-"  -p <port>          Server port (default: 6379).\n"
+"  -p <port>          Server port (default: 7711).\n"
 "  -s <socket>        Server socket (overrides hostname and port).\n"
 "  -a <password>      Password to use when connecting to the server.\n"
 "  -r <repeat>        Execute specified command N times.\n"
@@ -1877,7 +1877,7 @@ int main(int argc, char **argv) {
     int firstarg;
 
     config.hostip = sdsnew("127.0.0.1");
-    config.hostport = 6379;
+    config.hostport = 7711;
     config.hostsocket = NULL;
     config.repeat = 1;
     config.interval = 0;

@@ -436,7 +436,7 @@ dictType keylistDictType = {
     dictListDestructor          /* val destructor */
 };
 
-/* Cluster nodes hash table, mapping nodes addresses 1.2.3.4:6379 to
+/* Cluster nodes hash table, mapping nodes addresses 1.2.3.4:7711 to
  * clusterNode structures. */
 dictType clusterNodesDictType = {
     dictSdsHash,                /* hash function */
@@ -2305,7 +2305,7 @@ void usage(void) {
     fprintf(stderr,"       ./disque-server --test-memory <megabytes>\n\n");
     fprintf(stderr,"Examples:\n");
     fprintf(stderr,"       ./disque-server (run the server with default conf)\n");
-    fprintf(stderr,"       ./disque-server /etc/disque/6379.conf\n");
+    fprintf(stderr,"       ./disque-server /etc/disque/7711.conf\n");
     fprintf(stderr,"       ./disque-server --port 7777\n");
     fprintf(stderr,"       ./disque-server --port 7777 --slaveof 127.0.0.1 8888\n");
     fprintf(stderr,"       ./disque-server /etc/mydisque.conf --loglevel verbose\n\n");

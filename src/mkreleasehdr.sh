@@ -5,7 +5,7 @@ BUILD_ID=`uname -n`"-"`date +%s`
 test -f release.h || touch release.h
 (cat release.h | grep SHA1 | grep $GIT_SHA1) && \
 (cat release.h | grep DIRTY | grep $GIT_DIRTY) && exit 0 # Already up-to-date
-echo "#define REDIS_GIT_SHA1 \"$GIT_SHA1\"" > release.h
-echo "#define REDIS_GIT_DIRTY \"$GIT_DIRTY\"" >> release.h
-echo "#define REDIS_BUILD_ID \"$BUILD_ID\"" >> release.h
+echo "#define DISQUE_GIT_SHA1 \"$GIT_SHA1\"" > release.h
+echo "#define DISQUE_GIT_DIRTY \"$GIT_DIRTY\"" >> release.h
+echo "#define DISQUE_BUILD_ID \"$BUILD_ID\"" >> release.h
 touch release.c # Force recompile of release.c

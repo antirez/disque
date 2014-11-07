@@ -112,7 +112,7 @@ QUIET_INSTALL = @printf '    %b %b\n' $(LINKCOLOR)INSTALL$(ENDCOLOR) $(BINCOLOR)
 endif
 
 DISQUE_SERVER_NAME=disque-server
-DISQUE_SERVER_OBJ=adlist.o ae.o anet.o dict.o disque.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o sha1.o release.o networking.o util.o object.o config.o aof.o debug.o syncio.o cluster.o crc16.o endianconv.o slowlog.o bio.o memtest.o crc64.o setproctitle.o blocked.o latency.o sparkline.o rio.o
+DISQUE_SERVER_OBJ=adlist.o ae.o anet.o dict.o disque.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o sha1.o release.o networking.o util.o object.o config.o aof.o debug.o syncio.o cluster.o crc16.o endianconv.o slowlog.o bio.o memtest.o crc64.o setproctitle.o blocked.o latency.o sparkline.o rio.o jobs.o
 DISQUE_CLI_NAME=disque
 DISQUE_CLI_OBJ=anet.o sds.o adlist.o disque-cli.o zmalloc.o release.o anet.o ae.o crc64.o
 DISQUE_CHECK_AOF_NAME=disque-check-aof

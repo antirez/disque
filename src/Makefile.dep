@@ -29,6 +29,8 @@ disque.o: disque.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
   cluster.h slowlog.h bio.h asciilogo.h
 endianconv.o: endianconv.c
+jobs.o: jobs.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
+  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
 latency.o: latency.c disque.h fmacros.h config.h ae.h sds.h dict.h \
   adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
 lzf_c.o: lzf_c.c lzfP.h

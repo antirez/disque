@@ -2,12 +2,9 @@
 *.o
 *.log
 dump.rdb
-redis-benchmark
-redis-check-aof
-redis-check-dump
-redis-cli
-redis-sentinel
-redis-server
+disque-server
+disque-check-aof
+disque
 doc-tools
 release
 misc/*

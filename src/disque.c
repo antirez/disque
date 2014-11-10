@@ -802,7 +802,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Run the Disque Cluster cron. */
     run_with_period(100) {
-        if (server.cluster_enabled) clusterCron();
+        clusterCron();
     }
 
     server.cronloops++;
@@ -823,7 +823,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     flushAppendOnlyFile(0);
 
     /* Call the Disque Cluster before sleep function. */
-    if (server.cluster_enabled) clusterBeforeSleep();
+    clusterBeforeSleep();
 }
 
 /* =========================== Server initialization ======================== */
@@ -972,7 +972,6 @@ void initServerConfig(void) {
     server.maxmemory_policy = DISQUE_DEFAULT_MAXMEMORY_POLICY;
     server.maxmemory_samples = DISQUE_DEFAULT_MAXMEMORY_SAMPLES;
     server.shutdown_asap = 0;
-    server.cluster_enabled = 0;
     server.cluster_node_timeout = DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT;
     server.cluster_configfile = zstrdup(DISQUE_DEFAULT_CLUSTER_CONFIG_FILE);
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
@@ -1285,7 +1284,7 @@ void initServer(void) {
         server.maxmemory_policy = DISQUE_MAXMEMORY_NO_EVICTION;
     }
 
-    if (server.cluster_enabled) clusterInit();
+    clusterInit();
     slowlogInit();
     latencyMonitorInit();
     bioInit();
@@ -1611,8 +1610,7 @@ void closeListeningSockets(int unlink_unix_socket) {
 
     for (j = 0; j < server.ipfd_count; j++) close(server.ipfd[j]);
     if (server.sofd != -1) close(server.sofd);
-    if (server.cluster_enabled)
-        for (j = 0; j < server.cfd_count; j++) close(server.cfd[j]);
+    for (j = 0; j < server.cfd_count; j++) close(server.cfd[j]);
     if (unlink_unix_socket && server.unixsocket) {
         serverLog(DISQUE_NOTICE,"Removing the unix socket file.");
         unlink(server.unixsocket); /* don't care if this fails */
@@ -1884,10 +1882,6 @@ sds genDisqueInfoString(char *section) {
     if (allsections || defsections || !strcasecmp(section,"server")) {
         static int call_uname = 1;
         static struct utsname name;
-        char *mode;
-
-        if (server.cluster_enabled) mode = "cluster";
-        else mode = "standalone";
 
         if (sections++) info = sdscat(info,"\r\n");
 
@@ -1903,7 +1897,6 @@ sds genDisqueInfoString(char *section) {
             "disque_git_sha1:%s\r\n"
             "disque_git_dirty:%d\r\n"
             "disque_build_id:%llx\r\n"
-            "disque_mode:%s\r\n"
             "os:%s %s %s\r\n"
             "arch_bits:%d\r\n"
             "multiplexing_api:%s\r\n"
@@ -1920,7 +1913,6 @@ sds genDisqueInfoString(char *section) {
             disqueGitSHA1(),
             strtol(disqueGitDirty(),NULL,10) > 0,
             (unsigned long long) disqueBuildId(),
-            mode,
             name.sysname, name.release, name.machine,
             server.arch_bits,
             aeGetApiName(),
@@ -2107,15 +2099,6 @@ sds genDisqueInfoString(char *section) {
                 c->name, c->calls, c->microseconds,
                 (c->calls == 0) ? 0 : ((float)c->microseconds/c->calls));
         }
-    }
-
-    /* Cluster */
-    if (allsections || defsections || !strcasecmp(section,"cluster")) {
-        if (sections++) info = sdscat(info,"\r\n");
-        info = sdscatprintf(info,
-        "# Cluster\r\n"
-        "cluster_enabled:%d\r\n",
-        server.cluster_enabled);
     }
 
     return info;
@@ -2315,17 +2298,13 @@ void usage(void) {
 void disqueAsciiArt(void) {
 #include "asciilogo.h"
     char *buf = zmalloc(1024*16);
-    char *mode;
-
-    if (server.cluster_enabled) mode = "cluster";
-    else mode = "standalone";
 
     snprintf(buf,1024*16,ascii_logo,
         DISQUE_VERSION,
         disqueGitSHA1(),
         strtol(disqueGitDirty(),NULL,10) > 0,
         (sizeof(long) == 8) ? "64" : "32",
-        mode, server.port,
+        server.port,
         (long) getpid()
     );
     serverLogRaw(DISQUE_NOTICE|DISQUE_LOG_RAW,buf);
@@ -2403,14 +2382,10 @@ void serverOutOfMemoryHandler(size_t allocation_size) {
 
 void serverSetProcTitle(char *title) {
 #ifdef USE_SETPROCTITLE
-    char *server_mode = "";
-    if (server.cluster_enabled) server_mode = " [cluster]";
-
-    setproctitle("%s %s:%d%s",
+    setproctitle("%s %s:%d",
         title,
         server.bindaddr_count ? server.bindaddr[0] : "*",
-        server.port,
-        server_mode);
+        server.port);
 #else
     DISQUE_NOTUSED(title);
 #endif

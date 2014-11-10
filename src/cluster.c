@@ -1819,11 +1819,6 @@ sds clusterGenNodesDescription(int filter) {
  * -------------------------------------------------------------------------- */
 
 void clusterCommand(client *c) {
-    if (server.cluster_enabled == 0) {
-        addReplyError(c,"This instance has cluster support disabled");
-        return;
-    }
-
     if (!strcasecmp(c->argv[1]->ptr,"meet") && c->argc == 4) {
         long long port;
 

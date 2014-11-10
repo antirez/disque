@@ -29,7 +29,7 @@
 
 char *ascii_logo =
 "                                        Disque %s (%s/%d) %s bit\n"
-"          _ -                           Running in %s mode\n"
+"          _ -                                                        \n"
 "        .                               Port: %d\n"
 "        .    o    .                     PID: %ld\n"
 "                 .                                                   \n"

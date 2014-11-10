@@ -893,7 +893,7 @@ static void repl(void) {
         history = 1;
 
         if (getenv("HOME") != NULL) {
-            historyfile = sdscatprintf(sdsempty(),"%s/.rediscli_history",getenv("HOME"));
+            historyfile = sdscatprintf(sdsempty(),"%s/.disque_history",getenv("HOME"));
             linenoiseHistoryLoad(historyfile);
         }
     }

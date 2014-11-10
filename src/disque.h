@@ -476,6 +476,7 @@ struct disqueServer {
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     int cronloops;              /* Number of times the cron function run */
     char runid[DISQUE_RUN_ID_SIZE+1];  /* ID always different at every exec. */
+    char jobid_seed[DISQUE_RUN_ID_SIZE]; /* Job ID generation seed. */
     /* Networking */
     int port;                   /* TCP listening port */
     int tcp_backlog;            /* TCP listen() backlog */

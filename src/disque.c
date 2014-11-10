@@ -922,6 +922,7 @@ void initServerConfig(void) {
     int j;
 
     getRandomHexChars(server.runid,DISQUE_RUN_ID_SIZE);
+    getRandomHexChars(server.jobid_seed,DISQUE_RUN_ID_SIZE);
     server.configfile = NULL;
     server.hz = DISQUE_DEFAULT_HZ;
     server.runid[DISQUE_RUN_ID_SIZE] = '\0';
@@ -2476,6 +2477,10 @@ int main(int argc, char **argv) {
     }
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
+    /* Make sure to do a cron run before 1st client is served, so that we
+     * can do periodic tasks there that we can assume to always be executed
+     * at least once before the server starts serving queries. */
+    serverCron(NULL,0,NULL);
     aeMain(server.el);
     aeDeleteEventLoop(server.el);
     return 0;

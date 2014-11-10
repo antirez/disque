@@ -31,7 +31,11 @@
 #ifndef __DISQUE_JOBS_H
 #define __DISQUE_JOBS_H
 
-#define JOB_ID_LEN 40   /* 40 bytes hex, actually 20 bytes / 160 bits. */
+/* A Job ID is 48 bytes:
+ * "DISQ" + 40 bytes random hex (160 bits) + 4 bytes TTL.
+ * The TTL is encoded inside the Job ID so that nodes without info about
+ * the Job can correctly expire ACKs if they can't be garbage collected. */
+#define JOB_ID_LEN 48
 
 /* This represent a Job across the system.
  *
@@ -75,8 +79,9 @@
 #define JOB_STATE_ACKED   3  /* Acked, no longer active, to garbage collect. */
 
 struct job {
-    int state;              /* JOB_STATE_* states. */
-    char id[JOB_ID_LEN];    /* Job ID. */
+    sds id;                 /* Job ID. */
+    uint16_t state;         /* Job state: one of JOB_STATE_* states. */
+    uint16_t flags;         /* Job flags. */
     uint32_t ctime;         /* Job creation time, local node clock. */
     uint32_t etime;         /* Job expire time. */
     uint32_t qtime;         /* Job queued time: unix time job was queued. */
@@ -84,11 +89,8 @@ struct job {
     uint16_t repl;          /* Replication factor. */
     uint16_t numnodes;      /* Number of nodes that may have a copy. */
     uint64_t bodylen;       /* Job body length in bytes. */
-    /* The following fields are dynamically allocated depending on
-     * 'numnodes' and 'bodylen' fields.
-     * --------------------------------------------------
-     * List of nodes: numnodes * NODE_ID_LEN entries
-     * Bocy: actual body, size is according to bodylen. */
-};
+    sds body;               /* Body, or NULL if job is just an ACK. */
+    char *nodes;            /* List of nodes IDs according to 'numnodes'. */
+} typedef job;
 
 #endif

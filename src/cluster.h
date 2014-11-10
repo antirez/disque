@@ -68,6 +68,11 @@ typedef struct clusterState {
     dict *nodes;          /* Hash table of name -> clusterNode structures */
     dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
     int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
+    /* Reachable nodes array. This array only lists reachable nodes
+     * excluding our own node, and is used in order to quickly select
+     * random receivers of messages to populate. */
+    clusterNode **reachable_nodes;
+    int reachable_nodes_count;
     /* Statistics. */
     long long stats_bus_messages_sent;  /* Num of msg sent via cluster bus. */
     long long stats_bus_messages_received; /* Num of msg rcvd via cluster bus.*/
@@ -153,5 +158,12 @@ typedef struct {
  * provide some information about the node state. */
 #define CLUSTERMSG_FLAG0_ONE (1<<0) /* Not used. */
 #define CLUSTERMSG_FLAG0_TWO (1<<1) /* Not used. */
+
+/*-----------------------------------------------------------------------------
+ * Exported API.
+ *----------------------------------------------------------------------------*/
+
+void clusterUpdateReachableNodes(void);
+void clusterShuffleReachableNodes(void);
 
 #endif /* __DISQUE_CLUSTER_H */

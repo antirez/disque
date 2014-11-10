@@ -134,7 +134,7 @@ int clusterLoadConfig(char *filename) {
         }
 
         /* Regular config lines have at least eight fields */
-        if (argc < 8) goto fmterr;
+        if (argc != 6) goto fmterr;
 
         /* Create this node if it does not exist */
         n = clusterLookupNode(argv[0]);
@@ -175,8 +175,8 @@ int clusterLoadConfig(char *filename) {
         }
 
         /* Set ping sent / pong received timestamps */
-        if (atoi(argv[4])) n->ping_sent = mstime();
-        if (atoi(argv[5])) n->pong_received = mstime();
+        if (atoi(argv[3])) n->ping_sent = mstime();
+        if (atoi(argv[4])) n->pong_received = mstime();
 
         sdsfreesplitres(argv,argc);
     }
@@ -318,6 +318,8 @@ void clusterInit(void) {
         dictCreate(&clusterNodesBlackListDictType,NULL);
     server.cluster->stats_bus_messages_sent = 0;
     server.cluster->stats_bus_messages_received = 0;
+    server.cluster->reachable_nodes = NULL;
+    server.cluster->reachable_nodes_count = 0;
 
     /* Lock the cluster config file to make sure every node uses
      * its own nodes.conf. */
@@ -370,6 +372,9 @@ void clusterInit(void) {
     /* Set myself->port to my listening port, we'll just need to discover
      * the IP address via MEET messages. */
     myself->port = server.port;
+
+    /* Update the list of reachable nodes. */
+    clusterUpdateReachableNodes();
 }
 
 /* Reset a node performing a soft or hard reset:
@@ -1090,7 +1095,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         /* We use incoming MEET messages in order to set the address
          * for 'myself', since only other cluster nodes will send us
-         * MEET messagses on handshakes, when the cluster joins, or
+         * MEET messages on handshakes, when the cluster joins, or
          * later if we changed address, and those nodes will use our
          * official address to connect to us. So by obtaining this address
          * from the socket is a simple way to discover / update our own
@@ -1656,6 +1661,8 @@ void clusterCron(void) {
 
     if (update_state || server.cluster->state == DISQUE_CLUSTER_FAIL)
         clusterUpdateState();
+
+    clusterUpdateReachableNodes();
 }
 
 /* This function is called before the event handler returns to sleep for
@@ -1774,7 +1781,7 @@ sds clusterGenNodeDescription(clusterNode *node) {
     ci = representDisqueNodeFlags(ci, node->flags);
 
     /* Latency from the POV of this node, link status */
-    ci = sdscatprintf(ci,"%lld %lld %s",
+    ci = sdscatprintf(ci," %lld %lld %s",
         (long long) node->ping_sent,
         (long long) node->pong_received,
         (node->link || node->flags & DISQUE_NODE_MYSELF) ?
@@ -1812,6 +1819,46 @@ sds clusterGenNodesDescription(int filter) {
     }
     dictReleaseIterator(di);
     return ci;
+}
+
+/* -----------------------------------------------------------------------------
+ * CLUSTER utility functions
+ * -------------------------------------------------------------------------- */
+
+/* Update server.reachable_nodes and server.reachable_nodes_count with
+ * a list of reachable nodes (not in PFAIL state), excluding this node. */
+void clusterUpdateReachableNodes(void) {
+    dictIterator *di;
+    dictEntry *de;
+    int maxsize = dictSize(server.cluster->nodes) * sizeof(clusterNode*);
+
+    zfree(server.cluster->reachable_nodes);
+    server.cluster->reachable_nodes = zmalloc(maxsize);
+    server.cluster->reachable_nodes_count = 0;
+
+    di = dictGetSafeIterator(server.cluster->nodes);
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+
+        if (node->flags & (DISQUE_NODE_MYSELF|DISQUE_NODE_FAIL)) continue;
+        server.cluster->reachable_nodes[server.cluster->reachable_nodes_count++]
+            = node;
+    }
+    dictReleaseIterator(di);
+}
+
+/* Shuffle the array of reachable nodes so the caller can just pick the first
+ * N to send messages to N random nodes. */
+void clusterShuffleReachableNodes(void) {
+    int j, r;
+    clusterNode *tmp;
+
+    for (j = 0; j < server.cluster->reachable_nodes_count; j++) {
+        r = rand() % server.cluster->reachable_nodes_count;
+        tmp = server.cluster->reachable_nodes[j];
+        server.cluster->reachable_nodes[j] = server.cluster->reachable_nodes[r];
+        server.cluster->reachable_nodes[r] = tmp;
+    }
 }
 
 /* -----------------------------------------------------------------------------

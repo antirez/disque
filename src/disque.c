@@ -118,7 +118,8 @@ struct serverCommand serverCommandTable[] = {
     {"slowlog",slowlogCommand,-2,"r",0,NULL,0,0,0,0,0},
     {"time",timeCommand,1,"rF",0,NULL,0,0,0,0,0},
     {"command",commandCommand,0,"rl",0,NULL,0,0,0,0,0},
-    {"latency",latencyCommand,-2,"arl",0,NULL,0,0,0,0,0}
+    {"latency",latencyCommand,-2,"arl",0,NULL,0,0,0,0,0},
+    {"addjob",addjobCommand,-3,"wmF",0,NULL,0,0,0,0,0}
 };
 
 struct evictionPoolEntry *evictionPoolAlloc(void);

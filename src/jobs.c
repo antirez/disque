@@ -173,6 +173,12 @@ void addjobCommand(client *c) {
     }
 
     /* Check if REPLICATE can't be honoured at all. */
+    if (replicate-1 > server.cluster->reachable_nodes_count) {
+        addReplySds(c,
+            sdsnew("-NOREPL Not enough reachable nodes "
+                   "for the requested replication level\r\n"));
+        return;
+    }
 
     /* Create a new job. */
 

@@ -49,61 +49,6 @@
 
 /* ================================= Debugging ============================== */
 
-/* Compute the sha1 of string at 's' with 'len' bytes long.
- * The SHA1 is then xored against the string pointed by digest.
- * Since xor is commutative, this operation is used in order to
- * "add" digests relative to unordered elements.
- *
- * So digest(a,b,c,d) will be the same of digest(b,a,c,d) */
-void xorDigest(unsigned char *digest, void *ptr, size_t len) {
-    SHA1_CTX ctx;
-    unsigned char hash[20], *s = ptr;
-    int j;
-
-    SHA1Init(&ctx);
-    SHA1Update(&ctx,s,len);
-    SHA1Final(hash,&ctx);
-
-    for (j = 0; j < 20; j++)
-        digest[j] ^= hash[j];
-}
-
-void xorObjectDigest(unsigned char *digest, robj *o) {
-    o = getDecodedObject(o);
-    xorDigest(digest,o->ptr,sdslen(o->ptr));
-    decrRefCount(o);
-}
-
-/* This function instead of just computing the SHA1 and xoring it
- * against digest, also perform the digest of "digest" itself and
- * replace the old value with the new one.
- *
- * So the final digest will be:
- *
- * digest = SHA1(digest xor SHA1(data))
- *
- * This function is used every time we want to preserve the order so
- * that digest(a,b,c,d) will be different than digest(b,c,d,a)
- *
- * Also note that mixdigest("foo") followed by mixdigest("bar")
- * will lead to a different digest compared to "fo", "obar".
- */
-void mixDigest(unsigned char *digest, void *ptr, size_t len) {
-    SHA1_CTX ctx;
-    char *s = ptr;
-
-    xorDigest(digest,s,len);
-    SHA1Init(&ctx);
-    SHA1Update(&ctx,digest,20);
-    SHA1Final(digest,&ctx);
-}
-
-void mixObjectDigest(unsigned char *digest, robj *o) {
-    o = getDecodedObject(o);
-    mixDigest(digest,o->ptr,sdslen(o->ptr));
-    decrRefCount(o);
-}
-
 void debugCommand(client *c) {
     if (!strcasecmp(c->argv[1]->ptr,"segfault")) {
         *((char*)-1) = 'x';

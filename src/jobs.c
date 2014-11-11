@@ -97,24 +97,61 @@ job *createJob(char *id, int state, int ttl) {
         generateJobID(j->id,ttl);
     j->state = state;
     j->flags = 0;
-    j->numnodes = 0;
     j->bodylen = 0;
     j->body = NULL;
-    j->nodes = NULL;
+    j->nodes_delivered = NULL;
+    j->nodes_confirmed = NULL;
     return j;
 }
 
 /* Free a job. */
 void freeJob(job *j) {
+    decrRefCount(j->queue);
     sdsfree(j->id);
     sdsfree(j->body);
-    sdsfree(j->nodes);
+    if (j->nodes_delivered) dictRelease(j->nodes_delivered);
+    if (j->nodes_confirmed) dictRelease(j->nodes_confirmed);
     zfree(j);
+}
+
+/* Add the job in the jobs hash table, so that we can use lookupJob()
+ * (by job ID) later. */
+int registerJob(job *j) {
+    /* TODO */
+}
+
+/* Lookup a job by ID. */
+job *lookupJob(char *jobid) {
+    /* TODO */
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
 
+/* -------------------------  Jobs cluster functions ------------------------ */
+
+/* This function sends a DELJOB message to all the nodes that may have
+ * a copy of the job, in order to trigger deletion of the job.
+ * It is used when an ADDJOB command time out to unregister (in a best
+ * effort way, without gurantees) the job, and in the ACKs grabage
+ * collection procedure.
+ *
+ * This function also unregisters and releases the job from the local
+ * node. */
+void deleteJobFromCluster(job *j) {
+    /* TODO */
+    /* Send DELJOB message to the right nodes. */
+    /* Unregister the job. */
+    /* Free the job. */
+}
+
 /* --------------------------  Jobs related commands ------------------------ */
+
+/* This is called by unblockClient() to perform the cleanup of a client
+ * blocked by ADDJOB. Never call it directly, call unblockClient()
+ * instead. */
+void unblockClientWaitingJobRepl(client *c) {
+    c->bpop.job = NULL;
+}
 
 /* ADDJOB queue job [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [TIMEOUT <ms>]
  *        [ASYNC]. */
@@ -122,7 +159,7 @@ void addjobCommand(client *c) {
     long long replicate = server.cluster->size/2+1;
     long long ttl = 3600*24;
     long long retry = -1;
-    long long timeout = 50;
+    mstime_t timeout = 50;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
 
@@ -132,8 +169,8 @@ void addjobCommand(client *c) {
         int lastarg = j == c->argc-1;
         if (!strcasecmp(opt,"replicate") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&replicate);
-            if (retval != DISQUE_OK || replicate <= 0) {
-                addReplyError(c,"REPLICATE count must be a number > 0");
+            if (retval != DISQUE_OK || replicate <= 0 || replicate > 65535) {
+                addReplyError(c,"REPLICATE must be between 1 and 65535");
                 return;
             }
             j++;
@@ -152,11 +189,7 @@ void addjobCommand(client *c) {
             }
             j++;
         } else if (!strcasecmp(opt,"timeout") && !lastarg) {
-            retval = getLongLongFromObject(c->argv[j+1],&timeout);
-            if (retval != DISQUE_OK || timeout < 0) {
-                addReplyError(c,"TIMEOUT must be a non negative number");
-                return;
-            }
+            if (getTimeoutFromObjectOrReply(c,c->argv[j+1],&timeout,UNIT_MILLISECONDS) != DISQUE_OK) return;
             j++;
         } else if (!strcasecmp(opt,"async")) {
             async = 1;
@@ -164,6 +197,15 @@ void addjobCommand(client *c) {
             addReply(c,shared.syntaxerr);
             return;
         }
+    }
+
+    /* REPLICATE > 1 and RETRY set to 0 does not make sense, why to replicate
+     * the job if it will never try to be re-queued if case the job processing
+     * is not acknowledged? */
+    if (replicate > 1 && retry == 0) {
+        addReplyError(c,"REPLICATE > 1 and RETRY 0 is invalid. "
+                        "For at-most-once semantic (RETRY 0) use REPLICATE 1");
+        return;
     }
 
     /* When retry is not specified, it defaults to 1/10 of the TTL. */
@@ -181,8 +223,27 @@ void addjobCommand(client *c) {
     }
 
     /* Create a new job. */
+    job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl);
+    job->queue = c->argv[1];
+    incrRefCount(c->argv[1]);
+    job->repl = replicate;
+    job->ctime = server.unixtime;
+    job->etime = job->ctime + ttl;
+    job->qtime = 0; /* Will be updated by queueAddjob(). */
+    job->rtime = retry;
+    registerJob(job);
 
-    /* Send a REPLJOB message to REPLICATE-1 nodes. */
-
-    /* Block the client if REPLICATE > 1, otherwise reply ASAP. */
+    /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
+     * nodes and block the client, since we want synchronous replication of the
+     * message. Otherwise if the job is stored just into this node for user
+     * request, we don't have anything to wait and can remember ASAP. */
+    if (replicate > 1) {
+        c->bpop.timeout = timeout;
+        c->bpop.job = job;
+        job->state = JOB_STATE_WAIT_REPL;
+        blockClient(c,DISQUE_BLOCKED_JOB_REPL);
+    } else {
+        queueAddJob(c->argv[1],job);
+        addReply(c,shared.ok);
+    }
 }

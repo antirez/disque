@@ -105,10 +105,7 @@ client *createClient(int fd) {
     listSetDupMethod(c->reply,dupClientReplyValue);
     c->btype = DISQUE_BLOCKED_NONE;
     c->bpop.timeout = 0;
-    c->bpop.keys = dictCreate(&setDictType,NULL);
-    c->bpop.target = NULL;
-    c->bpop.numreplicas = 0;
-    c->bpop.reploffset = 0;
+    c->bpop.job = NULL;
     c->peerid = NULL;
     if (fd != -1) listAddNodeTail(server.clients,c);
     return c;
@@ -624,7 +621,6 @@ void freeClient(client *c) {
 
     /* Deallocate structures used to block on blocking ops. */
     if (c->flags & DISQUE_BLOCKED) unblockClient(c);
-    dictRelease(c->bpop.keys);
 
     /* Close socket, unregister events, and remove list of replies and
      * accumulated arguments. */

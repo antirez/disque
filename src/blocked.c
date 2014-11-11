@@ -128,8 +128,8 @@ void processUnblockedClients(void) {
 /* Unblock a client calling the right function depending on the kind
  * of operation the client is blocking for. */
 void unblockClient(client *c) {
-    if (c->btype == DISQUE_BLOCKED_LIST) {
-        /* unblockClientWaitingData(c); */
+    if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
+        unblockClientWaitingJobRepl(c);
     } else {
         serverPanic("Unknown btype in unblockClient().");
     }
@@ -145,8 +145,12 @@ void unblockClient(client *c) {
 /* This function gets called when a blocked client timed out in order to
  * send it a reply of some kind. */
 void replyToBlockedClientTimedOut(client *c) {
-    if (c->btype == DISQUE_BLOCKED_LIST) {
-        addReply(c,shared.nullmultibulk);
+    if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
+        deleteJobFromCluster(c->bpop.job);
+        addReplySds(c,
+            sdsnew("-NOREPL Timeout reached before replicating to "
+                   "the requested number of nodes\r\n"));
+        return;
     } else {
         serverPanic("Unknown btype in replyToBlockedClientTimedOut().");
     }

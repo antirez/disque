@@ -200,8 +200,7 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Client block type (btype field in client structure)
  * if DISQUE_BLOCKED flag is set. */
 #define DISQUE_BLOCKED_NONE 0    /* Not blocked, no DISQUE_BLOCKED flag set. */
-#define DISQUE_BLOCKED_LIST 1    /* BLPOP & co. */
-#define DISQUE_BLOCKED_WAIT 2    /* WAIT for synchronous replication. */
+#define DISQUE_BLOCKED_JOB_REPL 1 /* WAIT job synchronous replication. */
 
 /* Client request types */
 #define DISQUE_REQ_INLINE 1
@@ -329,6 +328,8 @@ struct evictionPoolEntry {
     sds key;                    /* Key name. */
 };
 
+struct job;
+
 /* This structure holds the blocking operation state for a client.
  * The fields used depend on client->btype. */
 typedef struct blockingState {
@@ -336,15 +337,8 @@ typedef struct blockingState {
     mstime_t timeout;       /* Blocking operation timeout. If UNIX current time
                              * is > timeout then the operation timed out. */
 
-    /* DISQUE_BLOCK_LIST */
-    dict *keys;             /* The keys we are waiting to terminate a blocking
-                             * operation such as BLPOP. Otherwise NULL. */
-    robj *target;           /* The key that should receive the element,
-                             * for BRPOPLPUSH. */
-
-    /* DISQUE_BLOCK_WAIT */
-    int numreplicas;        /* Number of replicas we are waiting for ACK. */
-    long long reploffset;   /* Replication offset to reach. */
+    /* DISQUE_BLOCKED_JOB_REPL */
+    struct job *job;        /* Job we are trying to replicate. */
 } blockingState;
 
 /* With multiplexing we need to take per-client state.
@@ -769,9 +763,7 @@ void listTypeInsert(listTypeEntry *entry, robj *value, int where);
 int listTypeEqual(listTypeEntry *entry, robj *o);
 void listTypeDelete(listTypeEntry *entry);
 void listTypeConvert(robj *subject, int enc);
-void unblockClientWaitingData(client *c);
-void handleClientsBlockedOnLists(void);
-void popGenericCommand(client *c, int where);
+void unblockClientWaitingJobRepl(client *c);
 
 /* Disque object implementation */
 void decrRefCount(robj *o);
@@ -779,10 +771,6 @@ void decrRefCountVoid(void *o);
 void incrRefCount(robj *o);
 robj *resetRefCount(robj *obj);
 void freeStringObject(robj *o);
-void freeListObject(robj *o);
-void freeSetObject(robj *o);
-void freeZsetObject(robj *o);
-void freeHashObject(robj *o);
 robj *createObject(int type, void *ptr);
 robj *createStringObject(char *ptr, size_t len);
 robj *createRawStringObject(char *ptr, size_t len);
@@ -794,13 +782,6 @@ robj *getDecodedObject(robj *o);
 size_t stringObjectLen(robj *o);
 robj *createStringObjectFromLongLong(long long value);
 robj *createStringObjectFromLongDouble(long double value);
-robj *createListObject(void);
-robj *createZiplistObject(void);
-robj *createSetObject(void);
-robj *createIntsetObject(void);
-robj *createHashObject(void);
-robj *createZsetObject(void);
-robj *createZsetZiplistObject(void);
 int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg);
 int checkType(client *c, robj *o, int type);
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg);
@@ -819,28 +800,6 @@ unsigned long long estimateObjectIdleTime(robj *o);
 ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout);
 ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout);
 ssize_t syncReadLine(int fd, char *ptr, ssize_t size, long long timeout);
-
-/* Replication */
-void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc);
-void replicationFeedMonitors(client *c, list *monitors, robj **argv, int argc);
-void updateSlavesWaitingBgsave(int bgsaveerr, int type);
-void replicationCron(void);
-void replicationHandleMasterDisconnection(void);
-void replicationCacheMaster(client *c);
-void resizeReplicationBacklog(long long newsize);
-void replicationSetMaster(char *ip, int port);
-void replicationUnsetMaster(void);
-void refreshGoodSlavesCount(void);
-void replicationScriptCacheInit(void);
-void replicationScriptCacheFlush(void);
-void replicationScriptCacheAdd(sds sha1);
-int replicationScriptCacheExists(sds sha1);
-void processClientsWaitingReplicas(void);
-void unblockClientWaitingReplicas(client *c);
-int replicationCountAcksByOffset(long long offset);
-void replicationSendNewlineToMaster(void);
-long long replicationGetSlaveOffset(void);
-char *replicationGetSlaveName(client *c);
 
 /* Generic persistence functions */
 void startLoading(FILE *fp);
@@ -952,18 +911,6 @@ void hashTypeCurrentFromHashTable(hashTypeIterator *hi, int what, robj **dst);
 robj *hashTypeCurrentObject(hashTypeIterator *hi, int what);
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key);
 
-/* Pub / Sub */
-int pubsubUnsubscribeAllChannels(client *c, int notify);
-int pubsubUnsubscribeAllPatterns(client *c, int notify);
-void freePubsubPattern(void *p);
-int listMatchPubsubPattern(void *a, void *b);
-int pubsubPublishMessage(robj *channel, robj *message);
-
-/* Keyspace events notification */
-void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid);
-int keyspaceEventsStringToFlags(char *classes);
-sds keyspaceEventsFlagsToString(int flags);
-
 /* Configuration */
 void loadServerConfig(char *filename, char *options);
 void appendServerSaveParams(time_t seconds, int changes);
@@ -972,31 +919,11 @@ struct rewriteConfigState; /* Forward declaration to export API. */
 void rewriteConfigRewriteLine(struct rewriteConfigState *state, char *option, sds line, int force);
 int rewriteConfig(char *path);
 
-/* API to get key arguments from commands */
-int *getKeysFromCommand(struct serverCommand *cmd, robj **argv, int argc, int *numkeys);
-void getKeysFreeResult(int *result);
-int *zunionInterGetKeys(struct serverCommand *cmd,robj **argv, int argc, int *numkeys);
-int *evalGetKeys(struct serverCommand *cmd, robj **argv, int argc, int *numkeys);
-int *sortGetKeys(struct serverCommand *cmd, robj **argv, int argc, int *numkeys);
-
 /* Cluster */
 void clusterInit(void);
 unsigned short crc16(const char *buf, int len);
-unsigned int keyHashSlot(char *key, int keylen);
 void clusterCron(void);
-void clusterPropagatePublish(robj *channel, robj *message);
-void migrateCloseTimedoutSockets(void);
 void clusterBeforeSleep(void);
-
-/* Sentinel */
-void initSentinelConfig(void);
-void initSentinel(void);
-void sentinelTimer(void);
-char *sentinelHandleConfiguration(char **argv, int argc);
-void sentinelIsRunning(void);
-
-/* Scripting */
-void scriptingInit(void);
 
 /* Blocked clients */
 void processUnblockedClients(void);

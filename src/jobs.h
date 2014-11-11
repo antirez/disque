@@ -56,30 +56,36 @@
  *
  * List of nodes and ACKs garbage collection:
  *
- * We keep a list of nodes that *may* have the message, so that the creating
- * node is able to gargage collect ACKs even if not all the nodes in the
- * cluster are reachable, but only the nodes that may have a copy of this
- * job. The list includes nodes that we send the message to but never received
- * the confirmation, this is why we can have more listed nodes than
- * the 'repl' count.
+ * We keep a list of nodes that *may* have the message (nodes_delivered hash),
+ * so that the creating node is able to gargage collect ACKs even if not all
+ * the nodes in the cluster are reachable, but only the nodes that may have a
+ * copy of this job. The list includes nodes that we send the message to but
+ * never received the confirmation, this is why we can have more listed nodes
+ * than the 'repl' count.
  *
  * This optimized GC is possible when a client ACKs the message or when we
  * receive a SETACK message from another node. Nodes having just the
- * ACK but not a copy of the job, need to go for the usual path for
+ * ACK but not a copy of the job instead, need to go for the usual path for
  * ACKs GC, that need a confirmation from all the nodes.
  *
  * Body:
  *
  * The body can be anything, including the empty string. Disque is
- * totally content-agnostic. */
+ * totally content-agnostic. When the 'body' filed is set to NULL, the
+ * job structure just represents an ACK without other jobs information.
+ * Jobs that are actually just ACKs are created when a client sends a
+ * node an ACK about an unknown Job ID, or when a SETACK message is received
+ * about an unknown node. */
 
-#define JOB_STATE_ACTIVE  0  /* Not acked, this node never queued it. */
-#define JOB_STATE_QUEUED  1  /* Not acked, and queued. */
-#define JOB_STATE_WAITACK 2  /* Not acked, queued, delivered, no ACK. */
-#define JOB_STATE_ACKED   3  /* Acked, no longer active, to garbage collect. */
+#define JOB_STATE_WAIT_REPL 0  /* Waiting to be replicated enough times. */
+#define JOB_STATE_ACTIVE    1  /* Not acked, this node never queued it. */
+#define JOB_STATE_QUEUED    2  /* Not acked, and queued. */
+#define JOB_STATE_WAIT_ACK  3  /* Not acked, delivered (not queued), no ACK. */
+#define JOB_STATE_ACKED     4  /* Acked, no longer active, to garbage collect.*/
 
 struct job {
     sds id;                 /* Job ID. */
+    robj *queue;            /* Job queue name. */
     uint16_t state;         /* Job state: one of JOB_STATE_* states. */
     uint16_t flags;         /* Job flags. */
     uint32_t ctime;         /* Job creation time, local node clock. */
@@ -87,10 +93,12 @@ struct job {
     uint32_t qtime;         /* Job queued time: unix time job was queued. */
     uint32_t rtime;         /* Job re-queue time: re-queue period in seconds. */
     uint16_t repl;          /* Replication factor. */
-    uint16_t numnodes;      /* Number of nodes that may have a copy. */
     uint64_t bodylen;       /* Job body length in bytes. */
     sds body;               /* Body, or NULL if job is just an ACK. */
-    char *nodes;            /* List of nodes IDs according to 'numnodes'. */
+    dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
+    dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. */
 } typedef job;
+
+void deleteJobFromCluster(job *j);
 
 #endif

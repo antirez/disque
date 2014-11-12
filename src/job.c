@@ -30,7 +30,7 @@
 
 #include "disque.h"
 #include "cluster.h"
-#include "jobs.h"
+#include "job.h"
 #include "sha1.h"
 
 /* ------------------------- Low level jobs functions ----------------------- */

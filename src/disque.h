@@ -972,9 +972,9 @@ void disableWatchdog(void);
 void watchdogScheduleSignal(int period);
 void serverLogHexDump(int level, char *descr, void *value, size_t len);
 
-#define redisDebug(fmt, ...) \
+#define disqueDebug(fmt, ...) \
     printf("DEBUG %s:%d > " fmt "\n", __FILE__, __LINE__, __VA_ARGS__)
-#define redisDebugMark() \
+#define disqueDebugMark() \
     printf("-- MARK %s:%d --\n", __FILE__, __LINE__)
 
 #endif

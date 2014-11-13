@@ -31,7 +31,9 @@
 #include "disque.h"
 #include "cluster.h"
 #include "job.h"
+#include "queue.h"
 #include "sha1.h"
+#include "endianconv.h"
 
 /* ------------------------- Low level jobs functions ----------------------- */
 
@@ -90,14 +92,15 @@ void generateJobID(char *id, int ttl) {
 job *createJob(char *id, int state, int ttl) {
     job *j = zmalloc(sizeof(job));
 
-    j->id = sdsnewlen(NULL,JOB_ID_LEN);
-    if (id)
-        memcpy(j->id,id,JOB_ID_LEN);
-    else
+    /* Generate a new Job ID if not specified by the caller. */
+    if (id == NULL)
         generateJobID(j->id,ttl);
+    else
+        memcpy(j->id,id,JOB_ID_LEN);
+
+    j->queue = NULL;
     j->state = state;
     j->flags = 0;
-    j->bodylen = 0;
     j->body = NULL;
     j->nodes_delivered = NULL;
     j->nodes_confirmed = NULL;
@@ -107,7 +110,6 @@ job *createJob(char *id, int state, int ttl) {
 /* Free a job. */
 void freeJob(job *j) {
     decrRefCount(j->queue);
-    sdsfree(j->id);
     sdsfree(j->body);
     if (j->nodes_delivered) dictRelease(j->nodes_delivered);
     if (j->nodes_confirmed) dictRelease(j->nodes_confirmed);
@@ -126,6 +128,74 @@ job *lookupJob(char *jobid) {
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
+
+/* Serialize an SDS string as a little endian 32 bit count followed
+ * by the bytes representing the string. The serialized string is
+ * written to the memory pointed by 'p'. The return value of the function
+ * is the original 'p' advanced of 4 + sdslen(s) bytes, in order to
+ * be ready to store the next value to serialize. */
+char *serializeSdsString(char *p, sds s) {
+    size_t len = s ? sdslen(s) : 0;
+    uint32_t count = intrev32ifbe(len);
+
+    memcpy(p,&count,sizeof(count));
+    if (s) memcpy(p+sizeof(count),s,len);
+    return p + sizeof(count) + len;
+}
+
+sds serializeJob(job *j) {
+    size_t len;
+    sds msg;
+    struct job *sj;
+    char *p;
+    uint32_t count;
+
+    len = JOB_STRUCT_SER_LEN;   /* Structure header directly serializable. */
+    len += 4;                   /* Queue name length field. */
+    len += j->queue ? sdslen(j->queue->ptr) : 0; /* Queue name bytes. */
+    len += 4;                   /* Body length field. */
+    len += j->body ? sdslen(j->body) : 0; /* Body bytes. */
+    len += 4;                   /* Node IDs (that may have a copy) count. */
+    len += dictSize(j->nodes_delivered) * DISQUE_CLUSTER_NAMELEN;
+
+    msg = sdsnewlen(NULL,len);
+
+    /* The serializable part of the job structure is copied, and fields
+     * fixed to be little endian (no op in little endian CPUs). */
+    sj = (job*) msg;
+    memcpy(sj,j,JOB_STRUCT_SER_LEN);
+    memrev16ifbe(&sj->repl);
+    memrev32ifbe(&sj->ctime);
+    memrev32ifbe(&sj->etime);
+    memrev32ifbe(&sj->qtime);
+    memrev32ifbe(&sj->rtime);
+
+    /* p now points to the start of the variable part of the serialization. */
+    p = msg + JOB_STRUCT_SER_LEN;
+
+    /* Queue name is 4 bytes prefixed len in little endian + actual bytes. */
+    p = serializeSdsString(p,j->queue->ptr);
+
+    /* Body is 4 bytes prefixed len in little endian + actual bytes. */
+    p = serializeSdsString(p,j->body);
+
+    /* Node IDs that may have a copy of the message: 4 bytes count in little
+     * endian plus (count * JOB_ID_SIZE) bytes. */
+    count = dictSize(j->nodes_delivered);
+    memcpy(p,&count,sizeof(count));
+    p += sizeof(count);
+
+    dictIterator *di = dictGetSafeIterator(j->nodes_delivered);
+    dictEntry *de;
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+        memcpy(p,node->name,DISQUE_CLUSTER_NAMELEN);
+        p += DISQUE_CLUSTER_NAMELEN;
+    }
+
+    /* Make sure we wrote exactly the intented number of bytes. */
+    serverAssert(len == (size_t)(p-msg));
+}
 
 /* -------------------------  Jobs cluster functions ------------------------ */
 

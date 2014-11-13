@@ -83,21 +83,27 @@
 #define JOB_STATE_WAIT_ACK  3  /* Not acked, delivered (not queued), no ACK. */
 #define JOB_STATE_ACKED     4  /* Acked, no longer active, to garbage collect.*/
 
+/* Job representation in memory. */
 struct job {
-    sds id;                 /* Job ID. */
-    robj *queue;            /* Job queue name. */
-    uint16_t state;         /* Job state: one of JOB_STATE_* states. */
-    uint16_t flags;         /* Job flags. */
+    char id[JOB_ID_LEN];    /* Job ID. */
+    uint8_t state;          /* Job state: one of JOB_STATE_* states. */
+    uint8_t flags;          /* Job flags. */
+    uint16_t repl;          /* Replication factor. */
     uint32_t ctime;         /* Job creation time, local node clock. */
     uint32_t etime;         /* Job expire time. */
     uint32_t qtime;         /* Job queued time: unix time job was queued. */
     uint32_t rtime;         /* Job re-queue time: re-queue period in seconds. */
-    uint16_t repl;          /* Replication factor. */
-    uint64_t bodylen;       /* Job body length in bytes. */
+    /* Up to this point we use the structure for on-wire serialization,
+     * before here all the fields should be naturally aligned, and pointers
+     * should only be present after. */
+    robj *queue;            /* Job queue name. */
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
     dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. */
 } typedef job;
+
+/* Number of bytes of directly serializable fields in the job structure. */
+#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+4+4+4)
 
 void deleteJobFromCluster(job *j);
 

@@ -62,6 +62,7 @@
  */
 
 #include "disque.h"
+#include "job.h"
 
 /* Get a timeout value from an object and store it into 'timeout'.
  * The final timeout is always stored as milliseconds as a time where the

@@ -214,6 +214,11 @@ void deleteJobFromCluster(job *j) {
     /* Free the job. */
 }
 
+/* Send the specified job to 'count' additional replicas, and populate
+ * the job delivered list accordingly. */
+void replicateJobInCluster(job *j, int count, int ask_for_reply) {
+}
+
 /* --------------------------  Jobs related commands ------------------------ */
 
 /* This is called by unblockClient() to perform the cleanup of a client
@@ -301,13 +306,24 @@ void addjobCommand(client *c) {
     job->etime = job->ctime + ttl;
     job->qtime = 0; /* Will be updated by queueAddjob(). */
     job->rtime = retry;
+    job->body = sdsdup(c->argv[2]->ptr);
     registerJob(job);
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
-     * nodes and block the client, since we want synchronous replication of the
-     * message. Otherwise if the job is stored just into this node for user
-     * request, we don't have anything to wait and can remember ASAP. */
+     * nodes. */
     if (replicate > 1) {
+        int ask_for_reply = !async;
+        replicateJobInCluster(job,replicate-1,ask_for_reply);
+    }
+
+    /* For replicated messages where ASYNC option was not asked, block
+     * the client, and wait for acks. Otherwise if no synchronous replication
+     * is used, or ASYNC option was enabled, we just queue the job and
+     * return to the client ASAP.
+     *
+     * Note that for REPLICATE > 1 and ASYNC the replication process is
+     * best effort. */
+    if (replicate > 1 && !async) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
         job->state = JOB_STATE_WAIT_REPL;

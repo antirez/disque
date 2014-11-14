@@ -491,6 +491,8 @@ struct disqueServer {
     mstime_t clients_pause_end_time; /* Time when we undo clients_paused */
     char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
     uint64_t next_client_id;    /* Next client unique ID. Incremental. */
+    /* Jobs & Queues */
+    dict *jobs;                 /* Main jobs hash table, by job ID. */
     /* AOF loading information */
     int loading;                /* We are loading data from disk if true */
     off_t loading_total_bytes;

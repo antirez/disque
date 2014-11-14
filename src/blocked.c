@@ -147,7 +147,6 @@ void unblockClient(client *c) {
  * send it a reply of some kind. */
 void replyToBlockedClientTimedOut(client *c) {
     if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
-        deleteJobFromCluster(c->bpop.job);
         addReplySds(c,
             sdsnew("-NOREPL Timeout reached before replicating to "
                    "the requested number of nodes\r\n"));

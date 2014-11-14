@@ -1165,17 +1165,13 @@ void initServer(void) {
     }
 
     /* Create the Disque databases, and initialize other internal state. */
-
-    /* TODO: Initialize the Disque data structures:
-     * 1) ACKs dictionary.
-     * 2) Queue skiplist.
-     * 3) ... */
-
+    server.jobs = dictCreate(&jobsDictType,NULL);
     server.cronloops = 0;
     server.aof_child_pid = -1;
     aofRewriteBufferReset();
     server.aof_buf = sdsempty();
     resetServerStats();
+
     /* A few stats we don't want to reset: server startup time, and peak mem. */
     server.stat_starttime = time(NULL);
     server.stat_peak_memory = 0;

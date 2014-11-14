@@ -237,6 +237,11 @@ void replicateJobInCluster(job *j, int count, int ask_for_reply) {
  * blocked by ADDJOB. Never call it directly, call unblockClient()
  * instead. */
 void unblockClientWaitingJobRepl(client *c) {
+    /* If the job is still waiting for synchronous replication, but the client
+     * waiting it gets freed or reaches the timeout, we unblock the client and
+     * forget about the job. */
+    if (c->bpop.job->state == JOB_STATE_WAIT_REPL)
+        deleteJobFromCluster(c->bpop.job);
     c->bpop.job = NULL;
 }
 

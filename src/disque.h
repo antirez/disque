@@ -714,6 +714,7 @@ void addReply(client *c, robj *obj);
 void addReplySds(client *c, sds s);
 void addReplyError(client *c, char *err);
 void addReplyStatus(client *c, char *status);
+void addReplyStatusLength(client *c, char *s, size_t len);
 void addReplyDouble(client *c, double d);
 void addReplyLongLong(client *c, long long ll);
 void addReplyMultiBulkLen(client *c, long length);

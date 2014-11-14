@@ -78,8 +78,8 @@ void generateJobID(char *id, int ttl) {
 
     /* Convert 22 bytes (20 pseudorandom + 2 TTL in minutes) to hex. */
     for (j = 0; j < 22; j++) {
-        id[0] = charset[(hash[0]&0xf0)>>4];
-        id[1] = charset[hash[0]&0xf];
+        id[0] = charset[(hash[j]&0xf0)>>4];
+        id[1] = charset[hash[j]&0xf];
         id += 2;
     }
 }
@@ -228,6 +228,11 @@ void unblockClientWaitingJobRepl(client *c) {
     c->bpop.job = NULL;
 }
 
+/* Return a simple string reply with the Job ID. */
+void addReplyJobId(client *c, job *j) {
+    addReplyStatusLength(c,j->id,JOB_ID_LEN);
+}
+
 /* ADDJOB queue job [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [TIMEOUT <ms>]
  *        [ASYNC]. */
 void addjobCommand(client *c) {
@@ -330,6 +335,6 @@ void addjobCommand(client *c) {
         blockClient(c,DISQUE_BLOCKED_JOB_REPL);
     } else {
         queueAddJob(c->argv[1],job);
-        addReply(c,shared.ok);
+        addReplyJobId(c,job);
     }
 }

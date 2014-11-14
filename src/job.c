@@ -150,7 +150,8 @@ sds serializeJob(job *j) {
     char *p;
     uint32_t count;
 
-    len = JOB_STRUCT_SER_LEN;   /* Structure header directly serializable. */
+    len = 4;                    /* Prefixed length of the serialized bytes. */
+    len += JOB_STRUCT_SER_LEN;  /* Structure header directly serializable. */
     len += 4;                   /* Queue name length field. */
     len += j->queue ? sdslen(j->queue->ptr) : 0; /* Queue name bytes. */
     len += 4;                   /* Body length field. */
@@ -158,11 +159,14 @@ sds serializeJob(job *j) {
     len += 4;                   /* Node IDs (that may have a copy) count. */
     len += dictSize(j->nodes_delivered) * DISQUE_CLUSTER_NAMELEN;
 
+    /* Total serialized length prefix. */
     msg = sdsnewlen(NULL,len);
+    count = intrev32ifbe(len);
+    memcpy(msg,&count,sizeof(count));
 
     /* The serializable part of the job structure is copied, and fields
      * fixed to be little endian (no op in little endian CPUs). */
-    sj = (job*) msg;
+    sj = (job*) (msg+4);
     memcpy(sj,j,JOB_STRUCT_SER_LEN);
     memrev16ifbe(&sj->repl);
     memrev32ifbe(&sj->ctime);
@@ -171,7 +175,7 @@ sds serializeJob(job *j) {
     memrev32ifbe(&sj->rtime);
 
     /* p now points to the start of the variable part of the serialization. */
-    p = msg + JOB_STRUCT_SER_LEN;
+    p = msg + 4 + JOB_STRUCT_SER_LEN;
 
     /* Queue name is 4 bytes prefixed len in little endian + actual bytes. */
     p = serializeSdsString(p,j->queue->ptr);
@@ -181,7 +185,7 @@ sds serializeJob(job *j) {
 
     /* Node IDs that may have a copy of the message: 4 bytes count in little
      * endian plus (count * JOB_ID_SIZE) bytes. */
-    count = dictSize(j->nodes_delivered);
+    count = intrev32ifbe(dictSize(j->nodes_delivered));
     memcpy(p,&count,sizeof(count));
     p += sizeof(count);
 
@@ -206,7 +210,14 @@ sds serializeJob(job *j) {
  * collection procedure.
  *
  * This function also unregisters and releases the job from the local
- * node. */
+ * node.
+ *
+ * The function is best effort, and does not need to *guarantee* that the
+ * specific property that after it gets called, no copy of the job is found
+ * on the cluster. It just attempts to avoid useless multiple deliveries,
+ * and to free memory of jobs that are already processed or that were never
+ * confirmed to the producer.
+ */
 void deleteJobFromCluster(job *j) {
     /* TODO */
     /* Send DELJOB message to the right nodes. */
@@ -229,7 +240,7 @@ void unblockClientWaitingJobRepl(client *c) {
 }
 
 /* Return a simple string reply with the Job ID. */
-void addReplyJobId(client *c, job *j) {
+void addReplyJobID(client *c, job *j) {
     addReplyStatusLength(c,j->id,JOB_ID_LEN);
 }
 
@@ -335,6 +346,6 @@ void addjobCommand(client *c) {
         blockClient(c,DISQUE_BLOCKED_JOB_REPL);
     } else {
         queueAddJob(c->argv[1],job);
-        addReplyJobId(c,job);
+        addReplyJobID(c,job);
     }
 }

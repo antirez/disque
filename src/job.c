@@ -107,7 +107,7 @@ job *createJob(char *id, int state, int ttl) {
     return j;
 }
 
-/* Free a job. */
+/* Free a job. Does not automatically unregister it. */
 void freeJob(job *j) {
     decrRefCount(j->queue);
     sdsfree(j->body);
@@ -117,7 +117,8 @@ void freeJob(job *j) {
 }
 
 /* Add the job in the jobs hash table, so that we can use lookupJob()
- * (by job ID) later. */
+ * (by job ID) later. If a node knows about a job, the job must be registered
+ * and can be retrieved via lookupJob(), regardless of is state. */
 int registerJob(job *j) {
     /* TODO */
 }

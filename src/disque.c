@@ -365,46 +365,6 @@ dictType setDictType = {
     NULL                       /* val destructor */
 };
 
-/* Sorted sets hash (note: a skiplist is used in addition to the hash table) */
-dictType zsetDictType = {
-    dictEncObjHash,            /* hash function */
-    NULL,                      /* key dup */
-    NULL,                      /* val dup */
-    dictEncObjKeyCompare,      /* key compare */
-    dictDisqueObjectDestructor, /* key destructor */
-    NULL                       /* val destructor */
-};
-
-/* Db->dict, keys are sds strings, vals are Disque objects. */
-dictType dbDictType = {
-    dictSdsHash,                /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictSdsKeyCompare,          /* key compare */
-    dictSdsDestructor,          /* key destructor */
-    dictDisqueObjectDestructor   /* val destructor */
-};
-
-/* server.lua_scripts sha (as sds string) -> scripts (as robj) cache. */
-dictType shaScriptObjectDictType = {
-    dictSdsCaseHash,            /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictSdsKeyCaseCompare,      /* key compare */
-    dictSdsDestructor,          /* key destructor */
-    dictDisqueObjectDestructor   /* val destructor */
-};
-
-/* Db->expires */
-dictType keyptrDictType = {
-    dictSdsHash,               /* hash function */
-    NULL,                      /* key dup */
-    NULL,                      /* val dup */
-    dictSdsKeyCompare,         /* key compare */
-    NULL,                      /* key destructor */
-    NULL                       /* val destructor */
-};
-
 /* Command table. sds string -> command struct pointer. */
 dictType commandTableDictType = {
     dictSdsCaseHash,           /* hash function */
@@ -413,28 +373,6 @@ dictType commandTableDictType = {
     dictSdsKeyCaseCompare,     /* key compare */
     dictSdsDestructor,         /* key destructor */
     NULL                       /* val destructor */
-};
-
-/* Hash type hash table (note that small hashes are represented with ziplists) */
-dictType hashDictType = {
-    dictEncObjHash,             /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictEncObjKeyCompare,       /* key compare */
-    dictDisqueObjectDestructor,  /* key destructor */
-    dictDisqueObjectDestructor   /* val destructor */
-};
-
-/* Keylist hash table type has unencoded disque objects as keys and
- * lists as values. It's used for blocking operations (BLPOP) and to
- * map swapped keys to a list of clients waiting for this keys to be loaded. */
-dictType keylistDictType = {
-    dictObjHash,                /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictObjKeyCompare,          /* key compare */
-    dictDisqueObjectDestructor,  /* key destructor */
-    dictListDestructor          /* val destructor */
 };
 
 /* Cluster nodes hash table, mapping nodes addresses 1.2.3.4:7711 to
@@ -460,26 +398,27 @@ dictType clusterNodesBlackListDictType = {
     NULL                        /* val destructor */
 };
 
-/* Migrate cache dict type. */
-dictType migrateCacheDictType = {
-    dictSdsHash,                /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictSdsKeyCompare,          /* key compare */
-    dictSdsDestructor,          /* key destructor */
-    NULL                        /* val destructor */
-};
+/* Jobs dictionary implementation. Here we use a trick in order to save
+ * memory: the key of the dictionary is the job->id field itself, that
+ * is part of the value in the dictionary. */
+unsigned int dictJobHash(const void *key) {
+    return dictGenHashFunction(key,JOB_ID_LEN);
+}
 
-/* Replication cached script dict (server.repl_scriptcache_dict).
- * Keys are sds SHA1 strings, while values are not used at all in the current
- * implementation. */
-dictType replScriptCacheDictType = {
-    dictSdsCaseHash,            /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictSdsKeyCaseCompare,      /* key compare */
-    dictSdsDestructor,          /* key destructor */
-    NULL                        /* val destructor */
+int dictJobKeyCompare(void *privdata, const void *key1,
+                      const void *key2)
+{
+    DICT_NOTUSED(privdata);
+    return memcmp(key1, key2, JOB_ID_LEN) == 0;
+}
+
+dictType jobsDictType = {
+    dictJobHash,               /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictJobKeyCompare,         /* key compare */
+    NULL,                      /* key destructor */
+    NULL                       /* val destructor */
 };
 
 int htNeedsResize(dict *dict) {

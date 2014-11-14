@@ -1,4 +1,83 @@
-Hello! I'm Disque, a distributed, in memory, jobs queue.
+Disque, an in-memory, distribted job queue
+===
 
-Disque is a work in progress, this is an alpha release.
-If you have questions ping @antirez on Twitter.
+Hello, this is Disque, a distributed, in memory, jobs queue.
+Disque originated from some work @antirez was doing in order to create a
+distributed algorithm to use N Redis masters to create a job queue.
+At some point, it was clear that to design an ad-hoc system was a better
+idea, and a lot more fun.
+
+What it does exactly?
+---
+
+Disque is a job (messages, if you like) queue. Producers add messages that
+are served to consumers. However this is common to many job queues. To
+better specify Disque implementation details, here is a list of interesting
+things about it:
+
+Disque is a **synchronously replicated job queue**. By default when a new job is added, it is replicated to W nodes before the client gets an acknowledge about the job being added. W-1 nodes can fail and still the message will be delivered.
+
+Disque supports both **at-least-once and at-most-once** delivery semantics. At least once semantics is where most time was spent in the design, but at mode once semantics is a trivial result of using a replication factor of 1 for the message, with retry disabled for that message. This means that you can have at the same time both at-least-once and at-most-once messages in the same queues and nodes.
+
+Disque supports **optional asynchronous commands** that are low latency for the client but providing less guarantees. For example a consumer can add a message with replication factor of 3 but may want to run away without knowing if the contacted node will really be able to replicate it to the specified number of nodes.
+
+Disque is a **distributed system** where all nodes have the same role (aka, it is multi-master). Producers and consumers can attach to whatever node they like, and there is no need for producers and consumers of the same queue, to stay on the same node. Nodes will automatically exchange messages based on load.
+
+Disque is Available (as "A" of CAP): producers and consumers can make progresses as long as a single node is reachable.
+
+ACKs and retries
+---
+
+Disque implementation of at-least-once delivery semantics is designed in order
+to avoid multiple delivery during failures. It is not able to guarantee that no multiple deliveries will occur (it is impossible, at least without serious clients involvement in the orchestration of the system). However there are many at-least-once workloads where duplicated deliveries are not terrible, but not desirable either. A typical example is sending emails to users.
+
+In order to avoid multiple deliveries most of the times, Disque uses client ACKs. When a consumer processes a message correctly, it should acknowledge this fact to Disque. ACKs are replicated to multiple nodes like jobs, and are garbage collected as soon as we are comfortable that no other node exists in the cluster with the job the ACK refers to still active. However since this is a best effort mechanism, under memory pressure or under certain failure scenarios, ACKs are eventually discarded.
+
+Now the Disque semantics for at-least-once delivery can be expressed more clearly.
+
+1. A job is replicated to multiple nodes, but only *queued* in a single node.
+2. All the jobs having a copy, if a certain time limit is reached without getting the ACK for a given job, will re-queue it.
+3. ACKs are replicated and garbage collected across the cluster so that eventually processed jobs are evicted (this happens ASAP if there are no failures nor network partitions).
+
+A Disque job has the following associated properties:
+
+1. Job **time to live**: it is the maximum time a job can live. If this time is reached, the job is removed regardless of the fact it was delivered or not.
+2. Job **retry time**: after this time elapsed without an ACK, nodes having a copy of the job will try to put it into the queue. However there are mechanisms in order to avoid multiple nodes will queue the same job at the same time.
+3. Job **replication factor**: the number of nodes that have a copy of the job.
+
+If a job has a retry time set to 0, it will get queued exactly once (and in this case a replication factor greater than 1 is useless), so it will get delivered either a single time or multiple times. While jobs can be persisted on disk for safety, queues aren't, so this behavior is guaranteed even when nodes restart after a crash, whatever the disk configuration is. However when nodes are manually restarted by the sysadmin, for example for upgrades, queues are persisted correctly and reloaded at startup, since the store/load operation is atomic and there are no race conditions.
+
+Does Disque persist on disk?
+---
+
+The default and intended mode of operation is in-memory only, since jobs
+are synchronous replicated, so a good level of safety is guaranteed on
+failures. However:
+
+1. Optionally you can enable AOF persistence (similar to Redis).
+2. Even when running memory-only, Disque is able to dump jobs on disk and reload from disk on controlled restarts, for example in order to upgrade the software.
+
+Is Disque based on Redis?
+---
+
+No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However given that this was a side project coded mostly at night, I went for the simplest route, sorry.
+
+Who created Disque?
+---
+
+Disque is a side project of @antirez. Most of the code was written at night for a total of roughly XXX hours.
+
+There are chances for this project to be actively developed?
+---
+
+Currently I consider this just a public alpha: If I see people happy to use it for the right reasons (better in some use cases compared to other message queues) I'll continue the developments.
+
+API
+===
+
+The following is a description of the Disque API exported to clients.
+
+Client libraries
+===
+
+Disuqe uses the same protocl as Redis itself. To adapt Redis clients, or to use it directly, should be pretty easy. However note that Disque default port is 7711 and not 6379.

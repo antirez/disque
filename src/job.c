@@ -118,14 +118,19 @@ void freeJob(job *j) {
 
 /* Add the job in the jobs hash table, so that we can use lookupJob()
  * (by job ID) later. If a node knows about a job, the job must be registered
- * and can be retrieved via lookupJob(), regardless of is state. */
+ * and can be retrieved via lookupJob(), regardless of is state.
+ *
+ * On success DISQUE_OK is returned. If there is already a node with the
+ * specified ID, no operation is performed and the function returns
+ * DISQUE_ERR. */
 int registerJob(job *j) {
-    /* TODO */
+    int retval = dictAdd(server.jobs, j->id, j);
+    return (retval == DICT_OK) ? DISQUE_OK : DISQUE_ERR;
 }
 
 /* Lookup a job by ID. */
-job *lookupJob(char *jobid) {
-    /* TODO */
+job *lookupJob(char *id) {
+    return dictFetchValue(server.jobs, id);
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
@@ -200,6 +205,7 @@ sds serializeJob(job *j) {
 
     /* Make sure we wrote exactly the intented number of bytes. */
     serverAssert(len == (size_t)(p-msg));
+    return msg;
 }
 
 /* -------------------------  Jobs cluster functions ------------------------ */
@@ -329,7 +335,15 @@ void addjobCommand(client *c) {
     job->qtime = 0; /* Will be updated by queueAddjob(). */
     job->rtime = retry;
     job->body = sdsdup(c->argv[2]->ptr);
-    registerJob(job);
+
+    if (registerJob(job) == DISQUE_ERR) {
+        /* A job ID with the same name? Practically impossible but
+         * let's handle it to trap possible bugs in a cleaner way. */
+        serverLog(DISQUE_WARNING,"ID already existing in ADDJOB command!");
+        freeJob(job);
+        addReplyError(c,"Internal error creating the job, check server logs");
+        return;
+    }
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
      * nodes. */

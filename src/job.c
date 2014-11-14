@@ -256,18 +256,18 @@ void addReplyJobID(client *c, job *j) {
     addReplyStatusLength(c,j->id,JOB_ID_LEN);
 }
 
-/* ADDJOB queue job [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [TIMEOUT <ms>]
- *        [ASYNC]. */
+/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>]
+ *        [TIMEOUT <ms>] [ASYNC]. */
 void addjobCommand(client *c) {
-    long long replicate = server.cluster->size/2+1;
+    long long replicate = 3;
     long long ttl = 3600*24;
     long long retry = -1;
-    mstime_t timeout = 50;
+    mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
 
     /* Parse args. */
-    for (j = 3; j < c->argc; j++) {
+    for (j = 4; j < c->argc; j++) {
         char *opt = c->argv[j]->ptr;
         int lastarg = j == c->argc-1;
         if (!strcasecmp(opt,"replicate") && !lastarg) {
@@ -291,9 +291,6 @@ void addjobCommand(client *c) {
                 return;
             }
             j++;
-        } else if (!strcasecmp(opt,"timeout") && !lastarg) {
-            if (getTimeoutFromObjectOrReply(c,c->argv[j+1],&timeout,UNIT_MILLISECONDS) != DISQUE_OK) return;
-            j++;
         } else if (!strcasecmp(opt,"async")) {
             async = 1;
         } else {
@@ -301,6 +298,10 @@ void addjobCommand(client *c) {
             return;
         }
     }
+
+    /* Parse the timeout argument. */
+    if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,UNIT_MILLISECONDS)
+        != DISQUE_OK) return;
 
     /* REPLICATE > 1 and RETRY set to 0 does not make sense, why to replicate
      * the job if it will never try to be re-queued if case the job processing

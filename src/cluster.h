@@ -1,6 +1,8 @@
 #ifndef __DISQUE_CLUSTER_H
 #define __DISQUE_CLUSTER_H
 
+#include "job.h"
+
 /*-----------------------------------------------------------------------------
  * Disque cluster data structures, defines, exported API.
  *----------------------------------------------------------------------------*/
@@ -112,28 +114,43 @@ typedef struct {
     char nodename[DISQUE_CLUSTER_NAMELEN];
 } clusterMsgDataFail;
 
+/* This data section is used in different message types where we need to
+ * transmit one or multiple full jobs. */
 typedef struct {
-    uint32_t queue_len;
-    uint32_t job_len;
-    unsigned char bulk_data[8]; /* defined as 8 just for alignment concerns. */
+    uint32_t numjobs;   /* Number of jobs stored here. */
+    uint32_t datasize;  /* Number of bytes following to describe jobs. */
+    /* The variable data section here is composed of 4 bytes little endian
+     * prefixed length + serialized job data for each job:
+     * [4 bytes len] + [serialized job] + [4 bytes len] + [serialized job] ...
+     * For a total of exactly 'datasize' bytes. */
 } clusterMsgDataJob;
 
+/* This data section is used when we need to send just a job ID. */
+typedef struct {
+    char id[JOB_ID_LEN];
+} clusterMsgDataJobID;
+
 union clusterMsgData {
-    /* PING, MEET and PONG */
+    /* PING, MEET and PONG. */
     struct {
         /* Array of N clusterMsgDataGossip structures */
         clusterMsgDataGossip gossip[1];
     } ping;
 
-    /* FAIL */
+    /* FAIL. */
     struct {
         clusterMsgDataFail about;
     } fail;
 
-    /* JOB related messages */
+    /* Messages with one or more full jobs. */
     struct {
-        clusterMsgDataJob job;
-    } job;
+        clusterMsgDataJob serialized;
+    } jobs;
+
+    /* Messages with a single Job ID. */
+    struct {
+        clusterMsgDataJobID job;
+    } jobid;
 };
 
 typedef struct {

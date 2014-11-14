@@ -1081,8 +1081,7 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         explen += sizeof(clusterMsgDataJob) +
-                ntohl(hdr->data.job.job.queue_len) +
-                ntohl(hdr->data.job.job.job_len);
+                  ntohl(hdr->data.jobs.serialized.datasize);
         if (totlen != explen) return 1;
     }
 

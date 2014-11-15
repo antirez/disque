@@ -91,7 +91,8 @@ struct job {
     uint16_t repl;          /* Replication factor. */
     uint32_t ctime;         /* Job creation time, local node clock. */
     uint32_t etime;         /* Job expire time. */
-    uint32_t qtime;         /* Job queued time: unix time job was queued. */
+    uint32_t qtime;         /* Job queued time: unix time job was queued. Or
+                               unix time the job was ACKED if state is ACKED. */
     uint32_t rtime;         /* Job re-queue time: re-queue period in seconds. */
     /* Up to this point we use the structure for on-wire serialization,
      * before here all the fields should be naturally aligned, and pointers

@@ -2080,11 +2080,7 @@ void infoCommand(client *c) {
         addReply(c,shared.syntaxerr);
         return;
     }
-    sds info = genDisqueInfoString(section);
-    addReplySds(c,sdscatprintf(sdsempty(),"$%lu\r\n",
-        (unsigned long)sdslen(info)));
-    addReplySds(c,info);
-    addReply(c,shared.crlf);
+    addReplyBulkSds(c, genDisqueInfoString(section));
 }
 
 void monitorCommand(client *c) {

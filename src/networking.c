@@ -505,6 +505,14 @@ void addReplyBulkCBuffer(client *c, void *p, size_t len) {
     addReply(c,shared.crlf);
 }
 
+/* Add sds to reply (takes ownership of sds and frees it) */
+void addReplyBulkSds(client *c, sds s)  {
+    addReplySds(c,sdscatfmt(sdsempty(),"$%u\r\n",
+        (unsigned long)sdslen(s)));
+    addReplySds(c,s);
+    addReply(c,shared.crlf);
+}
+
 /* Add a C nul term string as bulk reply */
 void addReplyBulkCString(client *c, char *s) {
     if (s == NULL) {

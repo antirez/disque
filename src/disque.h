@@ -689,6 +689,7 @@ void addReplyBulkCBuffer(client *c, void *p, size_t len);
 void addReplyBulkLongLong(client *c, long long ll);
 void addReply(client *c, robj *obj);
 void addReplySds(client *c, sds s);
+void addReplyBulkSds(client *c, sds s);
 void addReplyError(client *c, char *err);
 void addReplyStatus(client *c, char *status);
 void addReplyStatusLength(client *c, char *s, size_t len);

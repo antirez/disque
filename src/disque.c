@@ -400,7 +400,7 @@ dictType clusterNodesBlackListDictType = {
 
 /* Jobs dictionary implementation. Here we use a trick in order to save
  * memory: the key of the dictionary is the job->id field itself, that
- * is part of the value in the dictionary. */
+ * is the initial part of the value in the dictionary. */
 unsigned int dictJobHash(const void *key) {
     return dictGenHashFunction(key,JOB_ID_LEN);
 }

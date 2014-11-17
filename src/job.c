@@ -124,13 +124,15 @@ void freeJob(job *j) {
  * specified ID, no operation is performed and the function returns
  * DISQUE_ERR. */
 int registerJob(job *j) {
-    int retval = dictAdd(server.jobs, j->id, j);
+    int retval = dictAdd(server.jobs, j->id, NULL);
     return (retval == DICT_OK) ? DISQUE_OK : DISQUE_ERR;
 }
 
 /* Lookup a job by ID. */
 job *lookupJob(char *id) {
-    return dictFetchValue(server.jobs, id);
+    struct dictEntry *de = dictFind(server.jobs, id);
+
+    return de ? dictGetKey(de) : NULL;
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */

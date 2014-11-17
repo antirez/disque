@@ -89,8 +89,11 @@ struct job {
     uint8_t state;          /* Job state: one of JOB_STATE_* states. */
     uint8_t flags;          /* Job flags. */
     uint16_t repl;          /* Replication factor. */
-    uint32_t ctime;         /* Job creation time, local node clock. */
     uint32_t etime;         /* Job expire time. */
+    uint64_t ctime;         /* Job creation time, local node at creation.
+                               ctime is time in milliseconds * 1000000, each
+                               job created in the same millisecond in the same
+                               node gets prev job ctime + 1. */
     uint32_t qtime;         /* Job queued time: unix time job was queued. Or
                                unix time the job was ACKED if state is ACKED. */
     uint32_t rtime;         /* Job re-queue time: re-queue period in seconds. */
@@ -104,7 +107,7 @@ struct job {
 } typedef job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
-#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+4+4+4)
+#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4)
 
 void deleteJobFromCluster(job *j);
 

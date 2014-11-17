@@ -265,6 +265,7 @@ void addjobCommand(client *c) {
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
+    static uint64_t prev_ctime = 0;
 
     /* Parse args. */
     for (j = 4; j < c->argc; j++) {
@@ -331,7 +332,16 @@ void addjobCommand(client *c) {
     job->queue = c->argv[1];
     incrRefCount(c->argv[1]);
     job->repl = replicate;
-    job->ctime = server.unixtime;
+
+    /* Job ctime is milliseconds * 1000000. Jobs created in the same
+     * millisecond gets an incremental ctime. The ctime is used to sort
+     * queues, so we have some weak sorting semantics for jobs: non-requeued
+     * jobs are delivered roughly in the order they are added into a given
+     * node. */
+    job->ctime = mstime()*1000000;
+    if (job->ctime == prev_ctime) job->ctime++;
+    prev_ctime = job->ctime;
+
     job->etime = job->ctime + ttl;
     job->qtime = 0; /* Will be updated by queueAddjob(). */
     job->rtime = retry;

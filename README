@@ -2,68 +2,73 @@ Disque, an in-memory, distribted job queue
 ===
 
 Hello, this is Disque, a distributed, in memory, jobs queue.
-Disque originated from some work I (@antirez) was doing in order to create a
-distributed algorithm to use N Redis masters to create a reliable job queue,
-using a client orcheestrated protocol.
+Disque originated from some work I was doing in order to create a
+distributed algorithm to use N Redis masters for a reliable queue.
 
 At some point, it was clear that to design an ad-hoc system was a better
-idea, and a lot more fun, so I started this project as an exploration in
-this area, and this is the first preview, published in order to
-understand if there are other parties interested in a system like that.
+idea, so I started this project as an exploration in this area, and this
+is the first preview, published in order to understand if there are other
+parties interested in a system like that.
 
 What it does exactly?
 ---
 
 Disque is a job (messages, if you like) queue. Producers add messages that
 are served to consumers. This is pretty common to most message queues so
-the devil is in the details as usually:
+the devil is in the details as usually. A few details about Disque are:
 
 Disque is a **synchronously replicated job queue**. By default when a new job is added, it is replicated to W nodes before the client gets an acknowledge about the job being added. W-1 nodes can fail and still the message will be delivered.
 
 Disque supports both **at-least-once and at-most-once** delivery semantics. At least once semantics is where most time was spent in the design, and the at most once semantics is a trivial result of using a replication factor of 1 for the message, with a retry time set to 0 (which means, never reissue the message). You can have, at the same time, both at-least-once and at-most-once jobs in the same queues and nodes.
 
-Disque is a **distributed system** where all nodes have the same role (aka, it is multi-master). Producers and consumers can attach to whatever node they like, and there is no need for producers and consumers of the same queue, to stay on the same node. Nodes will automatically exchange messages based on load.
+Disque at-least-once delivery is designed to **approximate exactly once delivery**. This means that while Disque only gurantees one or more deliveries, it will try to avoid multiple deliveries when possible.
 
-Disque is Available (as "A" of CAP): producers and consumers can make progresses as long as a single node is reachable.
+Disque is a **distributed system** where all nodes have the same role (aka, it is multi-master). Producers and consumers can attach to whatever node they like, and there is no need for producers and consumers of the same queue, to stay connected to the same node. Nodes will automatically exchange messages based on load.
+
+Disque is Available (as in "A" of CAP): producers and consumers can make progresses as long as a single node is reachable.
 
 Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with replication factor of 3 but may want to run away before knowing if the contacted node will really be able to replicate it to the specified number of nodes.
+
+Disque **auto reissues messages that are not acknowledged** as processed by consumers, after a message-specific retry time.
+
+Disque messages only provides **weak ordering**. Each queue sorts messages based on the wall clock of the local node where the message was created (plus an incremental counter for messages created in the same millisecond), so messages created in the same node are normally delivered in the same order they were created. This property is weak because is violated in different cases: when messages are re-issued because not acknowledged, because of nodes local clock drift, and when messages are moved to other nodes for load balancing. However it means that normally messages are not delivered in random order and usually messages created first are delivered first.
 
 ACKs and retries
 ---
 
 Disque implementation of at-least-once delivery semantics is designed in order
-to avoid multiple delivery during failures. It is not able to guarantee that no multiple deliveries will occur (it is impossible, at least without serious clients involvement in the orchestration of the system). However there are many at-least-once workloads where duplicated deliveries are acceptable, but not desirable either. A typical example is sending emails to users.
+to avoid multiple delivery during certain classes of failures. It is not able to guarantee that no multiple deliveries will occur. However there are many at-least-once workloads where duplicated deliveries are acceptable (or explicitly handled), but not desirable either. A typical example is sending emails to users, or doing idempotent operations that are expensive.
 
-In order to avoid multiple deliveries most of the times, Disque uses client ACKs. When a consumer processes a message correctly, it should acknowledge this fact to Disque. ACKs are replicated to multiple nodes, and are garbage collected as soon as the system believes it is likely that no node exists in the cluster with the job (the ACK refers to) still active. However since this is a best effort mechanism, under memory pressure or under certain failure scenarios, ACKs are eventually discarded.
+In order to avoid multiple deliveries most of the times, Disque uses client ACKs. When a consumer processes a message correctly, it should acknowledge this fact to Disque. ACKs are replicated to multiple nodes, and are garbage collected as soon as the system believes it is unlikely that more nodes in the cluster have the job (the ACK refers to) still active. However since this is a best effort mechanism, under memory pressure or under certain failure scenarios, ACKs are eventually discarded.
 
-Now the Disque semantics for at-least-once delivery can be expressed more clearly.
+More explicitly:
 
 1. A job is replicated to multiple nodes, but only *queued* in a single node.
-2. All the jobs having a copy, if a certain time limit is reached without getting the ACK for a given job, will re-queue it.
+2. All the nodes having a copy, if a certain time limit is reached without getting the ACK for a given job, will re-queue it. The job will be delivered again.
 3. ACKs are replicated and garbage collected across the cluster so that eventually processed jobs are evicted (this happens ASAP if there are no failures nor network partitions).
 
-In practical terms, this means that if a node having a copy of a job gets partitioned away during the time the job processing gets acknowledged by the consumer, it is likely that when it returns back (in a reasonable amount of time, that is, before the retry time is reached) it will be informed about the ACK and will avoid to re-queue the message.
+In practical terms, this means that if a node having a copy of a job gets partitioned away during the time the job gets acknowledged by the consumer, it is likely that when it returns back (in a reasonable amount of time, that is, before the retry time is reached) it will be informed about the ACK and will avoid to re-queue the message.
 
 So an ACK is just a **proof of delivery** that is replicated and retained for
-some time in order to make multilpe delivery less likely in practice.
+some time in order to make multiple delivery less likely in practice.
 
-A Disque job has the following associated properties:
+In order to control replication and retires, a Disque job has the following associated properties:
 
 1. Job **time to live**: it is the maximum time a job can live. If this time is reached, the job is removed regardless of the fact it was delivered or not.
-2. Job **retry time**: after this time elapsed without an ACK, nodes having a copy of the job will try to put it into the queue. However there are mechanisms in order to avoid multiple nodes will queue the same job at the same time.
+2. Job **retry time**: after this time elapsed without an ACK, nodes having a copy of the job will try to put it into the queue. When a job is re-queued the other nodes that may have a copy are informed to update the time the job was queued last time, to avoid multiple re-queues when possible (not always).
 3. Job **replication factor**: the number of nodes that have a copy of the job.
 
-If a job has a retry time set to 0, it will get queued exactly once (and in this case a replication factor greater than 1 is useless), so it will get delivered either a single time or multiple times. While jobs can be persisted on disk for safety, queues aren't, so this behavior is guaranteed even when nodes restart after a crash, whatever the disk configuration is. However when nodes are manually restarted by the sysadmin, for example for upgrades, queues are persisted correctly and reloaded at startup, since the store/load operation is atomic and there are no race conditions.
+If a job has a retry time set to 0, it will get queued exactly once (and in this case a replication factor greater than 1 is useless), so it will get delivered either a single time or never delivered. While jobs can be persisted on disk for safety, queues aren't, so this behavior is guaranteed even when nodes restart after a crash, whatever the persistence configuration is. However when nodes are manually restarted by the sysadmin, for example for upgrades, queues are persisted correctly and reloaded at startup, since the store/load operation is atomic and there are no race conditions.
 
 Does Disque persist on disk?
 ---
 
 The default mode of operation is in-memory only, since jobs
 are synchronously replicated, and safety is guaranteed by replication.
-However because there are single datacenter setups where this is
+However because there are single data center setups, this is
 too risky in certain environments, so:
 
-1. Optionally you can enable AOF persistence (similar to Redis). In this mode only jobs data is presisted, but queues content are not. However jobs will be re-queued eventually.
+1. Optionally you can enable AOF persistence (similar to Redis). In this mode only jobs data is persisted, but content of queues is not. However jobs will be re-queued eventually.
 2. Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software. In this case both jobs and queues are persisted, since in this specific case persisting queues is safe. The format used is the same as the AOF format, but with additional commands to put the jobs into the queue.
 
 Is Disque based on Redis?

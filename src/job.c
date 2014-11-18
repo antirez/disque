@@ -79,8 +79,8 @@ void generateJobID(char *id, int ttl) {
     SHA1Final(hash,&ctx);
 
     ttl /= 60; /* Store TTL in minutes. */
-    hash[20] = (ttl&0xff00)>>8;
-    hash[21] = ttl&0xff;
+    hash[16] = (ttl&0xff00)>>8;
+    hash[17] = ttl&0xff;
 
     *id++ = 'D';
     *id++ = 'I';
@@ -88,8 +88,8 @@ void generateJobID(char *id, int ttl) {
     /* 8 bytes from Node ID */
     for (j = 0; j < 8; j++) *id++ = server.cluster->myself->name[j];
 
-    /* Convert 22 bytes (20 pseudorandom + 2 TTL in minutes) to hex. */
-    for (j = 0; j < 22; j++) {
+    /* Convert 18 bytes (16 pseudorandom + 2 TTL in minutes) to hex. */
+    for (j = 0; j < 18; j++) {
         id[0] = charset[(hash[j]&0xf0)>>4];
         id[1] = charset[hash[j]&0xf];
         id += 2;
@@ -273,8 +273,7 @@ void addReplyJobID(client *c, job *j) {
     addReplyStatusLength(c,j->id,JOB_ID_LEN);
 }
 
-/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>]
- *        [TIMEOUT <ms>] [ASYNC]. */
+/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC] */
 void addjobCommand(client *c) {
     long long replicate = 3;
     long long ttl = 3600*24;

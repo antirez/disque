@@ -1,14 +1,19 @@
-Disque, an in-memory, distribted job queue
+Disque, an in-memory, distribted message queue
 ===
 
-Hello, this is Disque, a distributed, in memory, jobs queue.
+Disque, a distributed, in memory, message queue.
 Disque originated from some work I was doing in order to create a
-distributed algorithm to use N Redis masters for a reliable queue.
+distributed algorithm to use N Redis masters for a reliable message queue,
+suitable to model the common problem of executing asynchronous jobs
+in a producer / consumer model.
 
 At some point, it was clear that to design an ad-hoc system was a better
 idea, so I started this project as an exploration in this area, and this
 is the first preview, published in order to understand if there are other
 parties interested in a system like that.
+
+The project is just an alpha quality preview, that was developed in roughly
+35 hours (so far, keep me updated!), mostly at night and during weekends.
 
 What it does exactly?
 ---
@@ -60,7 +65,7 @@ In order to control replication and retires, a Disque job has the following asso
 
 If a job has a retry time set to 0, it will get queued exactly once (and in this case a replication factor greater than 1 is useless), so it will get delivered either a single time or never delivered. While jobs can be persisted on disk for safety, queues aren't, so this behavior is guaranteed even when nodes restart after a crash, whatever the persistence configuration is. However when nodes are manually restarted by the sysadmin, for example for upgrades, queues are persisted correctly and reloaded at startup, since the store/load operation is atomic and there are no race conditions.
 
-Does Disque persist on disk?
+Disque and disk persistence
 ---
 
 The default mode of operation is in-memory only, since jobs
@@ -71,6 +76,47 @@ too risky in certain environments, so:
 1. Optionally you can enable AOF persistence (similar to Redis). In this mode only jobs data is persisted, but content of queues is not. However jobs will be re-queued eventually.
 2. Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software. In this case both jobs and queues are persisted, since in this specific case persisting queues is safe. The format used is the same as the AOF format, but with additional commands to put the jobs into the queue.
 
+Job IDs
+---
+
+Disque jobs are uniquely identified by an ID like the following:
+
+DI0f0c644fd3ccb51c2cedbd47fcb6f312646c993c05a0SQ
+
+Job IDs always start with "DI" and end with "QS" and are always composed of
+exactly 48 characters.
+
+We can split a job into multiple parts:
+
+DI | 0f0c644f | d3ccb51c2cedbd47fcb6f312646c993c | 05a0 | SQ
+
+1. DI is the prefix
+2. 0f0c644f is the first 8 bytes of the node ID where the message was generated.
+3. d3ccb51c2cedbd47fcb6f312646c993c is the 128 bit ID pesudo random part in hex.
+4. 05a0 is the Job TTL in minutes. Because of it, message IDs can be expired safety even without having the job representation.
+5. SQ is the suffix.
+
+IDs are returned by ADDJOB when a job is successfully created, are part of
+the GETJOB output, and are used in order to acknowledge that a job was
+correctly processed by a worker.
+
+Part of the node ID is included in the message so that a worker processing
+messages for a given queue can easily guess what are the nodes where jobs
+are created, and move directly to these nodes to increase efficiency instead
+of listeing for messages in a node that will require to fetch messages from
+other nodes.
+
+Only 64 bits of the original node ID is included in the message, however
+in a cluster with 1000 Disque nodes, the probability of two nodes to have
+identical 64 bit ID prefixes is given by the birthday paradox:
+
+    P(100,2^64) = .000000000000027
+
+In case of collisions, the workers may just do a non-efficient choice.
+
+FAQ
+===
+
 Is Disque based on Redis?
 ---
 
@@ -79,7 +125,7 @@ No, it is a standalone project, however a big part of the Redis networking sourc
 Who created Disque?
 ---
 
-Disque is a project of Salvatore Sanfilippo, aka @antirez. Most of the code was written at night for a total of roughly XXX hours, so it is just a side project, for now.
+Disque is a project of Salvatore Sanfilippo, aka @antirez. Most of the code was written at night, so it is just a side project currently.
 
 There are chances for this project to be actively developed?
 ---

@@ -375,7 +375,8 @@ void clusterInit(void) {
      * the IP address via MEET messages. */
     myself->port = server.port;
 
-    /* Update the list of reachable nodes. */
+    /* Update state and list of reachable nodes. */
+    clusterUpdateState();
     clusterUpdateReachableNodes();
 }
 

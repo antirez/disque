@@ -295,7 +295,7 @@ void addReplyJobID(client *c, job *j) {
 
 /* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC] */
 void addjobCommand(client *c) {
-    long long replicate = 3;
+    long long replicate = server.cluster->size > 3 ? 3 : server.cluster->size;
     long long ttl = 3600*24;
     long long retry = -1;
     mstime_t timeout;
@@ -344,8 +344,8 @@ void addjobCommand(client *c) {
      * the job if it will never try to be re-queued if case the job processing
      * is not acknowledged? */
     if (replicate > 1 && retry == 0) {
-        addReplyError(c,"REPLICATE > 1 and RETRY 0 is invalid. "
-                        "For at-most-once semantic (RETRY 0) use REPLICATE 1");
+        addReplyError(c,"With RETRY set to 0 please explicitly set  "
+                        "REPLICATE to 1 (at-most-once delivery)");
         return;
     }
 

@@ -192,7 +192,7 @@ sds serializeJob(job *j) {
     sj = (job*) (msg+4);
     memcpy(sj,j,JOB_STRUCT_SER_LEN);
     memrev16ifbe(&sj->repl);
-    memrev32ifbe(&sj->ctime);
+    memrev64ifbe(&sj->ctime);
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->qtime);
     memrev32ifbe(&sj->rtime);

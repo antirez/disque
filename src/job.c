@@ -42,25 +42,36 @@
  *
  * An ID is composed as such:
  *
- * +----+---------------------------+----+
- * |DISQ|40 random chars, hex format| TTL|
- * +----+---------------------------+----+
+ * +--+--------------------------+------------------------------+----+--+
+ * |DI| Node ID prefix (8 bytes) | 128-bit rand (hex: 32 bytes) |TTL |SQ|
+ * +--+--------------------------+------------------------------+----+--+
  *
- * "DISQ" is just a fixed string. All Disque Job IDs start with this
- * for bytes.
+ * "DI" is just a fixed string. All Disque job IDs start with this
+ * two bytes.
+ *
+ * Node ID is the first 8 bytes of the hexadecimal Node ID where the
+ * message was created. The main use for this is that a consumer receiving
+ * messages from a given queue can collect stats about where the producers
+ * are connected, and switch to improve the cluster efficiency.
+ *
+ * 128 bit rand (in hex format) is 32 random chars.
  *
  * The TTL is a big endian 16 bit unsigned number ceiled to 2^16-1
  * if greater than that, and is only used in order to expire ACKs
  * when the job is no longer avaialbe. It represents the TTL of the
  * original job in *minutes*, not seconds, and is encoded in as a
- * 4 digits hexadecimal number. */
+ * 4 digits hexadecimal number.
+ *
+ * "SQ" is just a fixed string. All Disque job IDs end with this two bytes.
+ */
 void generateJobID(char *id, int ttl) {
     char *charset = "0123456789abcdef";
     SHA1_CTX ctx;
-    unsigned char hash[22]; /* 20 + 2 bytes for TTL. */
+    unsigned char hash[22]; /* 16 + 2 bytes for TTL. */
     int j;
     static uint64_t counter;
 
+    /* Get the pseudo random bytes using SHA1 in counter mode. */
     counter++;
     SHA1Init(&ctx);
     SHA1Update(&ctx,(unsigned char*)server.jobid_seed,DISQUE_RUN_ID_SIZE);
@@ -73,8 +84,9 @@ void generateJobID(char *id, int ttl) {
 
     *id++ = 'D';
     *id++ = 'I';
-    *id++ = 'S';
-    *id++ = 'Q';
+
+    /* 8 bytes from Node ID */
+    for (j = 0; j < 8; j++) *id++ = server.cluster->myself->name[j];
 
     /* Convert 22 bytes (20 pseudorandom + 2 TTL in minutes) to hex. */
     for (j = 0; j < 22; j++) {
@@ -82,6 +94,9 @@ void generateJobID(char *id, int ttl) {
         id[1] = charset[hash[j]&0xf];
         id += 2;
     }
+
+    *id++ = 'S';
+    *id++ = 'Q';
 }
 
 /* Create a new job in a given state. If "ID" is NULL, a new ID will be

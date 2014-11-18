@@ -110,5 +110,6 @@ struct job {
 #define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4)
 
 void deleteJobFromCluster(job *j);
+sds serializeJob(job *j);
 
 #endif

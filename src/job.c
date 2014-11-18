@@ -117,8 +117,8 @@ job *createJob(char *id, int state, int ttl) {
     j->state = state;
     j->flags = 0;
     j->body = NULL;
-    j->nodes_delivered = NULL;
-    j->nodes_confirmed = NULL;
+    j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
+    j->nodes_confirmed = NULL; /* Only created later on-demand. */
     return j;
 }
 
@@ -166,6 +166,31 @@ char *serializeSdsString(char *p, sds s) {
     return p + sizeof(count) + len;
 }
 
+/* Serialize a job:
+ *
+ * len | struct | queuename | job | nodes
+ *
+ * len: The first 4 bytes are a little endian 32 bit unsigned
+ * integer that announces the full size of the serialized job.
+ *
+ * struct: JOB_STRUCT_SER_LEN bytes of the 'job' structure
+ * with fields fixed to be little endian regardless of the arch of the
+ * system.
+ *
+ * queuename: uint32_t little endian len + actual bytes of the queue
+ * name string.
+ *
+ * job: uint32_t little endian len + actual bytes of the job body.
+ *
+ * nodes: List of nodes that may have a copy of the message. uint32_t
+ * little endian with the count of N node names followig. Then N
+ * fixed lenght node names of CLUSTER_NODE_NAMELEN characters each.
+ *
+ * ----------------------------------------------------------------------
+ *
+ * Since each job has a prefixed length it is possible to glue multiple
+ * jobs one after the other in a single string.
+ */
 sds serializeJob(job *j) {
     size_t len;
     sds msg;
@@ -207,7 +232,7 @@ sds serializeJob(job *j) {
     p = serializeSdsString(p,j->body);
 
     /* Node IDs that may have a copy of the message: 4 bytes count in little
-     * endian plus (count * JOB_ID_SIZE) bytes. */
+     * endian plus (count * DISQUE_CLUSTER_NAMELEN) bytes. */
     count = intrev32ifbe(dictSize(j->nodes_delivered));
     memcpy(p,&count,sizeof(count));
     p += sizeof(count);
@@ -247,11 +272,6 @@ void deleteJobFromCluster(job *j) {
     /* Send DELJOB message to the right nodes. */
     /* Unregister the job. */
     /* Free the job. */
-}
-
-/* Send the specified job to 'count' additional replicas, and populate
- * the job delivered list accordingly. */
-void replicateJobInCluster(job *j, int count, int ask_for_reply) {
 }
 
 /* --------------------------  Jobs related commands ------------------------ */
@@ -374,10 +394,7 @@ void addjobCommand(client *c) {
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
      * nodes. */
-    if (replicate > 1) {
-        int ask_for_reply = !async;
-        replicateJobInCluster(job,replicate-1,ask_for_reply);
-    }
+    if (replicate > 1) clusterReplicateJob(job,replicate-1,async);
 
     /* For replicated messages where ASYNC option was not asked, block
      * the client, and wait for acks. Otherwise if no synchronous replication

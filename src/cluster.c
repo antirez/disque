@@ -63,6 +63,7 @@ void clusterDoBeforeSleep(int flags);
 void clusterSendUpdate(clusterLink *link, clusterNode *node);
 void clusterSetNodeAsMaster(clusterNode *n);
 void clusterDelNode(clusterNode *delnode);
+void clusterShuffleReachableNodes(void);
 sds representDisqueNodeFlags(sds ci, uint16_t flags);
 
 /* -----------------------------------------------------------------------------
@@ -137,6 +138,7 @@ int clusterLoadConfig(char *filename) {
         if (argc != 6) goto fmterr;
 
         /* Create this node if it does not exist */
+        if (strlen(argv[0]) != DISQUE_CLUSTER_NAMELEN) goto fmterr;
         n = clusterLookupNode(argv[0]);
         if (!n) {
             n = createClusterNode(argv[0],0);
@@ -641,11 +643,7 @@ int clusterNodeFailureReportsCount(clusterNode *node) {
 }
 
 void freeClusterNode(clusterNode *n) {
-    sds nodename;
-
-    nodename = sdsnewlen(n->name, DISQUE_CLUSTER_NAMELEN);
-    serverAssert(dictDelete(server.cluster->nodes,nodename) == DICT_OK);
-    sdsfree(nodename);
+    serverAssert(dictDelete(server.cluster->nodes,n->name) == DICT_OK);
     if (n->link) freeClusterLink(n->link);
     listRelease(n->fail_reports);
     zfree(n);
@@ -655,8 +653,7 @@ void freeClusterNode(clusterNode *n) {
 int clusterAddNode(clusterNode *node) {
     int retval;
 
-    retval = dictAdd(server.cluster->nodes,
-            sdsnewlen(node->name,DISQUE_CLUSTER_NAMELEN), node);
+    retval = dictAdd(server.cluster->nodes, node->name, node);
     return (retval == DICT_OK) ? DISQUE_OK : DISQUE_ERR;
 }
 
@@ -686,11 +683,7 @@ void clusterDelNode(clusterNode *delnode) {
 
 /* Node lookup by name */
 clusterNode *clusterLookupNode(char *name) {
-    sds s = sdsnewlen(name, DISQUE_CLUSTER_NAMELEN);
-    dictEntry *de;
-
-    de = dictFind(server.cluster->nodes,s);
-    sdsfree(s);
+    dictEntry *de = dictFind(server.cluster->nodes,name);
     if (de == NULL) return NULL;
     return dictGetVal(de);
 }
@@ -1479,6 +1472,77 @@ void clusterSendFail(char *nodename) {
 }
 
 /* -----------------------------------------------------------------------------
+ * CLUSTER job related messages
+ * -------------------------------------------------------------------------- */
+
+/* Broadcast an ADDJOB message to 'repl' nodes, and populates the list of jobs
+ * that may have the job.
+ *
+ * If there are already nodes that received the message, additional
+ * repl nodes will be added to the list (if possible), and the message
+ * broadcasted again to all the nodes that may already have the message
+ * plus the new ones.
+ *
+ * Nodes are selected from server.cluster->reachable_nodes list.
+ * The function returns the number of new nodes that MAY have received
+ * the message. */
+int clusterReplicateJob(job *j, int repl, int noreply) {
+    int i, added = 0;
+
+    if (repl <= 0) return 0;
+
+    clusterShuffleReachableNodes();
+    for (i = 0; i < server.cluster->reachable_nodes_count; i++) {
+        clusterNode *node = server.cluster->reachable_nodes[i];
+
+        if (node->link == NULL) continue; /* No link, no party... */
+        if (dictAdd(j->nodes_delivered,node->name,node) == DICT_OK) {
+            /* Only counts non-duplicated nodes. */
+            if (repl-- == 0) break;
+        }
+    }
+
+    /* Resend the message if we have at least one new node in the list. */
+    if (added > 0) {
+        unsigned char buf[sizeof(clusterMsg)], *payload;
+        clusterMsg *hdr = (clusterMsg*) buf;
+        uint32_t totlen;
+
+        sds serialized = serializeJob(j);
+
+        totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+        totlen += sizeof(clusterMsgDataJob) + sdslen(j->body);
+
+        clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_ADDJOB);
+        if (noreply) hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;
+        hdr->data.jobs.serialized.numjobs = htonl(1);
+        hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
+        hdr->totlen = htonl(totlen);
+
+        if (totlen < sizeof(buf)) {
+            payload = buf;
+        } else {
+            payload = zmalloc(totlen);
+            memcpy(payload,hdr,sizeof(*hdr));
+            hdr = (clusterMsg*) payload;
+        }
+        memcpy(hdr->data.jobs.serialized.jobs_data,j->body,sdslen(j->body));
+
+        /* Actual delivery of the message to the list of nodes. */
+        dictIterator *di = dictGetIterator(j->nodes_delivered);
+        dictEntry *de;
+
+        while((de = dictNext(di)) != NULL) {
+            clusterNode *node = dictGetVal(de);
+            if (node->link) clusterSendMessage(node->link,payload,totlen);
+        }
+
+        if (payload != buf) zfree(payload);
+    }
+    return added;
+}
+
+/* -----------------------------------------------------------------------------
  * CLUSTER cron job
  * -------------------------------------------------------------------------- */
 
@@ -1831,8 +1895,8 @@ void clusterUpdateReachableNodes(void) {
     dictEntry *de;
     int maxsize = dictSize(server.cluster->nodes) * sizeof(clusterNode*);
 
-    zfree(server.cluster->reachable_nodes);
-    server.cluster->reachable_nodes = zmalloc(maxsize);
+    server.cluster->reachable_nodes =
+        zrealloc(server.cluster->reachable_nodes,maxsize);
     server.cluster->reachable_nodes_count = 0;
 
     di = dictGetSafeIterator(server.cluster->nodes);
@@ -1920,7 +1984,14 @@ void clusterCommand(client *c) {
                 strerror(errno));
     } else if (!strcasecmp(c->argv[1]->ptr,"forget") && c->argc == 3) {
         /* CLUSTER FORGET <NODE ID> */
-        clusterNode *n = clusterLookupNode(c->argv[2]->ptr);
+        clusterNode *n;
+
+        if (sdslen(c->argv[2]->ptr) != DISQUE_CLUSTER_NAMELEN) {
+            addReplyError(c,"Invalid node identifier");
+            return;
+        }
+
+        n = clusterLookupNode(c->argv[2]->ptr);
 
         if (!n) {
             addReplyErrorFormat(c,"Unknown node %s", (char*)c->argv[2]->ptr);

@@ -115,7 +115,9 @@ typedef struct {
 } clusterMsgDataFail;
 
 /* This data section is used in different message types where we need to
- * transmit one or multiple full jobs. */
+ * transmit one or multiple full jobs.
+ *
+ * Currently used by: ADDJOB. */
 typedef struct {
     uint32_t numjobs;   /* Number of jobs stored here. */
     uint32_t datasize;  /* Number of bytes following to describe jobs. */
@@ -123,6 +125,7 @@ typedef struct {
      * prefixed length + serialized job data for each job:
      * [4 bytes len] + [serialized job] + [4 bytes len] + [serialized job] ...
      * For a total of exactly 'datasize' bytes. */
+     unsigned char jobs_data[8]; /* defined as 8 just for alignment concerns. */
 } clusterMsgDataJob;
 
 /* This data section is used when we need to send just a job ID. */
@@ -173,14 +176,13 @@ typedef struct {
 
 /* Message flags better specify the packet content or are used to
  * provide some information about the node state. */
-#define CLUSTERMSG_FLAG0_ONE (1<<0) /* Not used. */
-#define CLUSTERMSG_FLAG0_TWO (1<<1) /* Not used. */
+#define CLUSTERMSG_FLAG0_NOREPLY (1<<0) /* Don't reply to this message. */
 
 /*-----------------------------------------------------------------------------
  * Exported API.
  *----------------------------------------------------------------------------*/
 
 void clusterUpdateReachableNodes(void);
-void clusterShuffleReachableNodes(void);
+int clusterReplicateJob(job *j, int repl, int noreply);
 
 #endif /* __DISQUE_CLUSTER_H */

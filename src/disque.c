@@ -377,12 +377,23 @@ dictType commandTableDictType = {
 
 /* Cluster nodes hash table, mapping nodes addresses 1.2.3.4:7711 to
  * clusterNode structures. */
+unsigned int dictClusterNodeHash(const void *key) {
+    return dictGenHashFunction(key,DISQUE_CLUSTER_NAMELEN);
+}
+
+int dictClusterNodeKeyCompare(void *privdata, const void *key1,
+                      const void *key2)
+{
+    DICT_NOTUSED(privdata);
+    return memcmp(key1, key2, DISQUE_CLUSTER_NAMELEN) == 0;
+}
+
 dictType clusterNodesDictType = {
-    dictSdsHash,                /* hash function */
+    dictClusterNodeHash,        /* hash function */
     NULL,                       /* key dup */
     NULL,                       /* val dup */
-    dictSdsKeyCompare,          /* key compare */
-    dictSdsDestructor,          /* key destructor */
+    dictClusterNodeKeyCompare,  /* key compare */
+    NULL,                       /* key destructor */
     NULL                        /* val destructor */
 };
 

@@ -1074,7 +1074,8 @@ int clusterProcessPacket(clusterLink *link) {
     } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
-        explen += sizeof(clusterMsgDataJob) +
+        explen += sizeof(clusterMsgDataJob) -
+                  sizeof(hdr->data.jobs.serialized.jobs_data) +
                   ntohl(hdr->data.jobs.serialized.datasize);
         if (totlen != explen) return 1;
     }
@@ -1499,6 +1500,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         if (node->link == NULL) continue; /* No link, no party... */
         if (dictAdd(j->nodes_delivered,node->name,node) == DICT_OK) {
             /* Only counts non-duplicated nodes. */
+            added++;
             if (repl-- == 0) break;
         }
     }
@@ -1512,7 +1514,9 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         sds serialized = serializeJob(j);
 
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-        totlen += sizeof(clusterMsgDataJob) + sdslen(j->body);
+        totlen += sizeof(clusterMsgDataJob) -
+                  sizeof(hdr->data.jobs.serialized.jobs_data) +
+                  sdslen(serialized);
 
         clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_ADDJOB);
         if (noreply) hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;

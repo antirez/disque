@@ -119,6 +119,10 @@ job *createJob(char *id, int state, int ttl) {
     j->body = NULL;
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     j->nodes_confirmed = NULL; /* Only created later on-demand. */
+
+    /* Add myself to the list of nodes that may have the message,
+     * this makes the code simpler and has almost zero overhead.*/
+    dictAdd(j->nodes_delivered,myself->name,myself);
     return j;
 }
 

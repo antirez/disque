@@ -1539,6 +1539,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
 
         while((de = dictNext(di)) != NULL) {
             clusterNode *node = dictGetVal(de);
+            if (node == myself) continue;
             if (node->link) clusterSendMessage(node->link,payload,totlen);
         }
 

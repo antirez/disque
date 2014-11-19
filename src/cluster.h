@@ -182,6 +182,8 @@ typedef struct {
  * Exported API.
  *----------------------------------------------------------------------------*/
 
+extern clusterNode *myself;
+
 void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
 

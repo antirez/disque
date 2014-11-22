@@ -128,7 +128,8 @@ job *createJob(char *id, int state, int ttl) {
 
 /* Free a job. Does not automatically unregister it. */
 void freeJob(job *j) {
-    decrRefCount(j->queue);
+    if (j == NULL) return;
+    if (j->queue) decrRefCount(j->queue);
     sdsfree(j->body);
     if (j->nodes_delivered) dictRelease(j->nodes_delivered);
     if (j->nodes_confirmed) dictRelease(j->nodes_confirmed);
@@ -252,6 +253,92 @@ sds serializeJob(job *j) {
     /* Make sure we wrote exactly the intented number of bytes. */
     serverAssert(len == (size_t)(p-msg));
     return msg;
+}
+
+/* Deserialize a job serialized with serializeJob. Note that this only
+ * deserializes the first job even if the input buffer contains multiple
+ * jobs, but it stores the pointer to the next job (if any) into
+ * '*next'. If there are no more jobs, '*next' is set to NULL.
+ * '*next' is not updated if 'next' is a NULL pointer.
+ *
+ * The return value is the job structure populated with all the fields
+ * present in the serialized structure. On deserialization error (wrong
+ * format) NULL is returned.
+ *
+ * Arguments: 'p' is the pointer to the start of the job (the 4 bytes
+ * where the job serialized length is stored). While 'len' is the total
+ * number of bytes the buffer contains (that may be larger than the
+ * serialized job 'p' is pointing to). */
+job *deserializeJob(char *p, size_t len, char **next) {
+    job *j = zcalloc(sizeof(*j));
+    char *start = p; /* To check later if totlen matches the actual len. */
+    uint32_t totlen, aux;
+
+    /* Min len is: 4 (totlen) + JOB_STRUCT_SER_LEN + 4 (queue name len) +
+     * 4 (body len) + 4 (Node IDs count) */
+    if (len < 4+JOB_STRUCT_SER_LEN+4+4+4) goto fmterr;
+
+    /* Get total length. */
+    memcpy(&totlen,p,sizeof(totlen));
+    p += sizeof(totlen);
+    len -= sizeof(totlen);
+    totlen = intrev32ifbe(totlen);
+    if (len < totlen) goto fmterr;
+
+    /* Deserialize the static part just copying and fixing endianess. */
+    memcpy(j,p,JOB_STRUCT_SER_LEN);
+    memrev16ifbe(j->repl);
+    memrev64ifbe(j->ctime);
+    memrev32ifbe(j->etime);
+    memrev32ifbe(j->qtime);
+    memrev32ifbe(j->rtime);
+    p += JOB_STRUCT_SER_LEN;
+    len -= JOB_STRUCT_SER_LEN;
+
+    /* Queue name. */
+    memcpy(&aux,p,sizeof(aux));
+    p += sizeof(aux);
+    len -= sizeof(aux);
+    aux = intrev32ifbe(aux);
+
+    if (len < aux) goto fmterr;
+    j->queue = createStringObject(p,aux);
+    p += aux;
+    len -= aux;
+
+    /* Job body. */
+    memcpy(&aux,p,sizeof(aux));
+    p += sizeof(aux);
+    len -= sizeof(aux);
+    aux = intrev32ifbe(aux);
+
+    if (len < aux) goto fmterr;
+    j->body = sdsnewlen(p,aux);
+    p += aux;
+    len -= aux;
+
+    /* Nodes IDs. */
+    memcpy(&aux,p,sizeof(aux));
+    p += sizeof(aux);
+    len -= sizeof(aux);
+    aux = intrev32ifbe(aux);
+
+    if (len < aux*DISQUE_CLUSTER_NAMELEN) goto fmterr;
+    while(aux--) {
+        clusterNode *node = clusterLookupNode(p);
+        if (!node) continue; /* Not known... */
+        dictAdd(j->nodes_delivered,node->name,node);
+        p += DISQUE_CLUSTER_NAMELEN;
+        len -= DISQUE_CLUSTER_NAMELEN;
+    }
+
+    if ((uint32_t)(start-p) != totlen) goto fmterr;
+    if (len && next) *next = p;
+    return j;
+
+fmterr:
+    freeJob(j);
+    return NULL;
 }
 
 /* -------------------------  Jobs cluster functions ------------------------ */

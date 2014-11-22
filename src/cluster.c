@@ -56,7 +56,6 @@ void clusterSendFailoverAuthIfNeeded(clusterNode *node, clusterMsg *request);
 void clusterUpdateState(void);
 int clusterNodeGetSlotBit(clusterNode *n, int slot);
 sds clusterGenNodesDescription(int filter);
-clusterNode *clusterLookupNode(char *name);
 int clusterNodeAddSlave(clusterNode *master, clusterNode *slave);
 void clusterSetMaster(clusterNode *n);
 void clusterDoBeforeSleep(int flags);

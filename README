@@ -1,58 +1,66 @@
-Disque, an in-memory, distribted message queue
+Disque, an in-memory, distributed job queue
 ===
 
-Disque, a distributed, in memory, message queue.
-Disque originated from some work I was doing in order to create a
-distributed algorithm to use N Redis masters for a reliable message queue,
-suitable to model the common problem of executing asynchronous jobs
-in a producer / consumer model.
+Disque is a distributed, in memory, job (message) queue.
+It's goal is to capture the essence of the use case for Redis as a back end
+for job queues libraries (mainly using blocking list operations), and move
+it into an ad-hoc, self-contained, scalable, and fault tolerant design, with
+simple to understand properties and guarantees, but still resembling Redis
+in terms of simplicity and implementation as a C non-blocking networked server.
 
-At some point, it was clear that to design an ad-hoc system was a better
-idea, so I started this project as an exploration in this area, and this
-is the first preview, published in order to understand if there are other
-parties interested in a system like that.
+Currently the project is just an alpha quality preview, that was developed
+in roughly 35 hours (so far, keep me updated!), mostly at night and during
+weekends.
 
-The project is just an alpha quality preview, that was developed in roughly
-35 hours (so far, keep me updated!), mostly at night and during weekends.
+But there are already a number of message queues...
+---
+
+Tell me more, I'm so interested.
 
 What it does exactly?
 ---
 
-Disque is a job (messages, if you like) queue. Producers add messages that
-are served to consumers. This is pretty common to most message queues so
-the devil is in the details as usually. A few details about Disque are:
+Disque is a message queue. Producers add messages that are served to
+consumers. Since message queues are often used in order to process delayed
+jobs, Disque often uses "job" in the API and in the documentation, however
+jobs are actually just messages in the form of strings, so Disque can be used
+for other use cases. In this documentation "jobs" and "messages" are used
+in an interchangeable way.
+
+Job queues with a producer-consumer model are pretty common, so the devil is
+in the details. A few details about Disque are:
 
 Disque is a **synchronously replicated job queue**. By default when a new job is added, it is replicated to W nodes before the client gets an acknowledge about the job being added. W-1 nodes can fail and still the message will be delivered.
 
 Disque supports both **at-least-once and at-most-once** delivery semantics. At least once semantics is where most time was spent in the design, and the at most once semantics is a trivial result of using a replication factor of 1 for the message, with a retry time set to 0 (which means, never reissue the message). You can have, at the same time, both at-least-once and at-most-once jobs in the same queues and nodes.
 
-Disque at-least-once delivery is designed to **approximate exactly once delivery**. This means that while Disque only gurantees one or more deliveries, it will try to avoid multiple deliveries when possible.
+Disque at-least-once delivery is designed to **approximate single delivery** when possible even during certain kinds of failures. This means that while Disque can only guarantee a number of deliveries equal or greater to one, it will try to avoid multiple deliveries whenever possible.
 
-Disque is a **distributed system** where all nodes have the same role (aka, it is multi-master). Producers and consumers can attach to whatever node they like, and there is no need for producers and consumers of the same queue, to stay connected to the same node. Nodes will automatically exchange messages based on load.
+Disque is a distributed system where **all nodes have the same role** (aka, it is multi-master). Producers and consumers can attach to whatever node they like, and there is no need for producers and consumers of the same queue, to stay connected to the same node. Nodes will automatically exchange messages based on load.
 
 Disque is Available (as in "A" of CAP): producers and consumers can make progresses as long as a single node is reachable.
 
-Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with replication factor of 3 but may want to run away before knowing if the contacted node will really be able to replicate it to the specified number of nodes.
+Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with replication factor of 3 but may want to run away before knowing if the contacted node was really be able to replicate it to the specified number of nodes or not.
 
-Disque **auto reissues messages that are not acknowledged** as processed by consumers, after a message-specific retry time.
+Disque **auto reissues messages that are not acknowledged** as already processed by consumers, after a message-specific retry time.
 
-Disque messages only provides **weak ordering**. Each queue sorts messages based on the wall clock of the local node where the message was created (plus an incremental counter for messages created in the same millisecond), so messages created in the same node are normally delivered in the same order they were created. This property is weak because is violated in different cases: when messages are re-issued because not acknowledged, because of nodes local clock drift, and when messages are moved to other nodes for load balancing. However it means that normally messages are not delivered in random order and usually messages created first are delivered first.
+Disque messages only provide **weak ordering**. Each queue sorts messages based on the wall clock of the local node where the message was created (plus an incremental counter for messages created in the same millisecond), so messages created in the same node are normally delivered in the same order they were created. This property is weak because is violated in different cases: when messages are re-issued because not acknowledged, because of nodes local clock drift, and when messages are moved to other nodes for load balancing. However it means that normally messages are not delivered in random order and usually messages created first are delivered first.
 
 ACKs and retries
 ---
 
 Disque implementation of at-least-once delivery semantics is designed in order
-to avoid multiple delivery during certain classes of failures. It is not able to guarantee that no multiple deliveries will occur. However there are many at-least-once workloads where duplicated deliveries are acceptable (or explicitly handled), but not desirable either. A typical example is sending emails to users, or doing idempotent operations that are expensive.
+to avoid multiple delivery during certain classes of failures. It is not able to guarantee that no multiple deliveries will occur. However there are many at-least-once workloads where duplicated deliveries are acceptable (or explicitly handled), but not desirable either. An example is sending emails to users (it is not terrible if an user gets a duplicated email, but is important to avoid it when possible), or doing idempotent operations that are expensive (it is critical for performances to avoid multiple deliveries).
 
-In order to avoid multiple deliveries most of the times, Disque uses client ACKs. When a consumer processes a message correctly, it should acknowledge this fact to Disque. ACKs are replicated to multiple nodes, and are garbage collected as soon as the system believes it is unlikely that more nodes in the cluster have the job (the ACK refers to) still active. However since this is a best effort mechanism, under memory pressure or under certain failure scenarios, ACKs are eventually discarded.
+In order to avoid multiple deliveries most of the times, Disque uses client ACKs. When a consumer processes a message correctly, it should acknowledge this fact to Disque. ACKs are replicated to multiple nodes, and are garbage collected as soon as the system believes it is unlikely that more nodes in the cluster have the job (the ACK refers to) still active. Under memory pressure or under certain failure scenarios, ACKs are eventually discarded.
 
 More explicitly:
 
 1. A job is replicated to multiple nodes, but only *queued* in a single node.
-2. All the nodes having a copy, if a certain time limit is reached without getting the ACK for a given job, will re-queue it. The job will be delivered again.
-3. ACKs are replicated and garbage collected across the cluster so that eventually processed jobs are evicted (this happens ASAP if there are no failures nor network partitions).
+2. Nodes having a copy of a message, if a certain amount of time has elapsed without getting the ACK for the message, will re-queue it. The message will be queued again.
+3. ACKs are replicated and garbage collected across the cluster so that eventually processed messages are evicted (this happens ASAP if there are no failures nor network partitions).
 
-In practical terms, this means that if a node having a copy of a job gets partitioned away during the time the job gets acknowledged by the consumer, it is likely that when it returns back (in a reasonable amount of time, that is, before the retry time is reached) it will be informed about the ACK and will avoid to re-queue the message.
+For example this means that if a node having a copy of a job gets partitioned away during the time the job gets acknowledged by the consumer, it is likely that when it returns back (in a reasonable amount of time, that is, before the retry time is reached) it will be informed about the ACK and will avoid to re-queue the message. Similarly jobs can be acknowledged during a partition to just a single node available, and when the partition heals the ACK will be propagated to other nodes that may still have a copy of the message.
 
 So an ACK is just a **proof of delivery** that is replicated and retained for
 some time in order to make multiple delivery less likely in practice.

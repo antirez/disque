@@ -136,8 +136,8 @@ typedef struct {
  * Used by: GOTJOB, SETACK. */
 typedef struct {
     char id[JOB_ID_LEN];
-    uint32_t mayhave;   /* Number of nodes that may have this message, if
-                           applicable. */
+    uint32_t maxreplicas; /* Number of nodes that may have this message, if
+                             applicable. */
 } clusterMsgDataJobID;
 
 union clusterMsgData {

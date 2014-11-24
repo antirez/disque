@@ -1269,6 +1269,7 @@ int clusterProcessPacket(clusterLink *link) {
                 /* Fix the different times, and set the job last queue
                  * time to now. */
                 fixForeingJobTimes(j);
+                registerJob(j);
                 if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
                     clusterSendGotJob(sender,j);
             }
@@ -1603,6 +1604,7 @@ void clusterSendGotJob(clusterNode *node, job *j) {
     if (node->link == NULL) return; /* This is a best effort message. */
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_GOTJOB);
     memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
+    hdr->data.jobid.job.maxreplicas = 0;
     clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 

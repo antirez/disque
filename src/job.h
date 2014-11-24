@@ -116,5 +116,6 @@ void updateJobNodes(job *j);
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next);
 int registerJob(job *j);
 void freeJob(job *j);
+void jobReplicationAchieved(job *j);
 
 #endif

@@ -434,6 +434,15 @@ void addReplyJobID(client *c, job *j) {
     addReplyStatusLength(c,j->id,JOB_ID_LEN);
 }
 
+/* This function is called by cluster.c when the job was replicated
+ * and the replication acknowledged at least job->repl times.
+ *
+ * Here we need to queue the job, and unblock the client waiting for the job
+ * if it still eixsts. */
+void jobReplicationAchieved(job *j) {
+    printf("Replication ACHIEVED\n");
+}
+
 /* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC] */
 void addjobCommand(client *c) {
     long long replicate = server.cluster->size > 3 ? 3 : server.cluster->size;
@@ -533,10 +542,6 @@ void addjobCommand(client *c) {
         return;
     }
 
-    /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
-     * nodes. */
-    if (replicate > 1) clusterReplicateJob(job,replicate-1,async);
-
     /* For replicated messages where ASYNC option was not asked, block
      * the client, and wait for acks. Otherwise if no synchronous replication
      * is used, or ASYNC option was enabled, we just queue the job and
@@ -547,10 +552,18 @@ void addjobCommand(client *c) {
     if (replicate > 1 && !async) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
-        job->state = JOB_STATE_WAIT_REPL;
         blockClient(c,DISQUE_BLOCKED_JOB_REPL);
+        /* Create the nodes_confirmed dictionary only if we actually need
+         * it for synchronous replication. It will be released later
+         * when we move way from JOB_STATE_WAIT_REPL. */
+        job->nodes_confirmed = dictCreate(&clusterNodesDictType,NULL);
+        dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
-        queueAddJob(c->argv[1],job);
+        queueAddJob(c->argv[1],job); /* Will change the job state. */
         addReplyJobID(c,job);
     }
+
+    /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
+     * nodes. */
+    if (replicate > 1) clusterReplicateJob(job,replicate-1,async);
 }

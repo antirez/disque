@@ -1092,6 +1092,11 @@ int clusterProcessPacket(clusterLink *link) {
                   sizeof(hdr->data.jobs.serialized.jobs_data) +
                   ntohl(hdr->data.jobs.serialized.datasize);
         if (totlen != explen) return 1;
+    } else if (type == CLUSTERMSG_TYPE_GOTJOB) {
+        uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+
+        explen += sizeof(clusterMsgDataJobID);
+        if (totlen != explen) return 1;
     }
 
     /* Check if the sender is a known node. */
@@ -1228,24 +1233,19 @@ int clusterProcessPacket(clusterLink *link) {
     } else if (type == CLUSTERMSG_TYPE_FAIL) {
         clusterNode *failing;
 
-        if (sender) {
-            failing = clusterLookupNode(hdr->data.fail.about.nodename);
-            if (failing &&
-                !(failing->flags & (DISQUE_NODE_FAIL|DISQUE_NODE_MYSELF)))
-            {
-                serverLog(DISQUE_NOTICE,
-                    "FAIL message received from %.40s about %.40s",
-                    hdr->sender, hdr->data.fail.about.nodename);
-                failing->flags |= DISQUE_NODE_FAIL;
-                failing->fail_time = mstime();
-                failing->flags &= ~DISQUE_NODE_PFAIL;
-                clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
-                                     CLUSTER_TODO_UPDATE_STATE);
-            }
-        } else {
+        if (!sender) return 1;
+        failing = clusterLookupNode(hdr->data.fail.about.nodename);
+        if (failing &&
+            !(failing->flags & (DISQUE_NODE_FAIL|DISQUE_NODE_MYSELF)))
+        {
             serverLog(DISQUE_NOTICE,
-                "Ignoring FAIL message from unknown node %.40s about %.40s",
+                "FAIL message received from %.40s about %.40s",
                 hdr->sender, hdr->data.fail.about.nodename);
+            failing->flags |= DISQUE_NODE_FAIL;
+            failing->fail_time = mstime();
+            failing->flags &= ~DISQUE_NODE_PFAIL;
+            clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
+                                 CLUSTER_TODO_UPDATE_STATE);
         }
     } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
         uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
@@ -1273,6 +1273,15 @@ int clusterProcessPacket(clusterLink *link) {
                 if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
                     clusterSendGotJob(sender,j);
             }
+        }
+    } else if (type == CLUSTERMSG_TYPE_GOTJOB) {
+        if (!sender) return 1;
+
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j && j->state == JOB_STATE_WAIT_REPL) {
+            dictAdd(j->nodes_confirmed,sender->name,sender);
+            if (dictSize(j->nodes_confirmed) == j->repl)
+                jobReplicationAchieved(j);
         }
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
@@ -1525,7 +1534,7 @@ void clusterSendFail(char *nodename) {
  * that may have the job.
  *
  * If there are already nodes that received the message, additional
- * repl nodes will be added to the list (if possible), and the message
+ * 'repl' nodes will be added to the list (if possible), and the message
  * broadcasted again to all the nodes that may already have the message
  * plus the new ones.
  *

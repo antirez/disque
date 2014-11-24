@@ -225,9 +225,9 @@ sds serializeJob(job *j) {
     len += 4;                   /* Node IDs (that may have a copy) count. */
     len += dictSize(j->nodes_delivered) * DISQUE_CLUSTER_NAMELEN;
 
-    /* Total serialized length prefix. */
+    /* Total serialized length prefix, not including the length itself. */
     msg = sdsnewlen(NULL,len);
-    count = intrev32ifbe(len);
+    count = intrev32ifbe(len-4);
     memcpy(msg,&count,sizeof(count));
 
     /* The serializable part of the job structure is copied, and fields
@@ -287,18 +287,18 @@ sds serializeJob(job *j) {
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     job *j = zcalloc(sizeof(*j));
     unsigned char *start = p; /* To check total processed bytes later. */
-    uint32_t totlen, aux;
+    uint32_t joblen, aux;
 
-    /* Min len is: 4 (totlen) + JOB_STRUCT_SER_LEN + 4 (queue name len) +
+    /* Min len is: 4 (joblen) + JOB_STRUCT_SER_LEN + 4 (queue name len) +
      * 4 (body len) + 4 (Node IDs count) */
     if (len < 4+JOB_STRUCT_SER_LEN+4+4+4) goto fmterr;
 
     /* Get total length. */
-    memcpy(&totlen,p,sizeof(totlen));
-    p += sizeof(totlen);
-    len -= sizeof(totlen);
-    totlen = intrev32ifbe(totlen);
-    if (len < totlen) goto fmterr;
+    memcpy(&joblen,p,sizeof(joblen));
+    p += sizeof(joblen);
+    len -= sizeof(joblen);
+    joblen = intrev32ifbe(joblen);
+    if (len < joblen) goto fmterr;
 
     /* Deserialize the static part just copying and fixing endianess. */
     memcpy(j,p,JOB_STRUCT_SER_LEN);
@@ -340,6 +340,7 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     aux = intrev32ifbe(aux);
 
     if (len < aux*DISQUE_CLUSTER_NAMELEN) goto fmterr;
+    j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     while(aux--) {
         clusterNode *node = clusterLookupNode((char*)p);
         if (!node) continue; /* Not known... */
@@ -348,7 +349,7 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
         len -= DISQUE_CLUSTER_NAMELEN;
     }
 
-    if ((uint32_t)(start-p) != totlen) goto fmterr;
+    if ((uint32_t)(p-start)-sizeof(joblen) != joblen) goto fmterr;
     if (len && next) *next = p;
     return j;
 

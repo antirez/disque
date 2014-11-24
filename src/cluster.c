@@ -1249,10 +1249,11 @@ int clusterProcessPacket(clusterLink *link) {
         }
     } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
         uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
+        uint32_t datasize = ntohl(hdr->data.jobs.serialized.datasize);
         job *j;
 
         if (!sender || numjobs != 1) return 1;
-        j = deserializeJob(hdr->data.jobs.serialized.jobs_data,totlen,NULL);
+        j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL);
         if (j == NULL) {
             serverLog(DISQUE_WARNING,
                 "Received corrupted job description from node %.40s",
@@ -1573,7 +1574,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
             memcpy(payload,hdr,sizeof(*hdr));
             hdr = (clusterMsg*) payload;
         }
-        memcpy(hdr->data.jobs.serialized.jobs_data,j->body,sdslen(j->body));
+        memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
 
         /* Actual delivery of the message to the list of nodes. */
         dictIterator *di = dictGetIterator(j->nodes_delivered);

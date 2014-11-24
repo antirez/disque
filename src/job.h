@@ -111,5 +111,10 @@ struct job {
 
 void deleteJobFromCluster(job *j);
 sds serializeJob(job *j);
+void fixForeingJobTimes(job *j);
+void updateJobNodes(job *j);
+job *deserializeJob(unsigned char *p, size_t len, unsigned char **next);
+int registerJob(job *j);
+void freeJob(job *j);
 
 #endif

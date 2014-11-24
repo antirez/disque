@@ -155,6 +155,20 @@ job *lookupJob(char *id) {
     return de ? dictGetKey(de) : NULL;
 }
 
+/* Remove job references from the system, without freeing the job itself.
+ * If the job was already unregistered, DISQUE_ERR is returned, otherwise
+ * DISQUE_OK is returned. */
+int unregisterJob(job *j) {
+    j = lookupJob(j->id);
+    if (!j) return DISQUE_ERR;
+
+    /* TODO: If the job is queued, remove from queue. */
+    /* TODO: If the job is waiting to be queued, remove from waiting list. */
+    /* Remove the job from the jobs hash table. */
+    dictDelete(server.jobs, j->id);
+    return DISQUE_OK;
+}
+
 /* ---------------------------  Jobs serialization -------------------------- */
 
 /* Serialize an SDS string as a little endian 32 bit count followed
@@ -194,8 +208,7 @@ char *serializeSdsString(char *p, sds s) {
  * ----------------------------------------------------------------------
  *
  * Since each job has a prefixed length it is possible to glue multiple
- * jobs one after the other in a single string.
- */
+ * jobs one after the other in a single string. */
 sds serializeJob(job *j) {
     size_t len;
     sds msg;
@@ -223,6 +236,8 @@ sds serializeJob(job *j) {
     memcpy(sj,j,JOB_STRUCT_SER_LEN);
     memrev16ifbe(&sj->repl);
     memrev64ifbe(&sj->ctime);
+    /* Use a relative expire time for serialization. */
+    sj->etime = server.unixtime - sj->etime + 1;
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->qtime);
     memrev32ifbe(&sj->rtime);
@@ -269,9 +284,9 @@ sds serializeJob(job *j) {
  * where the job serialized length is stored). While 'len' is the total
  * number of bytes the buffer contains (that may be larger than the
  * serialized job 'p' is pointing to). */
-job *deserializeJob(char *p, size_t len, char **next) {
+job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     job *j = zcalloc(sizeof(*j));
-    char *start = p; /* To check later if totlen matches the actual len. */
+    unsigned char *start = p; /* To check total processed bytes later. */
     uint32_t totlen, aux;
 
     /* Min len is: 4 (totlen) + JOB_STRUCT_SER_LEN + 4 (queue name len) +
@@ -290,6 +305,7 @@ job *deserializeJob(char *p, size_t len, char **next) {
     memrev16ifbe(j->repl);
     memrev64ifbe(j->ctime);
     memrev32ifbe(j->etime);
+    j->etime = server.unixtime + j->etime; /* Convert back to absolute time. */
     memrev32ifbe(j->qtime);
     memrev32ifbe(j->rtime);
     p += JOB_STRUCT_SER_LEN;
@@ -302,7 +318,7 @@ job *deserializeJob(char *p, size_t len, char **next) {
     aux = intrev32ifbe(aux);
 
     if (len < aux) goto fmterr;
-    j->queue = createStringObject(p,aux);
+    j->queue = createStringObject((char*)p,aux);
     p += aux;
     len -= aux;
 
@@ -325,7 +341,7 @@ job *deserializeJob(char *p, size_t len, char **next) {
 
     if (len < aux*DISQUE_CLUSTER_NAMELEN) goto fmterr;
     while(aux--) {
-        clusterNode *node = clusterLookupNode(p);
+        clusterNode *node = clusterLookupNode((char*)p);
         if (!node) continue; /* Not known... */
         dictAdd(j->nodes_delivered,node->name,node);
         p += DISQUE_CLUSTER_NAMELEN;
@@ -339,6 +355,39 @@ job *deserializeJob(char *p, size_t len, char **next) {
 fmterr:
     freeJob(j);
     return NULL;
+}
+
+/* This function is called for jobs that we receive from external nodes
+ * via the ADDJOB command, in order to fix the time fields according to the
+ * local node.
+ *
+ * The creation time is not touched since it is used only for sorting.
+ * The expire time is already fixed since the serialization functions
+ * handle expire in terms as seconds of life remaining, that is converted
+ * back into an absolute time during deserialization. This means that the
+ * expire time can only be moved into the future on time desynchronizations
+ * but never in the past. */
+void fixForeingJobTimes(job *j) {
+    /* If the queued time is in the future from the POV of this node, set
+     * it to now, so that we are sure we'll re-queue the job eventually. */
+    if (j->qtime > server.unixtime) j->qtime = server.unixtime;
+}
+
+/* This function is called when the job id at 'j' may be duplicated and we
+ * likely already have the job, but we want to update the list of nodes
+ * that may have the message by taking the union of our list with the
+ * job 'j' list. */
+void updateJobNodes(job *j) {
+    job *old = lookupJob(j->id);
+    if (!old) return;
+
+    dictIterator *di = dictGetIterator(j->nodes_delivered);
+    dictEntry *de;
+
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+        dictAdd(old->nodes_delivered,node->name,node);
+    }
 }
 
 /* -------------------------  Jobs cluster functions ------------------------ */

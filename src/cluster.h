@@ -36,6 +36,7 @@ typedef struct clusterLink {
 #define DISQUE_NODE_HANDSHAKE (1<<3) /* Node in handshake state. */
 #define DISQUE_NODE_NOADDR    (1<<4) /* Node address unknown */
 #define DISQUE_NODE_MEET      (1<<5) /* Send a MEET message to this node */
+#define DISQUE_NODE_DELETED   (1<<6) /* Node no longer part of the cluster */
 #define DISQUE_NODE_NULL_NAME "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
 
 #define nodeInHandshake(n) ((n)->flags & DISQUE_NODE_HANDSHAKE)
@@ -68,6 +69,7 @@ typedef struct clusterState {
     int state;            /* DISQUE_CLUSTER_OK, DISQUE_CLUSTER_FAIL, ... */
     int size;             /* Num of known cluster nodes */
     dict *nodes;          /* Hash table of name -> clusterNode structures */
+    dict *deleted_nodes;    /* Nodes removed from the cluster. */
     dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
     int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
     /* Reachable nodes array. This array only lists reachable nodes
@@ -96,6 +98,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message */
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing */
 #define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver */
+#define CLUSTERMSG_TYPE_GOTJOB 5        /* Job received acknowledge. */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -117,7 +120,7 @@ typedef struct {
 /* This data section is used in different message types where we need to
  * transmit one or multiple full jobs.
  *
- * Currently used by: ADDJOB. */
+ * Used by: ADDJOB. */
 typedef struct {
     uint32_t numjobs;   /* Number of jobs stored here. */
     uint32_t datasize;  /* Number of bytes following to describe jobs. */
@@ -128,9 +131,13 @@ typedef struct {
      unsigned char jobs_data[8]; /* defined as 8 just for alignment concerns. */
 } clusterMsgDataJob;
 
-/* This data section is used when we need to send just a job ID. */
+/* This data section is used when we need to send just a job ID.
+ *
+ * Used by: GOTJOB, SETACK. */
 typedef struct {
     char id[JOB_ID_LEN];
+    uint32_t mayhave;   /* Number of nodes that may have this message, if
+                           applicable. */
 } clusterMsgDataJobID;
 
 union clusterMsgData {

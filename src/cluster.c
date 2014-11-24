@@ -63,6 +63,7 @@ void clusterSendUpdate(clusterLink *link, clusterNode *node);
 void clusterSetNodeAsMaster(clusterNode *n);
 void clusterDelNode(clusterNode *delnode);
 void clusterShuffleReachableNodes(void);
+void clusterSendGotJob(clusterNode *node, job *j);
 sds representDisqueNodeFlags(sds ci, uint16_t flags);
 
 /* -----------------------------------------------------------------------------
@@ -315,6 +316,7 @@ void clusterInit(void) {
     server.cluster->size = 1;
     server.cluster->todo_before_sleep = 0;
     server.cluster->nodes = dictCreate(&clusterNodesDictType,NULL);
+    server.cluster->deleted_nodes = dictCreate(&clusterNodesDictType,NULL);
     server.cluster->nodes_black_list =
         dictCreate(&clusterNodesBlackListDictType,NULL);
     server.cluster->stats_bus_messages_sent = 0;
@@ -642,11 +644,24 @@ int clusterNodeFailureReportsCount(clusterNode *node) {
     return listLength(node->fail_reports);
 }
 
+/* Free a node, however if the node was part of the cluster (no handshake
+ * flag is set), the node is actually just disconnected, moved into
+ * a deleted_nodes hash table, and flagged as deleted: we may still have
+ * references of it in jobs and other places, and the cleanup is a useless
+ * and complex effort. */
 void freeClusterNode(clusterNode *n) {
     serverAssert(dictDelete(server.cluster->nodes,n->name) == DICT_OK);
     if (n->link) freeClusterLink(n->link);
-    listRelease(n->fail_reports);
-    zfree(n);
+    /* We can free nodes in handshake state, but we can't free nodes
+     * that were part of the cluster: they may still be referenced
+     * by jobs. */
+    if (nodeInHandshake(n)) {
+        listRelease(n->fail_reports);
+        zfree(n);
+    } else {
+        dictAdd(server.cluster->deleted_nodes,n->name,n);
+        n->flags |= DISQUE_NODE_DELETED;
+    }
 }
 
 /* Add a node to the nodes hash table */
@@ -1232,6 +1247,31 @@ int clusterProcessPacket(clusterLink *link) {
                 "Ignoring FAIL message from unknown node %.40s about %.40s",
                 hdr->sender, hdr->data.fail.about.nodename);
         }
+    } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
+        uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
+        job *j;
+
+        if (!sender || numjobs != 1) return 1;
+        j = deserializeJob(hdr->data.jobs.serialized.jobs_data,totlen,NULL);
+        if (j == NULL) {
+            serverLog(DISQUE_WARNING,
+                "Received corrupted job description from node %.40s",
+                hdr->sender);
+        } else {
+            j->state = JOB_STATE_ACTIVE;
+            if (registerJob(j) == DISQUE_ERR) {
+                /* The job already exists. Just update the list of nodes
+                 * that may have a copy. */
+                updateJobNodes(j);
+                freeJob(j);
+            } else {
+                /* Fix the different times, and set the job last queue
+                 * time to now. */
+                fixForeingJobTimes(j);
+                if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
+                    clusterSendGotJob(sender,j);
+            }
+        }
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
     }
@@ -1391,6 +1431,9 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
     if (type == CLUSTERMSG_TYPE_FAIL) {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataFail);
+    } else if (type == CLUSTERMSG_TYPE_GOTJOB) {
+        totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+        totlen += sizeof(clusterMsgDataJobID);
     }
     hdr->totlen = htonl(totlen);
     /* For PING, PONG, and MEET, fixing the totlen field is up to the caller. */
@@ -1545,6 +1588,21 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         if (payload != buf) zfree(payload);
     }
     return added;
+}
+
+/* Send a GOTJOB message to the specified node, if connected.
+ * GOTJOB messages only contain the ID of the job, and are acknowledges
+ * that the job was replicated to a target node. The receiver of the message
+ * will be able to reply to the client that the job was accepted by the
+ * system when enough nodes have a copy of the job. */
+void clusterSendGotJob(clusterNode *node, job *j) {
+    unsigned char buf[sizeof(clusterMsg)];
+    clusterMsg *hdr = (clusterMsg*) buf;
+
+    if (node->link == NULL) return; /* This is a best effort message. */
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_GOTJOB);
+    memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
+    clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 
 /* -----------------------------------------------------------------------------
@@ -1894,7 +1952,10 @@ sds clusterGenNodesDescription(int filter) {
  * -------------------------------------------------------------------------- */
 
 /* Update server.reachable_nodes and server.reachable_nodes_count with
- * a list of reachable nodes (not in PFAIL state), excluding this node. */
+ * a list of reachable nodes (not in PFAIL state), excluding this node.
+ * Note that nodes in handshake are skipped as not yet part of the cluster,
+ * this means that handshake nodes are not referenced by jobs, and are nodes
+ * that we can safely free. */
 void clusterUpdateReachableNodes(void) {
     dictIterator *di;
     dictEntry *de;
@@ -1908,7 +1969,9 @@ void clusterUpdateReachableNodes(void) {
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
 
-        if (node->flags & (DISQUE_NODE_MYSELF|DISQUE_NODE_FAIL)) continue;
+        if (node->flags & (DISQUE_NODE_MYSELF|
+                           DISQUE_NODE_HANDSHAKE|
+                           DISQUE_NODE_FAIL)) continue;
         server.cluster->reachable_nodes[server.cluster->reachable_nodes_count++]
             = node;
     }

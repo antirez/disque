@@ -84,7 +84,7 @@
 #define JOB_STATE_ACKED     4  /* Acked, no longer active, to garbage collect.*/
 
 /* Job representation in memory. */
-struct job {
+typedef struct job {
     char id[JOB_ID_LEN];    /* Job ID. */
     uint8_t state;          /* Job state: one of JOB_STATE_* states. */
     uint8_t flags;          /* Job flags. */
@@ -104,7 +104,7 @@ struct job {
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
     dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. */
-} typedef job;
+} job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
 #define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4)
@@ -117,5 +117,6 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next);
 int registerJob(job *j);
 void freeJob(job *j);
 void jobReplicationAchieved(job *j);
+job *lookupJob(char *id);
 
 #endif

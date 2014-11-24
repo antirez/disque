@@ -151,7 +151,6 @@ int registerJob(job *j) {
 /* Lookup a job by ID. */
 job *lookupJob(char *id) {
     struct dictEntry *de = dictFind(server.jobs, id);
-
     return de ? dictGetKey(de) : NULL;
 }
 

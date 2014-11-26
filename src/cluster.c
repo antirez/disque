@@ -1593,6 +1593,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
             hdr = (clusterMsg*) payload;
         }
         memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
+        sdsfree(serialized);
 
         /* Actual delivery of the message to the list of nodes. */
         dictIterator *di = dictGetIterator(j->nodes_delivered);
@@ -1603,6 +1604,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
             if (node == myself) continue;
             if (node->link) clusterSendMessage(node->link,payload,totlen);
         }
+        dictReleaseIterator(di);
 
         if (payload != buf) zfree(payload);
     }

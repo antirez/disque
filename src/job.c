@@ -276,6 +276,7 @@ sds serializeJob(job *j) {
         memcpy(p,node->name,DISQUE_CLUSTER_NAMELEN);
         p += DISQUE_CLUSTER_NAMELEN;
     }
+    dictReleaseIterator(di);
 
     /* Make sure we wrote exactly the intented number of bytes. */
     serverAssert(len == (size_t)(p-msg));
@@ -401,6 +402,7 @@ void updateJobNodes(job *j) {
         clusterNode *node = dictGetVal(de);
         dictAdd(old->nodes_delivered,node->name,node);
     }
+    dictReleaseIterator(di);
 }
 
 /* -------------------------  Jobs cluster functions ------------------------ */

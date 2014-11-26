@@ -40,6 +40,17 @@
 
 /* ------------------------ Low level queue functions ----------------------- */
 
+/* Queue the job and change its state accordingly. */
 int queueAddJob(robj *qname, job *job) {
+    printf("Job QUEUED\n");
+
+    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
+     * hash table again for ACKs tracking in order to garbage collect the
+     * job once processed. */
+    if (job->nodes_confirmed) {
+        dictRelease(job->nodes_confirmed);
+        job->nodes_confirmed = NULL;
+    }
+    job->state = JOB_STATE_QUEUED;
     return DISQUE_OK;
 }

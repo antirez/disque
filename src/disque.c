@@ -122,8 +122,6 @@ struct serverCommand serverCommandTable[] = {
     {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0}
 };
 
-struct evictionPoolEntry *evictionPoolAlloc(void);
-
 /*============================ Utility functions ============================ */
 
 /* Low level logging. To use only for very big messages, otherwise
@@ -2115,19 +2113,6 @@ void monitorCommand(client *c) {
  * one key that can be evicted, if there is at least one key that can be
  * evicted in the whole database. */
 
-/* Create a new eviction pool. */
-struct evictionPoolEntry *evictionPoolAlloc(void) {
-    struct evictionPoolEntry *ep;
-    int j;
-
-    ep = zmalloc(sizeof(*ep)*DISQUE_EVICTION_POOL_SIZE);
-    for (j = 0; j < DISQUE_EVICTION_POOL_SIZE; j++) {
-        ep[j].idle = 0;
-        ep[j].key = NULL;
-    }
-    return ep;
-}
-
 int freeMemoryIfNeeded(void) {
     size_t mem_used, mem_tofree, mem_freed;
     mstime_t latency;
@@ -2165,6 +2150,26 @@ int freeMemoryIfNeeded(void) {
     latencyEndMonitor(latency);
     latencyAddSampleIfNeeded("eviction-cycle",latency);
     return DISQUE_OK;
+}
+
+/* Get the memory warning level:
+ *
+ * 0 - No memory warning.
+ * 1 - Over 75% of maxmemory setting.
+ * 2 - Over 95% of maxmemory setting.
+ * 3 - Over 95% of maxmemory setting and RSS over 100% of maxmemory setting.
+ *
+ * The server may change behavior depending on the memory warning level.
+ * For example at warning >= 1, new jobs are only replicated to
+ * external nodes and a localy copy is not retained. */
+int getMemoryWarningLevel(void) {
+    size_t mem_used = zmalloc_used_memory();
+
+    if (mem_used > server.maxmemory / 100 * 95 &&
+        mem_used > server.resident_set_size) return 3;
+    if (mem_used > server.maxmemory / 100 * 95) return 2;
+    if (mem_used > server.maxmemory / 100 * 75) return 1;
+    return 0;
 }
 
 /* =================================== Main! ================================ */

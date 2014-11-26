@@ -1280,6 +1280,7 @@ int clusterProcessPacket(clusterLink *link) {
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state == JOB_STATE_WAIT_REPL) {
             dictAdd(j->nodes_confirmed,sender->name,sender);
+            printf("%d %d\n", (int) dictSize(j->nodes_confirmed), (int)j->repl);
             if (dictSize(j->nodes_confirmed) == j->repl)
                 jobReplicationAchieved(j);
         }
@@ -1442,7 +1443,9 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
     if (type == CLUSTERMSG_TYPE_FAIL) {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataFail);
-    } else if (type == CLUSTERMSG_TYPE_GOTJOB) {
+    } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
+               type == CLUSTERMSG_TYPE_QUEUEJOB)
+    {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataJobID);
     }
@@ -1601,20 +1604,32 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
     return added;
 }
 
+/* Helper function to send all the messages that have just a type,
+ * a Job ID, and an optional 'maxreplicas' additional value. */
+void clusterSendJobIDMessage(int type, clusterNode *node, job *j, int mr) {
+    unsigned char buf[sizeof(clusterMsg)];
+    clusterMsg *hdr = (clusterMsg*) buf;
+
+    if (node->link == NULL) return; /* This is a best effort message. */
+    clusterBuildMessageHdr(hdr,type);
+    memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
+    hdr->data.jobid.job.maxreplicas = mr;
+    clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
+}
+
 /* Send a GOTJOB message to the specified node, if connected.
  * GOTJOB messages only contain the ID of the job, and are acknowledges
  * that the job was replicated to a target node. The receiver of the message
  * will be able to reply to the client that the job was accepted by the
  * system when enough nodes have a copy of the job. */
 void clusterSendGotJob(clusterNode *node, job *j) {
-    unsigned char buf[sizeof(clusterMsg)];
-    clusterMsg *hdr = (clusterMsg*) buf;
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_GOTJOB,node,j,0);
+}
 
-    if (node->link == NULL) return; /* This is a best effort message. */
-    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_GOTJOB);
-    memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
-    hdr->data.jobid.job.maxreplicas = 0;
-    clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
+/* Force the receiver the queue a job, if it has that job in an active
+ * state. */
+void clusterSendQueueJob(clusterNode *node, job *j) {
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j,0);
 }
 
 /* -----------------------------------------------------------------------------
@@ -1983,6 +1998,7 @@ void clusterUpdateReachableNodes(void) {
 
         if (node->flags & (DISQUE_NODE_MYSELF|
                            DISQUE_NODE_HANDSHAKE|
+                           DISQUE_NODE_PFAIL|
                            DISQUE_NODE_FAIL)) continue;
         server.cluster->reachable_nodes[server.cluster->reachable_nodes_count++]
             = node;

@@ -119,10 +119,6 @@ job *createJob(char *id, int state, int ttl) {
     j->body = NULL;
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     j->nodes_confirmed = NULL; /* Only created later on-demand. */
-
-    /* Add myself to the list of nodes that may have the message,
-     * this makes the code simpler and has almost zero overhead.*/
-    dictAdd(j->nodes_delivered,myself->name,myself);
     return j;
 }
 
@@ -166,6 +162,23 @@ int unregisterJob(job *j) {
     /* Remove the job from the jobs hash table. */
     dictDelete(server.jobs, j->id);
     return DISQUE_OK;
+}
+
+/* We use the server.jobs hash table in a space efficient way by storing the
+ * job only at 'key' pointer, so the 'value' pointer is free to be used
+ * for state specific associated information.
+ *
+ * When the job state is JOB_STATE_WAIT_REPL, the value is set to the client
+ * that is waiting for synchronous replication of the job. */
+void setJobAssociatedValue(job *j, void *val) {
+    struct dictEntry *de = dictFind(server.jobs, j->id);
+    if (de) dictSetVal(server.jobs,de,val);
+}
+
+/* See setJobAssociatedValue() top comment. */
+void *jobGetAssociatedValue(job *j) {
+    struct dictEntry *de = dictFind(server.jobs, j->id);
+    return de ? dictGetVal(de) : NULL;
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
@@ -437,12 +450,60 @@ void addReplyJobID(client *c, job *j) {
  * and the replication acknowledged at least job->repl times.
  *
  * Here we need to queue the job, and unblock the client waiting for the job
- * if it still eixsts. */
+ * if it still exists.
+ *
+ * This function is only called if the job is in JOB_STATE_WAIT_REPL.
+ * The functionc an also assume that there is a client waiting to be
+ * unblocked if this function is called, since if the blocked client is
+ * released, the job is deleted (and a best effort try is made to remove
+ * copies from other nodes), to avoid non acknowledged jobs to be active
+ * when possible. */
 void jobReplicationAchieved(job *j) {
     printf("Replication ACHIEVED\n");
+
+    /* Reply to the blocked client with the Job ID and unblock the client. */
+    client *c = jobGetAssociatedValue(j);
+    setJobAssociatedValue(j,NULL);
+    addReplyJobID(c,j);
+    unblockClient(c);
+
+    /* If the job was externally replicated, send a QUEUE message to one of
+     * the nodes that acknowledged to have a copy, and forget about it ASAP. */
+    if (dictFind(j->nodes_delivered,myself->name) == NULL) {
+        dictEntry *de = dictGetRandomKey(j->nodes_confirmed);
+        if (de) {
+            clusterNode *n = dictGetVal(de);
+            clusterSendQueueJob(n,j);
+        }
+        unregisterJob(j);
+        freeJob(j);
+        return;
+    }
+
+    /* Queue the job locally. */
+    queueAddJob(j->queue,j); /* Will change the job state. */
 }
 
-/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC] */
+/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC]
+ *
+ * The function changes replication strategy if the memory warning level
+ * is greater than zero.
+ *
+ * When there is no memory pressure:
+ * 1) A copy of the job is replicated locally.
+ * 2) The job is queued locally.
+ * 3) W-1 copies of the job are replicated to other nodes, synchronously
+ *    or asynchronously if ASYNC is provided.
+ *
+ * When there is memory pressure:
+ * 1) The job is replicated only to W external nodes.
+ * 2) The job is queued to a random external node sending a QUEUE message.
+ * 3) QUEUE is sent ASAP for asynchronous jobs, for synchronous jobs instead
+ *    QUEUE is sent by jobReplicationAchieved to one of the nodes that
+ *    acknowledged to have a copy of the job.
+ * 4) The job is discareded by the local node ASAP, that is, when the
+ *    selected replication level is achieved or before to returning to
+ *    the caller for asynchronous jobs. */
 void addjobCommand(client *c) {
     long long replicate = server.cluster->size > 3 ? 3 : server.cluster->size;
     long long ttl = 3600*24;
@@ -450,6 +511,7 @@ void addjobCommand(client *c) {
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
+    int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
     static uint64_t prev_ctime = 0;
 
     /* Parse args. */
@@ -505,10 +567,18 @@ void addjobCommand(client *c) {
     }
 
     /* Check if REPLICATE can't be honoured at all. */
-    if (replicate-1 > server.cluster->reachable_nodes_count) {
-        addReplySds(c,
-            sdsnew("-NOREPL Not enough reachable nodes "
-                   "for the requested replication level\r\n"));
+    if (replicate-(extrepl ? 0 : 1) > server.cluster->reachable_nodes_count) {
+        if (extrepl && replicate-1 <= server.cluster->reachable_nodes_count) {
+            addReplySds(c,
+                sdsnew("-NOREPL Not enough reachable nodes "
+                       "for the requested replication level, since I'm unable "
+                       "to hold a copy of the message for memory usage "
+                       "problems.\r\n"));
+        } else {
+            addReplySds(c,
+                sdsnew("-NOREPL Not enough reachable nodes "
+                       "for the requested replication level\r\n"));
+        }
         return;
     }
 
@@ -517,6 +587,11 @@ void addjobCommand(client *c) {
     job->queue = c->argv[1];
     incrRefCount(c->argv[1]);
     job->repl = replicate;
+
+    /* If no external replication is used, add myself to the list of nodes
+     * that have a copy of the job. */
+    if (!extrepl)
+        dictAdd(job->nodes_delivered,myself->name,myself);
 
     /* Job ctime is milliseconds * 1000000. Jobs created in the same
      * millisecond gets an incremental ctime. The ctime is used to sort
@@ -532,7 +607,10 @@ void addjobCommand(client *c) {
     job->rtime = retry;
     job->body = sdsdup(c->argv[2]->ptr);
 
-    if (registerJob(job) == DISQUE_ERR) {
+    /* Register the job locally in all the cases but when the job
+     * is externally replicated and asynchronous replicated at the same
+     * time: in this case we don't want to take a local copy at all. */
+    if (!(async && extrepl) && registerJob(job) == DISQUE_ERR) {
         /* A job ID with the same name? Practically impossible but
          * let's handle it to trap possible bugs in a cleaner way. */
         serverLog(DISQUE_WARNING,"ID already existing in ADDJOB command!");
@@ -552,11 +630,14 @@ void addjobCommand(client *c) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
         blockClient(c,DISQUE_BLOCKED_JOB_REPL);
+        setJobAssociatedValue(job,c);
         /* Create the nodes_confirmed dictionary only if we actually need
          * it for synchronous replication. It will be released later
          * when we move way from JOB_STATE_WAIT_REPL. */
         job->nodes_confirmed = dictCreate(&clusterNodesDictType,NULL);
-        dictAdd(job->nodes_confirmed,myself->name,myself);
+        /* Confirm itself as an acknowledged receiver if this node will
+         * retain a copy of the job. */
+        if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
         queueAddJob(c->argv[1],job); /* Will change the job state. */
         addReplyJobID(c,job);
@@ -564,5 +645,19 @@ void addjobCommand(client *c) {
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
      * nodes. */
-    if (replicate > 1) clusterReplicateJob(job,replicate-1,async);
+    if (replicate > 1) {
+        clusterReplicateJob(job, extrepl ? replicate : replicate-1, async);
+    }
+
+    /* If the job is asynchronously and externally replicated at the same time,
+     * send a QUEUE message ASAP to one random node, and delete the job from
+     * this node right now. */
+    if (async && extrepl) {
+        dictEntry *de = dictGetRandomKey(job->nodes_delivered);
+        if (de) {
+            clusterNode *n = dictGetVal(de);
+            clusterSendQueueJob(n,job);
+        }
+        freeJob(job);
+    }
 }

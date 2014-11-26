@@ -117,7 +117,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_DEFAULT_SLAVE_SERVE_STALE_DATA 1
 #define DISQUE_DEFAULT_SLAVE_READ_ONLY 1
 #define DISQUE_DEFAULT_REPL_DISABLE_TCP_NODELAY 0
-#define DISQUE_DEFAULT_MAXMEMORY 0
+#define DISQUE_DEFAULT_MAXMEMORY (1024*1024*1024) /* 1gb */
 #define DISQUE_DEFAULT_MAXMEMORY_SAMPLES 5
 #define DISQUE_DEFAULT_AOF_FILENAME "disque.aof"
 #define DISQUE_DEFAULT_AOF_NO_FSYNC_ON_REWRITE 0
@@ -850,6 +850,7 @@ void zsetConvert(robj *zobj, int encoding);
 unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);
 
 /* Core functions */
+int getMemoryWarningLevel(void);
 int freeMemoryIfNeeded(void);
 int processCommand(client *c);
 void setupSignalHandlers(void);

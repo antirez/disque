@@ -99,6 +99,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing */
 #define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver */
 #define CLUSTERMSG_TYPE_GOTJOB 5        /* Job received acknowledge. */
+#define CLUSTERMSG_TYPE_QUEUEJOB 6      /* Please queue this job. */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -194,5 +195,6 @@ extern clusterNode *myself;
 clusterNode *clusterLookupNode(char *name);
 void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
+void clusterSendQueueJob(clusterNode *node, job *j);
 
 #endif /* __DISQUE_CLUSTER_H */

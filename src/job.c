@@ -423,10 +423,13 @@ void updateJobNodes(job *j) {
  * confirmed to the producer.
  */
 void deleteJobFromCluster(job *j) {
-    /* TODO */
     /* Send DELJOB message to the right nodes. */
-    /* Unregister the job. */
-    /* Free the job. */
+
+    /* TODO: work in progress... */
+
+    /* Unregister the job and free it. */
+    unregisterJob(j);
+    freeJob(j);
 }
 
 /* --------------------------  Jobs related commands ------------------------ */
@@ -462,6 +465,10 @@ void addReplyJobID(client *c, job *j) {
  * when possible. */
 void jobReplicationAchieved(job *j) {
     printf("Replication ACHIEVED\n");
+
+    /* Change the job state to active. This is critical to avoid the job
+     * will be freed by unblockClient() if found still in the old state. */
+    j->state = JOB_STATE_ACTIVE;
 
     /* Reply to the blocked client with the Job ID and unblock the client. */
     client *c = jobGetAssociatedValue(j);

@@ -1252,7 +1252,12 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t datasize = ntohl(hdr->data.jobs.serialized.datasize);
         job *j;
 
+        /* Only replicate jobs by known nodes. */
         if (!sender || numjobs != 1) return 1;
+
+        /* Don't replicate jobs if we got already memory issues. */
+        if (getMemoryWarningLevel() > 0) return 1;
+
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL);
         if (j == NULL) {
             serverLog(DISQUE_WARNING,

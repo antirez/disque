@@ -1695,6 +1695,7 @@ void clusterCron(void) {
                     server.neterr);
                 continue;
             }
+            anetEnableTcpNoDelay(NULL,fd);
             link = createClusterLink(node);
             link->fd = fd;
             node->link = link;

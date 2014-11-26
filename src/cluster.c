@@ -1285,7 +1285,6 @@ int clusterProcessPacket(clusterLink *link) {
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state == JOB_STATE_WAIT_REPL) {
             dictAdd(j->nodes_confirmed,sender->name,sender);
-            printf("%d %d\n", (int) dictSize(j->nodes_confirmed), (int)j->repl);
             if (dictSize(j->nodes_confirmed) == j->repl)
                 jobReplicationAchieved(j);
         }

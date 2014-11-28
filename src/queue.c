@@ -96,7 +96,7 @@ int destroyQueue(robj *name) {
     return DISQUE_OK;
 }
 
-/* ------------------------------- Queue API -------------------------------- */
+/* ------------------------ Queue higher level API -------------------------- */
 
 /* Queue the job and change its state accordingly. If the job is already
  * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
@@ -131,4 +131,18 @@ job *queueFetchJob(robj *qname) {
     queue *q = lookupQueue(qname);
     if (!q || skiplistLength(q->sl) == 0) return NULL;
     return skiplistPopHead(q->sl);
+}
+
+/* Return the length of the queue. If the queue does not eixst, zero
+ * is returned. */
+unsigned long queueLength(robj *qname) {
+    queue *q = lookupQueue(qname);
+    if (!q) return 0;
+    return skiplistLength(q->sl);
+}
+
+/* ------------------------- Queue related commands ------------------------- */
+
+void qlenCommand(client *c) {
+    addReplyLongLong(c,queueLength(c->argv[1]));
 }

@@ -65,5 +65,6 @@ struct queue {
 
 int queueAddJob(robj *qname, job *job);
 job *queueFetchJob(robj *qname);
+unsigned long queueLength(robj *qname);
 
 #endif

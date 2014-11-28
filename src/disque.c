@@ -107,6 +107,7 @@ struct disqueServer server; /* server global state */
  *    are not fast commands.
  */
 struct serverCommand serverCommandTable[] = {
+    /* Server commands. */
     {"auth",authCommand,2,"rlF",0,NULL,0,0,0,0,0},
     {"ping",pingCommand,-1,"rF",0,NULL,0,0,0,0,0},
     {"shutdown",shutdownCommand,-1,"arl",0,NULL,0,0,0,0,0},
@@ -119,7 +120,10 @@ struct serverCommand serverCommandTable[] = {
     {"time",timeCommand,1,"rF",0,NULL,0,0,0,0,0},
     {"command",commandCommand,0,"rl",0,NULL,0,0,0,0,0},
     {"latency",latencyCommand,-2,"arl",0,NULL,0,0,0,0,0},
-    {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0}
+
+    /* Jobs and queues. */
+    {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
+    {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
 };
 
 /*============================ Utility functions ============================ */

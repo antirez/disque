@@ -140,11 +140,31 @@ There are chances for this project to be actively developed?
 
 Currently I consider this just a public alpha: If I see people happy to use it for the right reasons (better in some use cases compared to other message queues) I'll continue the developments.
 
+What happens when a node runs out of memory?
+---
+
+1. Maxmemory setting is mandatory in Disque, and defaults to 1GB.
+2. When 75% of maxmemory is reached, Disque starts to replicate the new jobs only to external nodes, without taking a local copy, so basically if there is free RAM into other nodes, adding still works.
+3. When 95% of maxmemory is reached, Disque starts to evict data that does not violates the safety guarantees: For instance acknowledged jobs and expired jobs.
+4. When 100% of maxmemory is reached, commands that may result into more memory used are not processed at all and the client is informed with an error.
+
+There are plans to add ability to hold more jobs than the physical memory of a single node can handle?
+---
+
+Yes. In Disque it is relatively simple to use the disk when memory is not
+available, since jobs are immutable and don't need to necessarely exist in
+memory at a given time.
+
+There are multiple strategies available. The current idea is that
+when an instance is out of memory, jobs are stored into a log file instead
+of memory. As more free memory is available in the instance, on disk jobs
+are loaded.
+
 API
 ===
 
-Disque API is trivial, since the system solves a single very specific problem.
-The three main commands are:
+Disque API is composed of a small set of commands, since the system solves a
+single very specific problem. The three main commands are:
 
     ADDJOB queue_name job <ms-timeout> [REPLICATE <count>] [TTL <sec>] [RETRY <sec>] [ASYNC]
 

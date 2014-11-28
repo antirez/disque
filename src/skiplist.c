@@ -40,8 +40,11 @@
  * This implementation originates from the Redis code base but was modified
  * in different ways. */
 
+#include "zmalloc.h"
 #include "skiplist.h"
+
 #include <math.h>
+#include <stdlib.h>
 
 #ifdef TEST_MAIN
 #define zmalloc malloc

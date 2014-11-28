@@ -37,12 +37,72 @@
 #include "cluster.h"
 #include "job.h"
 #include "queue.h"
+#include "skiplist.h"
 
 /* ------------------------ Low level queue functions ----------------------- */
 
-/* Queue the job and change its state accordingly. */
+/* Job comparision inside a skiplist: by ctime, if ctime is the same by
+ * job ID. */
+int skiplistCompareJobs(const void *a, const void *b) {
+    const job *ja = a, *jb = b;
+
+    if (ja->ctime > jb->ctime) return -1;
+    if (jb->ctime > ja->ctime) return 1;
+    return memcmp(ja->id,jb->id,JOB_ID_LEN);
+}
+
+/* Crete a new queue, register it in the queue hash tables.
+ * On success the pointer to the new queue is returned. If a queue with the
+ * same name already NULL is returned. */
+queue *createQueue(robj *name) {
+    if (dictFind(server.queues,name) != NULL) return NULL;
+
+    queue *q = zmalloc(sizeof(queue));
+    q->name = name;
+    incrRefCount(name);
+    q->sl = skiplistCreate(skiplistCompareJobs);
+    q->ctime = mstime();
+    q->atime = q->ctime;
+    q->needjobs_sent_time = 0;
+    memset(q->produced_ops_samples,0,sizeof(q->produced_ops_samples));
+    memset(q->consumed_ops_samples,0,sizeof(q->consumed_ops_samples));
+    q->produced_ops_idx = 0;
+    q->consumed_ops_idx = 0;
+
+    incrRefCount(name); /* Another refernce in the hash table key. */
+    dictAdd(server.queues,q->name,q);
+    return q;
+}
+
+/* Return the queue by name, or NULL if it does not exist. */
+queue *lookupQueue(robj *name) {
+    dictEntry *de = dictFind(server.queues,name);
+    if (!de) return NULL;
+    queue *q = dictGetVal(de);
+    return q;
+}
+
+/* Destroy a queue and unregisters it. On success DISQUE_OK is returned,
+ * otherwise if no queue exists with the specified name, DISQUE_ERR is
+ * returned. */
+int destroyQueue(robj *name) {
+    queue *q = lookupQueue(name);
+    if (!q) return DISQUE_ERR;
+
+    dictDelete(server.queues,name);
+    decrRefCount(q->name);
+    skiplistFree(q->sl);
+    zfree(q);
+    return DISQUE_OK;
+}
+
+/* ------------------------------- Queue API -------------------------------- */
+
+/* Queue the job and change its state accordingly. If the job is already
+ * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
+ * and the operation succeeds. */
 int queueAddJob(robj *qname, job *job) {
-    printf("Job QUEUED\n");
+    if (job->state == JOB_STATE_QUEUED) return DISQUE_ERR;
 
     /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
      * hash table again for ACKs tracking in order to garbage collect the
@@ -52,5 +112,11 @@ int queueAddJob(robj *qname, job *job) {
         job->nodes_confirmed = NULL;
     }
     job->state = JOB_STATE_QUEUED;
+
+    /* Put the job into the queue and update it queued time. */
+    job->qtime = server.unixtime;
+    queue *q = lookupQueue(qname);
+    if (!q) q = createQueue(qname);
+    skiplistInsert(q->sl,job);
     return DISQUE_OK;
 }

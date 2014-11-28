@@ -490,6 +490,7 @@ struct disqueServer {
     uint64_t next_client_id;    /* Next client unique ID. Incremental. */
     /* Jobs & Queues */
     dict *jobs;                 /* Main jobs hash table, by job ID. */
+    dict *queues;               /* Main queues hash table, by queue name. */
     /* AOF loading information */
     int loading;                /* We are loading data from disk if true */
     off_t loading_total_bytes;

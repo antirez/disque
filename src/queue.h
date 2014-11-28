@@ -31,6 +31,38 @@
 #ifndef __DISQUE_QUEUE_H
 #define __DISQUE_QUEUE_H
 
+#include "skiplist.h"
+
+#define QUEUE_OPS_SAMPLES 3
+
+struct queue {
+    robj *name;     /* Queue name as a string object. */
+    skiplist *sl;   /* The skiplist with the queued jobs. */
+    mstime_t ctime; /* Creation time of this queue object. */
+    mstime_t atime; /* Last access time. Updated when a new element is
+                       queued or when a new client fetches elements or
+                       blocks for elements to arrive. */
+    mstime_t needjobs_sent_time; /* Last NEEDJOBS cluster broadcast. */
+
+    /* OPS samples is used in order to compute the number of jobs received
+     * and served per second. Each time the sample at the current index
+     * (*_ops_idx) is still the current unix timestamp and an op is
+     * performed, we increment its counter. Otherwise the index is advanced
+     * and a new sample is created. By observing the array of samples we can
+     * easily compute the approximated amount of ops per second this queue
+     * is undergoing.
+     *
+     * When we see we are consuming much faster than producing, messages
+     * can be sent to other nodes to obtain more jobs. */
+    struct {
+        uint32_t time;
+        uint32_t count;
+    } produced_ops_samples[QUEUE_OPS_SAMPLES],
+      consumed_ops_samples[QUEUE_OPS_SAMPLES];
+    int produced_ops_idx; /* Current index in produced array. */
+    int consumed_ops_idx; /* Current index in consumed array. */
+} typedef queue;
+
 int queueAddJob(robj *qname, job *job);
 
 #endif

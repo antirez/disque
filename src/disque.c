@@ -430,6 +430,16 @@ dictType jobsDictType = {
     NULL                       /* val destructor */
 };
 
+/* Queues hash table type. */
+dictType queuesDictType = {
+    dictObjHash,               /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictObjKeyCompare,         /* key compare */
+    dictDisqueObjectDestructor, /* key destructor */
+    NULL                       /* val destructor */
+};
+
 int htNeedsResize(dict *dict) {
     long long size, used;
 
@@ -1175,6 +1185,7 @@ void initServer(void) {
 
     /* Create the Disque databases, and initialize other internal state. */
     server.jobs = dictCreate(&jobsDictType,NULL);
+    server.queues = dictCreate(&queuesDictType,NULL);
     server.cronloops = 0;
     server.aof_child_pid = -1;
     aofRewriteBufferReset();

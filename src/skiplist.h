@@ -44,7 +44,7 @@ typedef struct skiplistNode {
     } level[];
 } skiplistNode;
 
-typedef struct zskiplist {
+typedef struct skiplist {
     struct skiplistNode *header, *tail;
     int (*compare)(const void *, const void *);
     unsigned long length;

@@ -258,6 +258,10 @@ void *skiplistPopTail(skiplist *sl) {
     return ptr;
 }
 
+unsigned long skiplistLength(skiplist *sl) {
+    return sl->length;
+}
+
 #ifdef TEST_MAIN
 #include <stdio.h>
 #include <string.h>

@@ -120,3 +120,15 @@ int queueAddJob(robj *qname, job *job) {
     skiplistInsert(q->sl,job);
     return DISQUE_OK;
 }
+
+/* Fetch a job from the specified queue if any, updating the job state
+ * as it gets fetched to WAIT_ACK. If there are no jobs pending in the
+ * specified queue, NULL is returned.
+ *
+ * The returned job is, among the jobs available, the one with lower
+ * 'ctime'. */
+job *queueFetchJob(robj *qname) {
+    queue *q = lookupQueue(qname);
+    if (!q || skiplistLength(q->sl) == 0) return NULL;
+    return skiplistPopHead(q->sl);
+}

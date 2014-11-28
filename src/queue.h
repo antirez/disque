@@ -64,5 +64,6 @@ struct queue {
 } typedef queue;
 
 int queueAddJob(robj *qname, job *job);
+job *queueFetchJob(robj *qname);
 
 #endif

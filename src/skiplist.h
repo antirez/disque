@@ -58,5 +58,6 @@ int skiplistDelete(skiplist *sl, void *obj);
 void *skiplistFind(skiplist *sl, void *obj);
 void *skiplistPopHead(skiplist *sl);
 void *skiplistPopTail(skiplist *sl);
+unsigned long skiplistLength(skiplist *sl);
 
 #endif

@@ -42,7 +42,12 @@ struct queue {
     mstime_t atime; /* Last access time. Updated when a new element is
                        queued or when a new client fetches elements or
                        blocks for elements to arrive. */
-    mstime_t needjobs_sent_time; /* Last NEEDJOBS cluster broadcast. */
+    adlist *clients;/* Clients blocked here. */
+
+    /* Federation related. */
+    mstime_t needjobs_bcast_time; /* Last NEEDJOBS cluster broadcast. */
+    mstime_t needjobs_adhoc_time; /* Last NEEDJOBS to notable nodes. */
+    dict *needjob_responders;   /* Set of nodes that provided jobs. */
 
     /* OPS samples is used in order to compute the number of jobs received
      * and served per second. Each time the sample at the current index

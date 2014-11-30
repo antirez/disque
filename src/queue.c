@@ -63,7 +63,11 @@ queue *createQueue(robj *name) {
     q->sl = skiplistCreate(skiplistCompareJobs);
     q->ctime = mstime();
     q->atime = q->ctime;
-    q->needjobs_sent_time = 0;
+    q->needjobs_bcast_time = 0;
+    q->needjobs_adhoc_time = 0;
+    q->needjobs_responders = NULL; /* Created on demand to save memory. */
+    q->clients = NULL; /* Created on demand to save memory. */
+
     memset(q->produced_ops_samples,0,sizeof(q->produced_ops_samples));
     memset(q->consumed_ops_samples,0,sizeof(q->consumed_ops_samples));
     q->produced_ops_idx = 0;
@@ -113,8 +117,11 @@ int queueAddJob(robj *qname, job *job) {
     }
     job->state = JOB_STATE_QUEUED;
 
-    /* Put the job into the queue and update it queued time. */
-    job->qtime = server.unixtime;
+    /* Put the job into the queue and update the time we'll queue it again. */
+    if (job->retry)
+        job->qtime = server.unixtime + job->retry;
+    else
+        job->qtime = 0; /* Never re-queue at most once jobs. */
     queue *q = lookupQueue(qname);
     if (!q) q = createQueue(qname);
     skiplistInsert(q->sl,job);
@@ -143,6 +150,22 @@ unsigned long queueLength(robj *qname) {
 
 /* ------------------------- Queue related commands ------------------------- */
 
+/* QLEN <qname> -- Return the number of jobs queued. */
 void qlenCommand(client *c) {
     addReplyLongLong(c,queueLength(c->argv[1]));
 }
+
+/* GETJOBS [TIMEOUT <ms>] [COUNT <count>] FROM <qname1> <qname2> ... <qnameN>.
+ *
+ * Get jobs from the specified queues. By default COUNT is 1, so just one
+ * job will be returned. If there are no jobs in any of the specified queues
+ * the command will block.
+ *
+ * When there are jobs in more than one of the queues, the command guarantees
+ * to return jobs in the order the queues are specified. If COUNT allows
+ * more jobs to be returned, queues are scanned again and again in the same
+ * order popping more elements. */
+void getJobsCommand(client *c) {
+}
+
+

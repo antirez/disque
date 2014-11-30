@@ -137,8 +137,9 @@ typedef struct {
  * Used by: GOTJOB, SETACK. */
 typedef struct {
     char id[JOB_ID_LEN];
-    uint32_t maxreplicas; /* Number of nodes that may have this message, if
-                             applicable. */
+    uint32_t aux; /* Optional field:
+                     For SETACK: Number of nodes that may have this message.
+                     For QUEUEJOB: Delay starting from msg reception. */
 } clusterMsgDataJobID;
 
 union clusterMsgData {
@@ -195,6 +196,6 @@ extern clusterNode *myself;
 clusterNode *clusterLookupNode(char *name);
 void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
-void clusterSendQueueJob(clusterNode *node, job *j);
+void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay);
 
 #endif /* __DISQUE_CLUSTER_H */

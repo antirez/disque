@@ -94,9 +94,8 @@ typedef struct job {
                                ctime is time in milliseconds * 1000000, each
                                job created in the same millisecond in the same
                                node gets prev job ctime + 1. */
-    uint32_t qtime;         /* Job queued time: unix time job was queued. Or
-                               unix time the job was ACKED if state is ACKED. */
-    uint32_t rtime;         /* Job re-queue time: re-queue period in seconds. */
+    uint32_t delay;         /* Delay before to queue this job for 1st time. */
+    uint32_t retry;         /* Job re-queue time: re-queue period in seconds. */
     /* Up to this point we use the structure for on-wire serialization,
      * before here all the fields should be naturally aligned, and pointers
      * should only be present after. */
@@ -104,6 +103,12 @@ typedef struct job {
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
     dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. */
+    uint32_t qtime;         /* Next queue time: local unix time the job will be
+                               requeued in this node if not ACKed before.
+                               Qtime is updated when we receive QUEUED
+                               messages to avoid to re-queue if other nodes
+                               did. When qtime is set to zero for a job, it
+                               never gets re-queued. */
 } job;
 
 /* Number of bytes of directly serializable fields in the job structure. */

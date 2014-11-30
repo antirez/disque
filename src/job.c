@@ -251,7 +251,7 @@ sds serializeJob(job *j) {
     /* Use a relative expire time for serialization. */
     sj->etime = server.unixtime - sj->etime + 1;
     memrev32ifbe(&sj->etime);
-    memrev32ifbe(&sj->qtime);
+    memrev32ifbe(&sj->delay);
     memrev32ifbe(&sj->rtime);
 
     /* p now points to the start of the variable part of the serialization. */
@@ -319,7 +319,7 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     memrev64ifbe(j->ctime);
     memrev32ifbe(j->etime);
     j->etime = server.unixtime + j->etime; /* Convert back to absolute time. */
-    memrev32ifbe(j->qtime);
+    memrev32ifbe(j->delay);
     memrev32ifbe(j->rtime);
     p += JOB_STRUCT_SER_LEN;
     len -= JOB_STRUCT_SER_LEN;
@@ -376,15 +376,18 @@ fmterr:
  * local node.
  *
  * The creation time is not touched since it is used only for sorting.
- * The expire time is already fixed since the serialization functions
+ * The expire time is already fixed, since the serialization functions
  * handle expire in terms as seconds of life remaining, that is converted
  * back into an absolute time during deserialization. This means that the
  * expire time can only be moved into the future on time desynchronizations
  * but never in the past. */
 void fixForeingJobTimes(job *j) {
-    /* If the queued time is in the future from the POV of this node, set
-     * it to now, so that we are sure we'll re-queue the job eventually. */
-    if (j->qtime > server.unixtime) j->qtime = server.unixtime;
+    /* Fix the next time we need to queue this job. */
+    if (j->retry == 0) {
+        j->qtime = 0; /* At most once delivery? Never re-queue it. */
+        return;
+    }
+    j->qtime = server.unixtime + j.delay + j.retry;
 }
 
 /* This function is called when the job id at 'j' may be duplicated and we
@@ -482,7 +485,7 @@ void jobReplicationAchieved(job *j) {
         dictEntry *de = dictGetRandomKey(j->nodes_confirmed);
         if (de) {
             clusterNode *n = dictGetVal(de);
-            clusterSendQueueJob(n,j);
+            clusterSendQueueJob(n,j,j->delay);
         }
         unregisterJob(j);
         freeJob(j);
@@ -517,6 +520,7 @@ void addjobCommand(client *c) {
     long long replicate = server.cluster->size > 3 ? 3 : server.cluster->size;
     long long ttl = 3600*24;
     long long retry = -1;
+    long long delay = 0;
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
@@ -544,7 +548,14 @@ void addjobCommand(client *c) {
         } else if (!strcasecmp(opt,"retry") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&retry);
             if (retval != DISQUE_OK || retry < 0) {
-                addReplyError(c,"RETRY count must be a non negative number");
+                addReplyError(c,"RETRY time must be a non negative number");
+                return;
+            }
+            j++;
+        } else if (!strcasecmp(opt,"delay") && !lastarg) {
+            retval = getLongLongFromObject(c->argv[j+1],&delay);
+            if (retval != DISQUE_OK || retry < 0) {
+                addReplyError(c,"DELAY time must be a non negative number");
                 return;
             }
             j++;
@@ -566,6 +577,13 @@ void addjobCommand(client *c) {
     if (replicate > 1 && retry == 0) {
         addReplyError(c,"With RETRY set to 0 please explicitly set  "
                         "REPLICATE to 1 (at-most-once delivery)");
+        return;
+    }
+
+    /* DELAY greater or equal to TTL is silly. */
+    if (delay >= ttl) {
+        addReplyError(c,"The specified DELAY is greater than TTL. Job refused "
+                        "since would never be delivered");
         return;
     }
 
@@ -612,9 +630,16 @@ void addjobCommand(client *c) {
     prev_ctime = job->ctime;
 
     job->etime = job->ctime + ttl;
-    job->qtime = 0; /* Will be updated by queueAddjob(). */
-    job->rtime = retry;
+    job->delay = delay;
+    job->retry = retry;
     job->body = sdsdup(c->argv[2]->ptr);
+
+    if (job->retry) {
+        /* Set a qtime just in case queueAddJob() does not get called. */
+        job->qtime = server.unixtime + delay + retry;
+    } else {
+        job->qtime = 0; /* Never requeue at most once jobs. */
+    }
 
     /* Register the job locally in all the cases but when the job
      * is externally replicated and asynchronous replicated at the same
@@ -665,7 +690,7 @@ void addjobCommand(client *c) {
         dictEntry *de = dictGetRandomKey(job->nodes_delivered);
         if (de) {
             clusterNode *n = dictGetVal(de);
-            clusterSendQueueJob(n,job);
+            clusterSendQueueJob(n,job,job->delay);
         }
         freeJob(job);
     }

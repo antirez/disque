@@ -1611,7 +1611,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
 }
 
 /* Helper function to send all the messages that have just a type,
- * a Job ID, and an optional 'maxreplicas' additional value. */
+ * a Job ID, and an optional 'aux' additional value. */
 void clusterSendJobIDMessage(int type, clusterNode *node, job *j, int mr) {
     unsigned char buf[sizeof(clusterMsg)];
     clusterMsg *hdr = (clusterMsg*) buf;
@@ -1619,7 +1619,7 @@ void clusterSendJobIDMessage(int type, clusterNode *node, job *j, int mr) {
     if (node->link == NULL) return; /* This is a best effort message. */
     clusterBuildMessageHdr(hdr,type);
     memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
-    hdr->data.jobid.job.maxreplicas = mr;
+    hdr->data.jobid.job.aux = mr;
     clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 
@@ -1634,8 +1634,8 @@ void clusterSendGotJob(clusterNode *node, job *j) {
 
 /* Force the receiver the queue a job, if it has that job in an active
  * state. */
-void clusterSendQueueJob(clusterNode *node, job *j) {
-    clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j,0);
+void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay) {
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j,delay);
 }
 
 /* -----------------------------------------------------------------------------

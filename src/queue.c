@@ -121,12 +121,14 @@ int queueJob(job *job) {
     job->state = JOB_STATE_QUEUED;
 
     /* Put the job into the queue and update the time we'll queue it again. */
-    if (job->retry)
+    if (job->retry) {
+        job->flags |= JOB_FLAG_BCAST_WILLQUEUE;
         job->qtime = server.mstime +
                      job->retry*1000 +
                      randomTimeError(DISQUE_TIME_ERR);
-    else
+    } else {
         job->qtime = 0; /* Never re-queue at most once jobs. */
+    }
 
     /* The first time a job is queued we don't need to broadcast a QUEUED
      * message, to save bandwidth. But the next times, when the job is
@@ -153,6 +155,7 @@ int dequeueJob(job *job) {
     if (!q) return DISQUE_ERR;
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
+    serverLog(DISQUE_NOTICE,"DE-QUEUED %.48s", job->id);
     return DISQUE_ERR;
 }
 

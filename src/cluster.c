@@ -1095,7 +1095,8 @@ int clusterProcessPacket(clusterLink *link) {
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
                type == CLUSTERMSG_TYPE_QUEUEJOB ||
                type == CLUSTERMSG_TYPE_QUEUED ||
-               type == CLUSTERMSG_TYPE_SETACK)
+               type == CLUSTERMSG_TYPE_SETACK ||
+               type == CLUSTERMSG_TYPE_WILLQUEUE)
     {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
@@ -1322,15 +1323,22 @@ int clusterProcessPacket(clusterLink *link) {
             {
                 dequeueJob(j);
             }
-            if (j->retry)
+            if (j->retry) {
+                j->flags |= JOB_FLAG_BCAST_WILLQUEUE;
                 updateJobRequeueTime(j,server.mstime+
                                        j->retry*1000+
                                        randomTimeError(DISQUE_TIME_ERR));
+            }
         } else if (j && j->state == JOB_STATE_ACKED) {
             /* Some other node queued a message that we have as
              * already acknowledged. Try to force it to drop it. */
             clusterSendSetAck(sender,j);
         }
+    } else if (type == CLUSTERMSG_TYPE_WILLQUEUE) {
+        if (!sender) return 1;
+
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j && j->state == JOB_STATE_QUEUED) clusterSendQueued(j);
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
     }
@@ -1493,7 +1501,8 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
                type == CLUSTERMSG_TYPE_QUEUEJOB ||
                type == CLUSTERMSG_TYPE_QUEUED ||
-               type == CLUSTERMSG_TYPE_SETACK)
+               type == CLUSTERMSG_TYPE_SETACK ||
+               type == CLUSTERMSG_TYPE_WILLQUEUE)
     {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataJobID);
@@ -1668,6 +1677,21 @@ void clusterSendJobIDMessage(int type, clusterNode *node, job *j, int mr) {
     clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 
+/* Like clusterSendJobIDMessage(), but sends the message to the set
+ * of nodes that may have a copy of the message. */
+void clusterBroadcastJobIDMessage(job *j, int type, uint32_t aux) {
+    dictIterator *di = dictGetIterator(j->nodes_delivered);
+    dictEntry *de;
+
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+        if (node == myself) continue;
+        if (node->link)
+            clusterSendJobIDMessage(type,node,j,aux);
+    }
+    dictReleaseIterator(di);
+}
+
 /* Send a GOTJOB message to the specified node, if connected.
  * GOTJOB messages only contain the ID of the job, and are acknowledges
  * that the job was replicated to a target node. The receiver of the message
@@ -1692,16 +1716,16 @@ void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay) {
  * This message is sent to all the nodes we believe may have a copy
  * of the message and are reachable. */
 void clusterSendQueued(job *j) {
-    dictIterator *di = dictGetIterator(j->nodes_delivered);
-    dictEntry *de;
+    serverLog(DISQUE_NOTICE,"BCAST QUEUED: %.48s",j->id);
+    clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_QUEUED,0);
+}
 
-    while((de = dictNext(di)) != NULL) {
-        clusterNode *node = dictGetVal(de);
-        if (node == myself) continue;
-        if (node->link)
-            clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUED,node,j,0);
-    }
-    dictReleaseIterator(di);
+/* Tell the receiver to reply with a QUEUED message if it has the job
+ * already queued, to prevent us from queueing it in the next few
+ * milliseconds. */
+void clusterSendWillQueue(job *j) {
+    serverLog(DISQUE_NOTICE,"BCAST WILLQUEUE: %.48s",j->id);
+    clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_WILLQUEUE,0);
 }
 
 /* Force the receiver to acknowledge the job as delivered. */

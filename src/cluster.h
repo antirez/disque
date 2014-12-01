@@ -103,6 +103,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_QUEUEJOB 6      /* Queue the specified job. */
 #define CLUSTERMSG_TYPE_QUEUED 7        /* Update your job qtime. */
 #define CLUSTERMSG_TYPE_SETACK 8        /* Move job state as ACKed. */
+#define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -201,6 +202,7 @@ void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
 void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay);
 void clusterSendQueued(job *j);
+void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);
 
 #endif /* __DISQUE_CLUSTER_H */

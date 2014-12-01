@@ -237,8 +237,13 @@ void updateJobAwakeTime(job *j, mstime_t at) {
             if (retry_gc_again < at) at = retry_gc_again;
         } else if ((j->state == JOB_STATE_ACTIVE ||
                     j->state == JOB_STATE_QUEUED) && j->qtime) {
-            /* Schedule the job to be queued. */
-            if (j->qtime < at) at = j->qtime;
+            /* Schedule the job to be queued, and if the job is flagged
+             * BAST_WILLQUEUE, make sure to awake the job a bit earlier
+             * to broadcast a WILLQUEUE message. */
+            mstime_t qtime = j->qtime;
+            if (j->flags & JOB_FLAG_BCAST_WILLQUEUE)
+                qtime -= JOB_WILLQUEUE_ADVANCE;
+            if (qtime < at) at = qtime;
         }
     }
 
@@ -300,6 +305,16 @@ void processJob(job *j) {
         return;
     }
 
+    /* Inform other nodes we are going to requeue the job. */
+    if ((j->state == JOB_STATE_ACTIVE ||
+         j->state == JOB_STATE_QUEUED) &&
+         j->qtime-JOB_WILLQUEUE_ADVANCE <= server.mstime)
+    {
+        if (j->state != JOB_STATE_QUEUED) clusterSendWillQueue(j);
+        j->flags &= ~JOB_FLAG_BCAST_WILLQUEUE;
+        updateJobAwakeTime(j,0);
+    }
+
     /* Requeue job if needed. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
         queueJob(j);
@@ -309,6 +324,7 @@ void processJob(job *j) {
     if (j->state == JOB_STATE_QUEUED && j->qtime <= server.mstime &&
         j->retry)
     {
+        j->flags |= JOB_FLAG_BCAST_WILLQUEUE;
         j->qtime = server.mstime +
                    j->retry*1000 +
                    randomTimeError(DISQUE_TIME_ERR);
@@ -512,13 +528,15 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     len -= JOB_STRUCT_SER_LEN;
 
     /* Compute next queue time from known parameters. */
-    if (j->retry)
+    if (j->retry) {
+        j->flags |= JOB_FLAG_BCAST_WILLQUEUE;
         j->qtime = server.mstime +
                    j->delay*1000 +
                    j->retry*1000 +
                    randomTimeError(DISQUE_TIME_ERR);
-    else
+    } else {
         j->qtime = 0;
+    }
 
     /* Queue name. */
     memcpy(&aux,p,sizeof(aux));

@@ -122,7 +122,9 @@ int queueJob(job *job) {
 
     /* Put the job into the queue and update the time we'll queue it again. */
     if (job->retry)
-        job->qtime = server.unixtime + job->retry;
+        job->qtime = server.mstime +
+                     job->retry*1000 +
+                     randomTimeError(DISQUE_TIME_ERR);
     else
         job->qtime = 0; /* Never re-queue at most once jobs. */
 

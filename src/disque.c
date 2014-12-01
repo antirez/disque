@@ -225,8 +225,15 @@ long long ustime(void) {
 }
 
 /* Return the UNIX time in milliseconds */
-long long mstime(void) {
+mstime_t mstime(void) {
     return ustime()/1000;
+}
+
+/* Return a random time error between -(milliseconds/2) and +(milliseconds/2).
+ * This is useful in order to desynchronize multiple nodes competing for the
+ * same operation in a best-effort way. */
+mstime_t randomTimeError(mstime_t milliseconds) {
+    return rand()%milliseconds - milliseconds/2;
 }
 
 /* After an RDB dump or AOF rewrite we exit from children using _exit() instead of
@@ -645,8 +652,6 @@ void updateCachedTime(void) {
  * a macro is used: run_with_period(milliseconds) { .... }
  */
 
-void processJobs(void);
-
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     DISQUE_NOTUSED(eventLoop);
     DISQUE_NOTUSED(id);
@@ -769,9 +774,6 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     run_with_period(100) {
         clusterCron();
     }
-
-    /* Process jobs that are ready for state change. */
-    processJobs();
 
     server.cronloops++;
     return 1000/server.hz;
@@ -1146,6 +1148,7 @@ void resetServerStats(void) {
 }
 
 int skiplistCompareJobsToAwake(const void *a, const void *b);
+int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData);
 
 void initServer(void) {
     int j;
@@ -1214,8 +1217,10 @@ void initServer(void) {
 
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
-    if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
-        serverPanic("Can't create the serverCron time event.");
+    if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR ||
+       aeCreateTimeEvent(server.el, 1, processJobs, NULL, NULL) == AE_ERR)
+    {
+        serverPanic("Can't create the serverCron or processJobs time event.");
         exit(1);
     }
 

@@ -224,12 +224,16 @@ void GCJob(job *j) {
  *
  * Otherwise if 'at' is non-zero, it's up to the caller to set the time
  * at which the job will be awake again. */
-void updateJobAwakeTime(job *j, uint32_t at) {
+void updateJobAwakeTime(job *j, mstime_t at) {
     if (at == 0) {
-        at = j->etime; /* Best case is to handle it for eviction. */
+        /* Best case is to handle it for eviction. One second more is added
+         * in order to make sure when the job is processed we found it to
+         * be already expired. */
+        at = (mstime_t)j->etime*1000+1000;
+
         if (j->state == JOB_STATE_ACKED) {
             /* Try to garbage collect this ACKed job again in the future. */
-            uint32_t retry_gc_again = server.unixtime + JOB_GC_RETRY_PERIOD;
+            mstime_t retry_gc_again = server.mstime + JOB_GC_RETRY_PERIOD*1000;
             if (retry_gc_again < at) at = retry_gc_again;
         } else if ((j->state == JOB_STATE_ACTIVE ||
                     j->state == JOB_STATE_QUEUED) && j->qtime) {
@@ -252,7 +256,7 @@ void updateJobAwakeTime(job *j, uint32_t at) {
 
 /* Set the specified unix time at which a job will be queued again
  * in the local node. */
-void updateJobRequeueTime(job *j, time_t qtime) {
+void updateJobRequeueTime(job *j, mstime_t qtime) {
     /* Don't violate at-most-once (retry == 0) contract in case of bugs. */
     if (j->retry == 0 || j->qtime == 0) return;
     j->qtime = qtime;
@@ -271,17 +275,20 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
     return memcmp(ja->id,jb->id,JOB_ID_LEN);
 }
 
-/* Handle background tasks about the specified job. */
+/* Process the specified job to perform asynchronous operations on it.
+ * Check processJobs() for more info. */
 void processJob(job *j) {
-    uint32_t old_awakeme = j->awakeme;
+    mstime_t old_awakeme = j->awakeme;
 
     serverLog(DISQUE_NOTICE,
-        "PROCESS %.48s: state=%d now=%d qtime=%d etime=%d delay=%d",
+        "PROCESS %.48s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
         j->id,
         (int)j->state,
-        (int)server.unixtime,
-        (int)j->qtime,
-        (int)j->etime,
+        (long long)mstime(),
+        (long long)j->awakeme-mstime(),
+        (long long)j->awakeme,
+        (long long)j->qtime-mstime(),
+        (long long)j->etime*1000-mstime(),
         (int)j->delay
         );
 
@@ -294,15 +301,17 @@ void processJob(job *j) {
     }
 
     /* Requeue job if needed. */
-    if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.unixtime) {
+    if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
         queueJob(j);
     }
 
     /* Update job re-queue time if job is already queued. */
-    if (j->state == JOB_STATE_QUEUED && j->qtime <= server.unixtime &&
+    if (j->state == JOB_STATE_QUEUED && j->qtime <= server.mstime &&
         j->retry)
     {
-        j->qtime = server.unixtime + j->retry;
+        j->qtime = server.mstime +
+                   j->retry*1000 +
+                   randomTimeError(DISQUE_TIME_ERR);
         updateJobAwakeTime(j,0);
     }
 
@@ -316,11 +325,16 @@ void processJob(job *j) {
         serverLog(DISQUE_WARNING,"Warning: not processed job %.48s", j->id);
 }
 
-/* Walk the skiplist of awakeme jobs to process each job. */
-void processJobs(void) {
+int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
+    int period = 100; /* 100 ms default period. */
     int max = 10000;
+    mstime_t now = mstime();
     skiplistNode *current, *next;
+    DISQUE_NOTUSED(eventLoop);
+    DISQUE_NOTUSED(id);
+    DISQUE_NOTUSED(clientData);
 
+    server.mstime = now; /* Update it since it's used by processJob(). */
     current = server.awakeme->header->level[0].forward;
     while(current && max--) {
         job *j = current->obj;
@@ -328,14 +342,27 @@ void processJobs(void) {
 #if 0
         serverLog(DISQUE_NOTICE,"%.48s %d",
             j->id,
-            (int) (j->awakeme-server.unixtime));
+            (int) (j->awakeme-server.mstime));
 #endif
 
-        if (j->awakeme > server.unixtime) break;
+        if (j->awakeme > now) break;
         next = current->level[0].forward;
         processJob(j);
         current = next;
     }
+
+    /* Try to block between 1 and 100 millseconds depending on how near
+     * in time is the next async event to process. Note that because of
+     * received commands or change in state jobs state may be modified so
+     * we set a max time of 100 milliseconds to wakeup anyway. */
+    current = server.awakeme->header->level[0].forward;
+    if (current) {
+        job *j = current->obj;
+        period = server.mstime-j->awakeme;
+        if (period < 1) period = 1;
+        else if (period > 100) period = 100;
+    }
+    return period;
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
@@ -486,7 +513,10 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
 
     /* Compute next queue time from known parameters. */
     if (j->retry)
-        j->qtime = server.unixtime + j->delay + j->retry;
+        j->qtime = server.mstime +
+                   j->delay*1000 +
+                   j->retry*1000 +
+                   randomTimeError(DISQUE_TIME_ERR);
     else
         j->qtime = 0;
 
@@ -535,25 +565,6 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
 fmterr:
     freeJob(j);
     return NULL;
-}
-
-/* This function is called for jobs that we receive from external nodes
- * via the ADDJOB command, in order to fix the time fields according to the
- * local node.
- *
- * The creation time is not touched since it is used only for sorting.
- * The expire time is already fixed, since the serialization functions
- * handle expire in terms as seconds of life remaining, that is converted
- * back into an absolute time during deserialization. This means that the
- * expire time can only be moved into the future on time desynchronizations
- * but never in the past. */
-void fixForeingJobTimes(job *j) {
-    /* Fix the next time we need to queue this job. */
-    if (j->retry == 0) {
-        j->qtime = 0; /* At most once delivery? Never re-queue it. */
-        return;
-    }
-    j->qtime = server.unixtime + j->delay + j->retry;
 }
 
 /* This function is called when the job id at 'j' may be duplicated and we
@@ -807,10 +818,10 @@ void addjobCommand(client *c) {
      * queueJob() the first time, this will be set to 0 (never queue
      * again) for jobs that have a zero retry value (at most once jobs). */
     if (delay) {
-        job->qtime = server.unixtime + delay;
+        job->qtime = server.mstime + delay*1000;
     } else {
         /* This will be updated anyway by queueJob(). */
-        job->qtime = server.unixtime + retry;
+        job->qtime = server.mstime + retry*1000;
     }
 
     /* Register the job locally in all the cases but when the job

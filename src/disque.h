@@ -73,6 +73,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_DEFAULT_HZ        10      /* Time interrupt calls/sec. */
 #define DISQUE_MIN_HZ            1
 #define DISQUE_MAX_HZ            500
+#define DISQUE_TIME_ERR          500     /* Desynchronization (in ms) */
 #define DISQUE_SERVERPORT        7711    /* TCP port */
 #define DISQUE_TCP_BACKLOG       511     /* TCP listen backlog */
 #define DISQUE_MAXIDLETIME       0       /* default client timeout: infinite */
@@ -688,6 +689,7 @@ extern dictType replScriptCacheDictType;
 /* Utils */
 long long ustime(void);
 long long mstime(void);
+mstime_t randomTimeError(mstime_t milliseconds);
 void getRandomHexChars(char *p, unsigned int len);
 uint64_t crc64(uint64_t crc, const unsigned char *s, uint64_t l);
 void exitFromChild(int retcode);

@@ -1276,7 +1276,6 @@ int clusterProcessPacket(clusterLink *link) {
                 updateJobNodes(j);
                 freeJob(j);
             } else {
-                fixForeingJobTimes(j);
                 registerJob(j);
                 if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
                     clusterSendGotJob(sender,j);
@@ -1305,7 +1304,7 @@ int clusterProcessPacket(clusterLink *link) {
             if (delay == 0) {
                 queueJob(j);
             } else {
-                updateJobRequeueTime(j,server.unixtime+delay);
+                updateJobRequeueTime(j,server.mstime+delay*1000);
             }
         }
     } else if (type == CLUSTERMSG_TYPE_QUEUED) {
@@ -1324,7 +1323,9 @@ int clusterProcessPacket(clusterLink *link) {
                 dequeueJob(j);
             }
             if (j->retry)
-                updateJobRequeueTime(j,server.unixtime+j->retry);
+                updateJobRequeueTime(j,server.mstime+
+                                       j->retry*1000+
+                                       randomTimeError(DISQUE_TIME_ERR));
         } else if (j && j->state == JOB_STATE_ACKED) {
             /* Some other node queued a message that we have as
              * already acknowledged. Try to force it to drop it. */

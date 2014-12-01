@@ -106,13 +106,16 @@ typedef struct job {
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
     dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. */
-    uint32_t qtime;         /* Next queue time: local unix time the job will be
+    /* Note: qtime and awakeme are in milliseconds because we need to
+     * desync different nodes in an effective way to avoid useless multiple
+     * deliveries when jobs are re-queued. */
+    mstime_t qtime;         /* Next queue time: local unxt ime the job will be
                                requeued in this node if not ACKed before.
                                Qtime is updated when we receive QUEUED
                                messages to avoid to re-queue if other nodes
                                did. When qtime is set to zero for a job, it
                                never gets re-queued again. */
-    uint32_t awakeme;       /* Time at which we need to take actions about this
+    mstime_t awakeme;       /* Time at which we need to take actions about this
                                job in this node. All the registerd jobs are
                                ordered by awakeme time in the server.awakeme
                                skip list, unless awakeme is set to zero. */
@@ -130,7 +133,7 @@ int registerJob(job *j);
 void freeJob(job *j);
 void jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
-void updateJobAwakeTime(job *j, uint32_t at);
-void updateJobRequeueTime(job *j, time_t qtime);
+void updateJobAwakeTime(job *j, mstime_t at);
+void updateJobRequeueTime(job *j, mstime_t qtime);
 
 #endif

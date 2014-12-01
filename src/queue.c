@@ -188,7 +188,8 @@ void qlenCommand(client *c) {
     addReplyLongLong(c,queueLength(c->argv[1]));
 }
 
-/* GETJOBS [TIMEOUT <ms>] [COUNT <count>] FROM <qname1> <qname2> ... <qnameN>.
+/* GETJOBS [NOHANG] [TIMEOUT <ms>] [COUNT <count>] FROM <qname1>
+ *          <qname2> ... <qnameN>.
  *
  * Get jobs from the specified queues. By default COUNT is 1, so just one
  * job will be returned. If there are no jobs in any of the specified queues
@@ -198,7 +199,50 @@ void qlenCommand(client *c) {
  * to return jobs in the order the queues are specified. If COUNT allows
  * more jobs to be returned, queues are scanned again and again in the same
  * order popping more elements. */
-void getJobsCommand(client *c) {
+void getjobsCommand(client *c) {
+    mstime_t timeout = 0; /* Block forever by default. */
+    long long count = 1;
+    int nohang; /* Don't block even if all the queues are empty. */
+    robj **queues = NULL;
+    int numqueues = 0;
+
+    /* Parse args. */
+    for (j = 2; j < c->argc; j++) {
+        char *opt = c->argv[j]->ptr;
+        int lastarg = j == c->argc-1;
+        if (!strcasecmp(opt,"nohang")) {
+            nohang = 1;
+        } else if (!strcasecmp(opt,"timeout") && !lastarg) {
+            if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,
+                UNIT_MILLISECONDS) != DISQUE_OK) return;
+            j++;
+        } else if (!strcasecmp(opt,"count") && !lastarg) {
+            retval = getLongLongFromObject(c->argv[j+1],&count);
+            if (retval != DISQUE_OK || count < 0) {
+                addReplyError(c,"COUNT must be a number > 0");
+                return;
+            }
+            j++;
+        } else if (!strcasecmp(opt,"from")) {
+            queues = c->argv[j];
+            numqueues = c->argc - j - 1;
+            break; /* Don't process options after this. */
+        } else {
+            addReply(c,shared.syntaxerr);
+            return;
+        }
+    }
+
+    /* FROM is mandatory. */
+    if (queues == NULL || numqueues == 0) {
+        addReply(c,shared.syntaxerr);
+        return;
+    }
+
+    /* First: try to avoid blocking if there is at least one job in at
+     * least one queue. */
+
+    /* No way, we need to block. */
 }
 
 

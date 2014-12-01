@@ -958,6 +958,7 @@ void commandCommand(client *c);
 void latencyCommand(client *c);
 void addjobCommand(client *c);
 void qlenCommand(client *c);
+void getjobsCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

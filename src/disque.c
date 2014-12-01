@@ -95,8 +95,8 @@ struct disqueServer server; /* server global state */
  *
  * This is the meaning of the flags:
  *
- * w: write command (may modify the key space).
- * r: read command  (will never modify the key space).
+ * w: write command (may modify jobs state).
+ * r: read command  (will never modify jobs state).
  * m: may increase memory usage once called. Don't allow if out of memory.
  * a: admin command, like SAVE or SHUTDOWN.
  * l: Allow command while loading the database.
@@ -124,6 +124,7 @@ struct serverCommand serverCommandTable[] = {
     /* Jobs and queues. */
     {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
+    {"getjobs",getjobsCommand,-2,"wF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

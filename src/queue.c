@@ -106,7 +106,8 @@ int destroyQueue(robj *name) {
  * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
  * and the operation succeeds. */
 int queueJob(job *job) {
-    if (job->state == JOB_STATE_QUEUED) return DISQUE_ERR;
+    if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
+        return DISQUE_ERR;
 
     printf("QUEUED %.48s\n", job->id);
 

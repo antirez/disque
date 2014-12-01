@@ -232,10 +232,10 @@ void updateJobAwakeTime(job *j, uint32_t at) {
             /* Try to garbage collect this ACKed job again in the future. */
             uint32_t retry_gc_again = server.unixtime + JOB_GC_RETRY_PERIOD;
             if (retry_gc_again < at) at = retry_gc_again;
-        } else if (j->state == JOB_STATE_ACTIVE ||
-                   j->state == JOB_STATE_QUEUED) {
-            /* Schedule the job to be re-queued if needed. */
-            if (j->retry != 0 && j->qtime < at) at = j->qtime;
+        } else if ((j->state == JOB_STATE_ACTIVE ||
+                    j->state == JOB_STATE_QUEUED) && j->qtime) {
+            /* Schedule the job to be queued. */
+            if (j->qtime < at) at = j->qtime;
         }
     }
 
@@ -295,6 +295,14 @@ void processJob(job *j) {
     /* Requeue job if needed. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.unixtime) {
         queueJob(j);
+    }
+
+    /* Update job re-queue time if job is already queued. */
+    if (j->state == JOB_STATE_QUEUED && j->qtime <= server.unixtime &&
+        j->retry)
+    {
+        j->qtime = server.unixtime + j->retry;
+        updateJobAwakeTime(j,0);
     }
 
     /* Try a job garbage collection. */
@@ -836,8 +844,15 @@ void addjobCommand(client *c) {
          * retain a copy of the job. */
         if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
-        if (job->delay == 0)
+        if (job->delay == 0) {
             queueJob(job); /* Will change the job state. */
+        } else {
+            /* Delayed jobs that don't wait for replications can move
+             * forward to ACTIVE state ASAP, and get scheduled for
+             * queueing. */
+            job->state = JOB_STATE_ACTIVE;
+            updateJobAwakeTime(job,0);
+        }
         addReplyJobID(c,job);
     }
 

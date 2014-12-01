@@ -109,7 +109,7 @@ typedef struct job {
                                Qtime is updated when we receive QUEUED
                                messages to avoid to re-queue if other nodes
                                did. When qtime is set to zero for a job, it
-                               never gets re-queued. */
+                               never gets re-queued again. */
     uint32_t awakeme;       /* Time at which we need to take actions about this
                                job in this node. All the registerd jobs are
                                ordered by awakeme time in the server.awakeme

@@ -108,6 +108,8 @@ int destroyQueue(robj *name) {
 int queueJob(job *job) {
     if (job->state == JOB_STATE_QUEUED) return DISQUE_ERR;
 
+    printf("QUEUED %.48s\n", job->id);
+
     /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
      * hash table again for ACKs tracking in order to garbage collect the
      * job once processed. */
@@ -122,6 +124,7 @@ int queueJob(job *job) {
         job->qtime = server.unixtime + job->retry;
     else
         job->qtime = 0; /* Never re-queue at most once jobs. */
+    updateJobAwakeTime(job,0);
     queue *q = lookupQueue(job->queue);
     if (!q) q = createQueue(job->queue);
     serverAssert(skiplistInsert(q->sl,job) != NULL);

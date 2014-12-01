@@ -831,7 +831,7 @@ void markNodeAsFailingIfNeeded(clusterNode *node) {
     failures++;
     if (failures < needed_quorum) return; /* No weak agreement from masters. */
 
-    serverLog(DISQUE_NOTICE,
+    serverLog(DISQUE_VERBOSE,
         "Marking node %.40s as failing (quorum reached).", node->name);
 
     /* Mark the node as failing. */
@@ -852,7 +852,7 @@ void clearNodeFailureIfNeeded(clusterNode *node) {
     serverAssert(nodeFailed(node));
 
     /* We always clear the FAIL flag if we can contact the node again. */
-    serverLog(DISQUE_NOTICE,
+    serverLog(DISQUE_VERBOSE,
         "Clear FAIL state for node %.40s: it is reachable again.",
             node->name);
     node->flags &= ~DISQUE_NODE_FAIL;
@@ -1240,7 +1240,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (failing &&
             !(failing->flags & (DISQUE_NODE_FAIL|DISQUE_NODE_MYSELF)))
         {
-            serverLog(DISQUE_NOTICE,
+            serverLog(DISQUE_VERBOSE,
                 "FAIL message received from %.40s about %.40s",
                 hdr->sender, hdr->data.fail.about.nodename);
             failing->flags |= DISQUE_NODE_FAIL;
@@ -1273,8 +1273,6 @@ int clusterProcessPacket(clusterLink *link) {
                 updateJobNodes(j);
                 freeJob(j);
             } else {
-                /* Fix the different times, and set the job last queue
-                 * time to now. */
                 fixForeingJobTimes(j);
                 registerJob(j);
                 if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))

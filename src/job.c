@@ -189,6 +189,13 @@ void *jobGetAssociatedValue(job *j) {
     return de ? dictGetVal(de) : NULL;
 }
 
+/* ------------------------- Garbage collection ----------------------------- */
+
+/* Try to garbage collect the job. */
+void GCJob(job *j) {
+    printf("GC %.48s\n", j->id);
+}
+
 /* ----------------------------- Awakeme list ------------------------------
  * Disque needs to perform periodic tasks on registered jobs, for example
  * we need to remove expired jobs (TTL reached), requeue existing jobs that
@@ -225,7 +232,8 @@ void updateJobAwakeTime(job *j, uint32_t at) {
             /* Try to garbage collect this ACKed job again in the future. */
             uint32_t retry_gc_again = server.unixtime + JOB_GC_RETRY_PERIOD;
             if (retry_gc_again < at) at = retry_gc_again;
-        } else {
+        } else if (j->state == JOB_STATE_ACTIVE ||
+                   j->state == JOB_STATE_QUEUED) {
             /* Schedule the job to be re-queued if needed. */
             if (j->retry != 0 && j->qtime < at) at = j->qtime;
         }
@@ -261,6 +269,64 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
     if (ja->ctime > jb->ctime) return -1;
     if (jb->ctime > ja->ctime) return 1;
     return memcmp(ja->id,jb->id,JOB_ID_LEN);
+}
+
+/* Handle background tasks about the specified job. */
+void processJob(job *j) {
+    uint32_t old_awakeme = j->awakeme;
+
+    printf("PROCESS %.48s: state=%d now=%d qtime=%d etime=%d delay=%d\n",
+        j->id,
+        (int)j->state,
+        (int)server.unixtime,
+        (int)j->qtime,
+        (int)j->etime,
+        (int)j->delay
+        );
+
+    /* Remove expired jobs. */
+    if (j->etime <= server.unixtime) {
+        printf("EVICT %.48s\n", j->id);
+        unregisterJob(j);
+        freeJob(j);
+        return;
+    }
+
+    /* Requeue job if needed. */
+    if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.unixtime) {
+        queueJob(j);
+    }
+
+    /* Try a job garbage collection. */
+    if (j->state == JOB_STATE_ACKED) {
+        GCJob(j);
+        updateJobAwakeTime(j,0);
+    }
+
+    if (old_awakeme == j->awakeme)
+        serverLog(DISQUE_WARNING,"Warning: not processed job %.48s", j->id);
+}
+
+/* Walk the skiplist of awakeme jobs to process each job. */
+void processJobs(void) {
+    int max = 10000;
+    skiplistNode *current, *next;
+
+    current = server.awakeme->header->level[0].forward;
+    while(current && max--) {
+        job *j = current->obj;
+
+/*
+        printf("%.48s %d\n",
+            j->id,
+            (int) (j->awakeme-server.unixtime));
+*/
+
+        if (j->awakeme > server.unixtime) break;
+        next = current->level[0].forward;
+        processJob(j);
+        current = next;
+    }
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
@@ -331,7 +397,10 @@ sds serializeJob(job *j) {
     memrev16ifbe(&sj->repl);
     memrev64ifbe(&sj->ctime);
     /* Use a relative expire time for serialization. */
-    sj->etime = server.unixtime - sj->etime + 1;
+    if (sj->etime >= server.unixtime)
+        sj->etime = sj->etime - server.unixtime + 1;
+    else
+        sj->etime = 1;
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->delay);
     memrev32ifbe(&sj->retry);
@@ -583,6 +652,8 @@ void jobReplicationAchieved(job *j) {
     /* Queue the job locally. */
     if (j->delay == 0)
         queueJob(j); /* Will change the job state. */
+    else
+        updateJobAwakeTime(j,0); /* Queue with delay. */
 }
 
 /* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC]
@@ -643,7 +714,7 @@ void addjobCommand(client *c) {
             j++;
         } else if (!strcasecmp(opt,"delay") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&delay);
-            if (retval != DISQUE_OK || retry < 0) {
+            if (retval != DISQUE_OK || delay < 0) {
                 addReplyError(c,"DELAY time must be a non negative number");
                 return;
             }
@@ -718,7 +789,7 @@ void addjobCommand(client *c) {
     if (job->ctime == prev_ctime) job->ctime++;
     prev_ctime = job->ctime;
 
-    job->etime = job->ctime + ttl;
+    job->etime = server.unixtime + ttl;
     job->delay = delay;
     job->retry = retry;
     job->body = sdsdup(c->argv[2]->ptr);
@@ -726,7 +797,12 @@ void addjobCommand(client *c) {
     /* Set the next time the job will be queued. Note that once we call
      * queueJob() the first time, this will be set to 0 (never queue
      * again) for jobs that have a zero retry value (at most once jobs). */
-    job->qtime = server.unixtime + delay + retry;
+    if (delay) {
+        job->qtime = server.unixtime + delay;
+    } else {
+        /* This will be updated anyway by queueJob(). */
+        job->qtime = server.unixtime + retry;
+    }
 
     /* Register the job locally in all the cases but when the job
      * is externally replicated and asynchronous replicated at the same

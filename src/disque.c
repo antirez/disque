@@ -645,6 +645,8 @@ void updateCachedTime(void) {
  * a macro is used: run_with_period(milliseconds) { .... }
  */
 
+void processJobs(void);
+
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     DISQUE_NOTUSED(eventLoop);
     DISQUE_NOTUSED(id);
@@ -767,6 +769,9 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     run_with_period(100) {
         clusterCron();
     }
+
+    /* Process jobs that are ready for state change. */
+    processJobs();
 
     server.cronloops++;
     return 1000/server.hz;

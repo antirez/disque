@@ -308,6 +308,7 @@ void processJob(job *j) {
     /* Inform other nodes we are going to requeue the job. */
     if ((j->state == JOB_STATE_ACTIVE ||
          j->state == JOB_STATE_QUEUED) &&
+         j->flags & JOB_FLAG_BCAST_WILLQUEUE &&
          j->qtime-JOB_WILLQUEUE_ADVANCE <= server.mstime)
     {
         if (j->state != JOB_STATE_QUEUED) clusterSendWillQueue(j);

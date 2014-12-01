@@ -201,13 +201,13 @@ void qlenCommand(client *c) {
  * order popping more elements. */
 void getjobsCommand(client *c) {
     mstime_t timeout = 0; /* Block forever by default. */
-    long long count = 1;
-    int nohang; /* Don't block even if all the queues are empty. */
+    long long count = 1, emitted_jobs = 0;
+    int nohang = 0; /* Don't block even if all the queues are empty. */
     robj **queues = NULL;
-    int numqueues = 0;
+    int j, numqueues = 0;
 
     /* Parse args. */
-    for (j = 2; j < c->argc; j++) {
+    for (j = 1; j < c->argc; j++) {
         char *opt = c->argv[j]->ptr;
         int lastarg = j == c->argc-1;
         if (!strcasecmp(opt,"nohang")) {
@@ -217,14 +217,14 @@ void getjobsCommand(client *c) {
                 UNIT_MILLISECONDS) != DISQUE_OK) return;
             j++;
         } else if (!strcasecmp(opt,"count") && !lastarg) {
-            retval = getLongLongFromObject(c->argv[j+1],&count);
+            int retval = getLongLongFromObject(c->argv[j+1],&count);
             if (retval != DISQUE_OK || count < 0) {
                 addReplyError(c,"COUNT must be a number > 0");
                 return;
             }
             j++;
         } else if (!strcasecmp(opt,"from")) {
-            queues = c->argv[j];
+            queues = c->argv+j+1;
             numqueues = c->argc - j - 1;
             break; /* Don't process options after this. */
         } else {
@@ -241,8 +241,38 @@ void getjobsCommand(client *c) {
 
     /* First: try to avoid blocking if there is at least one job in at
      * least one queue. */
+    void *mbulk = NULL;
 
-    /* No way, we need to block. */
+    while(1) {
+        long old_emitted = emitted_jobs;
+        for (j = 0; j < numqueues; j++) {
+            job *job = queueFetchJob(queues[j]);
+            if (!job) continue;
+            if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
+            addReplyMultiBulkLen(c,2);
+            addReplyBulkCBuffer(c,job->id,JOB_ID_LEN);
+            addReplyBulkCBuffer(c,job->body,sdslen(job->body));
+            count--;
+            emitted_jobs++;
+            if (count == 0) break;
+        }
+        /* When we reached count or when we are no longer making
+         * progresses (no jobs left in our queues), stop. */
+        if (count == 0 || old_emitted == emitted_jobs) break;
+    }
+
+    if (mbulk) {
+        setDeferredMultiBulkLength(c,mbulk,emitted_jobs);
+        return;
+    }
+
+    /* If NOHANG was given and there are no jobs, return NULL. */
+    if (nohang) {
+        addReply(c,shared.nullmultibulk);
+        return;
+    }
+
+    /* If we reached this point, we need to block. */
 }
 
 

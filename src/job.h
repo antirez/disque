@@ -78,10 +78,11 @@
  * about an unknown node. */
 
 #define JOB_STATE_WAIT_REPL 0  /* Waiting to be replicated enough times. */
-#define JOB_STATE_ACTIVE    1  /* Not acked, this node never queued it. */
-#define JOB_STATE_QUEUED    2  /* Not acked, and queued. */
-#define JOB_STATE_WAIT_ACK  3  /* Not acked, delivered (not queued), no ACK. */
-#define JOB_STATE_ACKED     4  /* Acked, no longer active, to garbage collect.*/
+#define JOB_STATE_ACTIVE    1  /* Not acked, not queued, still active job. */
+#define JOB_STATE_QUEUED    2  /* Not acked, but queued in this node. */
+#define JOB_STATE_ACKED     3  /* Acked, no longer active, to garbage collect.*/
+
+#define JOB_GC_RETRY_PERIOD (60*3) /* Try to GC again every 3 minutes. */
 
 /* Job representation in memory. */
 typedef struct job {
@@ -109,6 +110,10 @@ typedef struct job {
                                messages to avoid to re-queue if other nodes
                                did. When qtime is set to zero for a job, it
                                never gets re-queued. */
+    uint32_t awakeme;       /* Time at which we need to take actions about this
+                               job in this node. All the registerd jobs are
+                               ordered by awakeme time in the server.awakeme
+                               skip list, unless awakeme is set to zero. */
 } job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
@@ -123,5 +128,7 @@ int registerJob(job *j);
 void freeJob(job *j);
 void jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
+void updateJobAwakeTime(job *j, uint32_t at);
+void updateJobRequeueTime(job *j, time_t qtime);
 
 #endif

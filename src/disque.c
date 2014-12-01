@@ -1140,6 +1140,8 @@ void resetServerStats(void) {
     server.ops_sec_last_sample_ops = 0;
 }
 
+int skiplistCompareJobsToAwake(const void *a, const void *b);
+
 void initServer(void) {
     int j;
 
@@ -1190,6 +1192,7 @@ void initServer(void) {
     /* Create the Disque databases, and initialize other internal state. */
     server.jobs = dictCreate(&jobsDictType,NULL);
     server.queues = dictCreate(&queuesDictType,NULL);
+    server.awakeme = skiplistCreate(skiplistCompareJobsToAwake);
     server.cronloops = 0;
     server.aof_child_pid = -1;
     aofRewriteBufferReset();

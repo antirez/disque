@@ -190,7 +190,8 @@ void skiplistDeleteNode(skiplist *sl, skiplistNode *x, skiplistNode **update) {
     sl->length--;
 }
 
-/* Delete an element from the skiplist. */
+/* Delete an element from the skiplist. If the element was found and deleted
+ * 1 is returned, otherwise if the element was not there, 0 is returned. */
 int skiplistDelete(skiplist *sl, void *obj) {
     skiplistNode *update[SKIPLIST_MAXLEVEL], *x;
     int i;

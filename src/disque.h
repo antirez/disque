@@ -56,6 +56,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #include "sds.h"     /* Dynamic safe strings */
 #include "dict.h"    /* Hash tables */
 #include "adlist.h"  /* Linked lists */
+#include "skiplist.h"/* Skip lists. */
 #include "zmalloc.h" /* total memory usage aware version of malloc/free */
 #include "anet.h"    /* Networking the easy way */
 #include "version.h" /* Version macro */
@@ -491,6 +492,7 @@ struct disqueServer {
     /* Jobs & Queues */
     dict *jobs;                 /* Main jobs hash table, by job ID. */
     dict *queues;               /* Main queues hash table, by queue name. */
+    skiplist *awakeme;          /* Jobs background processing queue. */
     /* AOF loading information */
     int loading;                /* We are loading data from disk if true */
     off_t loading_total_bytes;

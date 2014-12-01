@@ -2,6 +2,7 @@
 #define __DISQUE_CLUSTER_H
 
 #include "job.h"
+#include "queue.h"
 
 /*-----------------------------------------------------------------------------
  * Disque cluster data structures, defines, exported API.

@@ -43,7 +43,7 @@
 
 /* Job comparision inside a skiplist: by ctime, if ctime is the same by
  * job ID. */
-int skiplistCompareJobs(const void *a, const void *b) {
+int skiplistCompareJobsInQueue(const void *a, const void *b) {
     const job *ja = a, *jb = b;
 
     if (ja->ctime > jb->ctime) return -1;
@@ -60,7 +60,7 @@ queue *createQueue(robj *name) {
     queue *q = zmalloc(sizeof(queue));
     q->name = name;
     incrRefCount(name);
-    q->sl = skiplistCreate(skiplistCompareJobs);
+    q->sl = skiplistCreate(skiplistCompareJobsInQueue);
     q->ctime = mstime();
     q->atime = q->ctime;
     q->needjobs_bcast_time = 0;
@@ -105,7 +105,7 @@ int destroyQueue(robj *name) {
 /* Queue the job and change its state accordingly. If the job is already
  * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
  * and the operation succeeds. */
-int queueAddJob(robj *qname, job *job) {
+int queueJob(job *job) {
     if (job->state == JOB_STATE_QUEUED) return DISQUE_ERR;
 
     /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
@@ -122,14 +122,25 @@ int queueAddJob(robj *qname, job *job) {
         job->qtime = server.unixtime + job->retry;
     else
         job->qtime = 0; /* Never re-queue at most once jobs. */
-    queue *q = lookupQueue(qname);
-    if (!q) q = createQueue(qname);
-    skiplistInsert(q->sl,job);
+    queue *q = lookupQueue(job->queue);
+    if (!q) q = createQueue(job->queue);
+    serverAssert(skiplistInsert(q->sl,job) != NULL);
     return DISQUE_OK;
 }
 
+/* Remove a job from the queue. Returns DISQUE_OK if the job was there and
+ * is now removed (updating the job state back to ACTIVE), otherwise
+ * DISQUE_ERR is returned. */
+int dequeueJob(job *job) {
+    if (job->state != JOB_STATE_QUEUED) return DISQUE_ERR;
+    queue *q = lookupQueue(job->queue);
+    if (!q) return DISQUE_ERR;
+    serverAssert(skiplistDelete(q->sl,job));
+    return DISQUE_ERR;
+}
+
 /* Fetch a job from the specified queue if any, updating the job state
- * as it gets fetched to WAIT_ACK. If there are no jobs pending in the
+ * as it gets fetched back to ACTIVE. If there are no jobs pending in the
  * specified queue, NULL is returned.
  *
  * The returned job is, among the jobs available, the one with lower
@@ -137,7 +148,9 @@ int queueAddJob(robj *qname, job *job) {
 job *queueFetchJob(robj *qname) {
     queue *q = lookupQueue(qname);
     if (!q || skiplistLength(q->sl) == 0) return NULL;
-    return skiplistPopHead(q->sl);
+    job *j = skiplistPopHead(q->sl);
+    j->state = JOB_STATE_ACTIVE;
+    return j;
 }
 
 /* Return the length of the queue. If the queue does not eixst, zero

@@ -1092,7 +1092,9 @@ int clusterProcessPacket(clusterLink *link) {
                   sizeof(hdr->data.jobs.serialized.jobs_data) +
                   ntohl(hdr->data.jobs.serialized.datasize);
         if (totlen != explen) return 1;
-    } else if (type == CLUSTERMSG_TYPE_GOTJOB) {
+    } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
+               type == CLUSTERMSG_TYPE_QUEUEJOB)
+    {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         explen += sizeof(clusterMsgDataJobID);
@@ -1287,6 +1289,18 @@ int clusterProcessPacket(clusterLink *link) {
             dictAdd(j->nodes_confirmed,sender->name,sender);
             if (dictSize(j->nodes_confirmed) == j->repl)
                 jobReplicationAchieved(j);
+        }
+    } else if (type == CLUSTERMSG_TYPE_QUEUEJOB) {
+        if (!sender) return 1;
+        uint32_t delay = ntohl(hdr->data.jobid.job.aux);
+
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j && j->state < JOB_STATE_QUEUED) {
+            if (delay == 0) {
+                queueJob(j);
+            } else {
+                updateJobRequeueTime(j,server.unixtime+delay);
+            }
         }
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
@@ -1619,7 +1633,7 @@ void clusterSendJobIDMessage(int type, clusterNode *node, job *j, int mr) {
     if (node->link == NULL) return; /* This is a best effort message. */
     clusterBuildMessageHdr(hdr,type);
     memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
-    hdr->data.jobid.job.aux = mr;
+    hdr->data.jobid.job.aux = htonl(mr);
     clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 

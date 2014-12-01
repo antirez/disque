@@ -42,12 +42,12 @@ struct queue {
     mstime_t atime; /* Last access time. Updated when a new element is
                        queued or when a new client fetches elements or
                        blocks for elements to arrive. */
-    adlist *clients;/* Clients blocked here. */
+    list *clients;  /* Clients blocked here. */
 
     /* Federation related. */
     mstime_t needjobs_bcast_time; /* Last NEEDJOBS cluster broadcast. */
     mstime_t needjobs_adhoc_time; /* Last NEEDJOBS to notable nodes. */
-    dict *needjob_responders;   /* Set of nodes that provided jobs. */
+    dict *needjobs_responders;    /* Set of nodes that provided jobs. */
 
     /* OPS samples is used in order to compute the number of jobs received
      * and served per second. Each time the sample at the current index
@@ -68,7 +68,8 @@ struct queue {
     int consumed_ops_idx; /* Current index in consumed array. */
 } typedef queue;
 
-int queueAddJob(robj *qname, job *job);
+int queueJob(job *job);
+int dequeueJob(job *job);
 job *queueFetchJob(robj *qname);
 unsigned long queueLength(robj *qname);
 

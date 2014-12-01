@@ -119,6 +119,7 @@ job *createJob(char *id, int state, int ttl) {
     j->body = NULL;
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     j->nodes_confirmed = NULL; /* Only created later on-demand. */
+    j->awakeme = 0; /* Not yet registered in awakeme skiplist. */
     return j;
 }
 
@@ -141,7 +142,10 @@ void freeJob(job *j) {
  * DISQUE_ERR. */
 int registerJob(job *j) {
     int retval = dictAdd(server.jobs, j->id, NULL);
-    return (retval == DICT_OK) ? DISQUE_OK : DISQUE_ERR;
+    if (retval == DICT_ERR) return DISQUE_ERR;
+
+    updateJobAwakeTime(j,0);
+    return DICT_OK;
 }
 
 /* Lookup a job by ID. */
@@ -157,8 +161,12 @@ int unregisterJob(job *j) {
     j = lookupJob(j->id);
     if (!j) return DISQUE_ERR;
 
-    /* TODO: If the job is queued, remove from queue. */
-    /* TODO: If the job is waiting to be queued, remove from waiting list. */
+    /* Remove from awake skip list. */
+    if (j->awakeme) serverAssert(skiplistDelete(server.awakeme,j));
+
+    /* If the job is queued, remove from queue. */
+    if (j->state == JOB_STATE_QUEUED) dequeueJob(j);
+
     /* Remove the job from the jobs hash table. */
     dictDelete(server.jobs, j->id);
     return DISQUE_OK;
@@ -179,6 +187,80 @@ void setJobAssociatedValue(job *j, void *val) {
 void *jobGetAssociatedValue(job *j) {
     struct dictEntry *de = dictFind(server.jobs, j->id);
     return de ? dictGetVal(de) : NULL;
+}
+
+/* ----------------------------- Awakeme list ------------------------------
+ * Disque needs to perform periodic tasks on registered jobs, for example
+ * we need to remove expired jobs (TTL reached), requeue existing jobs that
+ * where not acknowledged in time, schedule the job garbage collection after
+ * the job is acknowledged, and so forth.
+ *
+ * To simplify the handling of periodic operations without adding multiple
+ * timers for each job, jobs are put into a skip list that order jobs for
+ * the unix time we need to take some action about them.
+ *
+ * Every registered job is into this list. After we update some job field
+ * that is related to scheduled operations on the job, or when it's state
+ * is updated, we need to call updateJobAwakeTime() again in order to move
+ * the job into the appropriate place in the awakeme skip list.
+ *
+ * processBackgroundJobsTasks() takes care of handling the part of the
+ * awakeme list which has an awakeme time <= to the current time. As a
+ * result of processing a job, we expect it to likely be updated to be
+ * processed in the future again, or deleted at all.
+ * */
+
+/* Ask the system to update the time the job will be called again as an
+ * argument of awakeJob() in order to handle delayed tasks for this job.
+ * If 'at' is zero, the function computes the next time we should check
+ * the job status based on the next quee time (qtime), expire time, garbage
+ * collection if it's an ACK, and so forth.
+ *
+ * Otherwise if 'at' is non-zero, it's up to the caller to set the time
+ * at which the job will be awake again. */
+void updateJobAwakeTime(job *j, uint32_t at) {
+    if (at == 0) {
+        at = j->etime; /* Best case is to handle it for eviction. */
+        if (j->state == JOB_STATE_ACKED) {
+            /* Try to garbage collect this ACKed job again in the future. */
+            uint32_t retry_gc_again = server.unixtime + JOB_GC_RETRY_PERIOD;
+            if (retry_gc_again < at) at = retry_gc_again;
+        } else {
+            /* Schedule the job to be re-queued if needed. */
+            if (j->retry != 0 && j->qtime < at) at = j->qtime;
+        }
+    }
+
+    /* Only update the job position into the skiplist if needed. */
+    if (at != j->awakeme) {
+        /* Remove from skip list. */
+        if (j->awakeme) {
+            serverAssert(skiplistDelete(server.awakeme,j));
+        }
+        /* Insert it back again in the skip list with the new awake time. */
+        j->awakeme = at;
+        skiplistInsert(server.awakeme,j);
+    }
+}
+
+/* Set the specified unix time at which a job will be queued again
+ * in the local node. */
+void updateJobRequeueTime(job *j, time_t qtime) {
+    if (j->retry == 0) return; /* Don't violate contract in case of bugs. */
+    j->qtime = qtime;
+    updateJobAwakeTime(j,0);
+}
+
+/* Job comparision inside the awakeme skiplist: by awakeme time. If it is the
+ * same jobs are compared by ctime. If the same again, by job ID. */
+int skiplistCompareJobsToAwake(const void *a, const void *b) {
+    const job *ja = a, *jb = b;
+
+    if (ja->awakeme > jb->awakeme) return -1;
+    if (jb->awakeme > ja->awakeme) return 1;
+    if (ja->ctime > jb->ctime) return -1;
+    if (jb->ctime > ja->ctime) return 1;
+    return memcmp(ja->id,jb->id,JOB_ID_LEN);
 }
 
 /* ---------------------------  Jobs serialization -------------------------- */
@@ -252,7 +334,7 @@ sds serializeJob(job *j) {
     sj->etime = server.unixtime - sj->etime + 1;
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->delay);
-    memrev32ifbe(&sj->rtime);
+    memrev32ifbe(&sj->retry);
 
     /* p now points to the start of the variable part of the serialization. */
     p = msg + 4 + JOB_STRUCT_SER_LEN;
@@ -320,9 +402,15 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     memrev32ifbe(j->etime);
     j->etime = server.unixtime + j->etime; /* Convert back to absolute time. */
     memrev32ifbe(j->delay);
-    memrev32ifbe(j->rtime);
+    memrev32ifbe(j->retry);
     p += JOB_STRUCT_SER_LEN;
     len -= JOB_STRUCT_SER_LEN;
+
+    /* Compute next queue time from known parameters. */
+    if (j->retry)
+        j->qtime = server.unixtime + j->delay + j->retry;
+    else
+        j->qtime = 0;
 
     /* Queue name. */
     memcpy(&aux,p,sizeof(aux));
@@ -387,7 +475,7 @@ void fixForeingJobTimes(job *j) {
         j->qtime = 0; /* At most once delivery? Never re-queue it. */
         return;
     }
-    j->qtime = server.unixtime + j.delay + j.retry;
+    j->qtime = server.unixtime + j->delay + j->retry;
 }
 
 /* This function is called when the job id at 'j' may be duplicated and we
@@ -493,7 +581,8 @@ void jobReplicationAchieved(job *j) {
     }
 
     /* Queue the job locally. */
-    queueAddJob(j->queue,j); /* Will change the job state. */
+    if (j->delay == 0)
+        queueJob(j); /* Will change the job state. */
 }
 
 /* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC]
@@ -634,12 +723,10 @@ void addjobCommand(client *c) {
     job->retry = retry;
     job->body = sdsdup(c->argv[2]->ptr);
 
-    if (job->retry) {
-        /* Set a qtime just in case queueAddJob() does not get called. */
-        job->qtime = server.unixtime + delay + retry;
-    } else {
-        job->qtime = 0; /* Never requeue at most once jobs. */
-    }
+    /* Set the next time the job will be queued. Note that once we call
+     * queueJob() the first time, this will be set to 0 (never queue
+     * again) for jobs that have a zero retry value (at most once jobs). */
+    job->qtime = server.unixtime + delay + retry;
 
     /* Register the job locally in all the cases but when the job
      * is externally replicated and asynchronous replicated at the same
@@ -673,7 +760,8 @@ void addjobCommand(client *c) {
          * retain a copy of the job. */
         if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
-        queueAddJob(c->argv[1],job); /* Will change the job state. */
+        if (job->delay == 0)
+            queueJob(job); /* Will change the job state. */
         addReplyJobID(c,job);
     }
 

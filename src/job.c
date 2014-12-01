@@ -193,7 +193,7 @@ void *jobGetAssociatedValue(job *j) {
 
 /* Try to garbage collect the job. */
 void GCJob(job *j) {
-    printf("GC %.48s\n", j->id);
+    serverLog(DISQUE_NOTICE,"GC %.48s", j->id);
 }
 
 /* ----------------------------- Awakeme list ------------------------------
@@ -211,11 +211,10 @@ void GCJob(job *j) {
  * is updated, we need to call updateJobAwakeTime() again in order to move
  * the job into the appropriate place in the awakeme skip list.
  *
- * processBackgroundJobsTasks() takes care of handling the part of the
- * awakeme list which has an awakeme time <= to the current time. As a
- * result of processing a job, we expect it to likely be updated to be
- * processed in the future again, or deleted at all.
- * */
+ * processJobs() takes care of handling the part of the awakeme list which
+ * has an awakeme time <= to the current time. As a result of processing a
+ * job, we expect it to likely be updated to be processed in the future
+ * again, or deleted at all. */
 
 /* Ask the system to update the time the job will be called again as an
  * argument of awakeJob() in order to handle delayed tasks for this job.
@@ -254,7 +253,8 @@ void updateJobAwakeTime(job *j, uint32_t at) {
 /* Set the specified unix time at which a job will be queued again
  * in the local node. */
 void updateJobRequeueTime(job *j, time_t qtime) {
-    if (j->retry == 0) return; /* Don't violate contract in case of bugs. */
+    /* Don't violate at-most-once (retry == 0) contract in case of bugs. */
+    if (j->retry == 0 || j->qtime == 0) return;
     j->qtime = qtime;
     updateJobAwakeTime(j,0);
 }
@@ -275,7 +275,8 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
 void processJob(job *j) {
     uint32_t old_awakeme = j->awakeme;
 
-    printf("PROCESS %.48s: state=%d now=%d qtime=%d etime=%d delay=%d\n",
+    serverLog(DISQUE_NOTICE,
+        "PROCESS %.48s: state=%d now=%d qtime=%d etime=%d delay=%d",
         j->id,
         (int)j->state,
         (int)server.unixtime,
@@ -286,7 +287,7 @@ void processJob(job *j) {
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
-        printf("EVICT %.48s\n", j->id);
+        serverLog(DISQUE_NOTICE,"EVICT %.48s", j->id);
         unregisterJob(j);
         freeJob(j);
         return;
@@ -324,11 +325,11 @@ void processJobs(void) {
     while(current && max--) {
         job *j = current->obj;
 
-/*
-        printf("%.48s %d\n",
+#if 0
+        serverLog(DISQUE_NOTICE,"%.48s %d",
             j->id,
             (int) (j->awakeme-server.unixtime));
-*/
+#endif
 
         if (j->awakeme > server.unixtime) break;
         next = current->level[0].forward;
@@ -632,7 +633,7 @@ void addReplyJobID(client *c, job *j) {
  * copies from other nodes), to avoid non acknowledged jobs to be active
  * when possible. */
 void jobReplicationAchieved(job *j) {
-    printf("Replication ACHIEVED\n");
+    serverLog(DISQUE_NOTICE,"Replication ACHIEVED");
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */

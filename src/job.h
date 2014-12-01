@@ -82,6 +82,8 @@
 #define JOB_STATE_QUEUED    2  /* Not acked, but queued in this node. */
 #define JOB_STATE_ACKED     3  /* Acked, no longer active, to garbage collect.*/
 
+#define JOB_FLAG_BCAST_QUEUED (1<<0) /* Broadcast msg when re-queued. */
+
 #define JOB_GC_RETRY_PERIOD (60*3) /* Try to GC again every 3 minutes. */
 
 /* Job representation in memory. */

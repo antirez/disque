@@ -109,7 +109,7 @@ int queueJob(job *job) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
         return DISQUE_ERR;
 
-    printf("QUEUED %.48s\n", job->id);
+    serverLog(DISQUE_NOTICE,"QUEUED %.48s", job->id);
 
     /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
      * hash table again for ACKs tracking in order to garbage collect the
@@ -125,6 +125,16 @@ int queueJob(job *job) {
         job->qtime = server.unixtime + job->retry;
     else
         job->qtime = 0; /* Never re-queue at most once jobs. */
+
+    /* The first time a job is queued we don't need to broadcast a QUEUED
+     * message, to save bandwidth. But the next times, when the job is
+     * re-queued for lack of acknowledge, this is useful to (best effort)
+     * avoid multiple nodes to re-queue the same job. */
+    if (job->flags & JOB_FLAG_BCAST_QUEUED)
+        clusterSendQueued(job);
+    else
+        job->flags |= JOB_FLAG_BCAST_QUEUED; /* Next time, broadcast. */
+
     updateJobAwakeTime(job,0);
     queue *q = lookupQueue(job->queue);
     if (!q) q = createQueue(job->queue);
@@ -140,6 +150,7 @@ int dequeueJob(job *job) {
     queue *q = lookupQueue(job->queue);
     if (!q) return DISQUE_ERR;
     serverAssert(skiplistDelete(q->sl,job));
+    job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
     return DISQUE_ERR;
 }
 

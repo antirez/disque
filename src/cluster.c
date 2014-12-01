@@ -1093,7 +1093,9 @@ int clusterProcessPacket(clusterLink *link) {
                   ntohl(hdr->data.jobs.serialized.datasize);
         if (totlen != explen) return 1;
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
-               type == CLUSTERMSG_TYPE_QUEUEJOB)
+               type == CLUSTERMSG_TYPE_QUEUEJOB ||
+               type == CLUSTERMSG_TYPE_QUEUED ||
+               type == CLUSTERMSG_TYPE_SETACK)
     {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
@@ -1261,6 +1263,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (getMemoryWarningLevel() > 0) return 1;
 
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL);
+        j->flags |= JOB_FLAG_BCAST_QUEUED;
         if (j == NULL) {
             serverLog(DISQUE_WARNING,
                 "Received corrupted job description from node %.40s",
@@ -1293,12 +1296,39 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t delay = ntohl(hdr->data.jobid.job.aux);
 
         job *j = lookupJob(hdr->data.jobid.job.id);
+        /* We received a QUEUEJOB message: consider this node as the
+         * first to queue the job, so no need to broadcast a QUEUED
+         * message the first time we queue it. */
+        j->flags &= ~JOB_FLAG_BCAST_QUEUED;
+
         if (j && j->state < JOB_STATE_QUEUED) {
             if (delay == 0) {
                 queueJob(j);
             } else {
                 updateJobRequeueTime(j,server.unixtime+delay);
             }
+        }
+    } else if (type == CLUSTERMSG_TYPE_QUEUED) {
+        if (!sender) return 1;
+
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j && j->state <= JOB_STATE_QUEUED) {
+            serverLog(DISQUE_NOTICE,"* UPDATING QTIME FOR JOB %.48s", j->id);
+            /* Move the time we'll re-queue this job in the future. Moreover
+             * if the sender has a Node ID greate than our node ID, and we
+             * have the message queued as well, dequeue it, to avoid an
+             * useless multiple delivery. */
+            if (j->state == JOB_STATE_QUEUED &&
+                memcmp(sender->name,myself->name,DISQUE_CLUSTER_NAMELEN) > 0)
+            {
+                dequeueJob(j);
+            }
+            if (j->retry)
+                updateJobRequeueTime(j,server.unixtime+j->retry);
+        } else if (j && j->state == JOB_STATE_ACKED) {
+            /* Some other node queued a message that we have as
+             * already acknowledged. Try to force it to drop it. */
+            clusterSendSetAck(sender,j);
         }
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
@@ -1460,7 +1490,9 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataFail);
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
-               type == CLUSTERMSG_TYPE_QUEUEJOB)
+               type == CLUSTERMSG_TYPE_QUEUEJOB ||
+               type == CLUSTERMSG_TYPE_QUEUED ||
+               type == CLUSTERMSG_TYPE_SETACK)
     {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataJobID);
@@ -1644,10 +1676,37 @@ void clusterSendGotJob(clusterNode *node, job *j) {
     clusterSendJobIDMessage(CLUSTERMSG_TYPE_GOTJOB,node,j,0);
 }
 
-/* Force the receiver the queue a job, if it has that job in an active
+/* Force the receiver to queue a job, if it has that job in an active
  * state. */
 void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay) {
     clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j,delay);
+}
+
+/* Tell the receiver that the specified job was just re-queued by the
+ * sender, so it should update its qtime to the future, and if the job
+ * is also queued by the receiving node, to drop it from the queue if the
+ * sender has a greater node ID (so that we try in a best-effort way to
+ * avoid useless multi deliveries).
+ *
+ * This message is sent to all the nodes we believe may have a copy
+ * of the message and are reachable. */
+void clusterSendQueued(job *j) {
+    dictIterator *di = dictGetIterator(j->nodes_delivered);
+    dictEntry *de;
+
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+        if (node == myself) continue;
+        if (node->link)
+            clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUED,node,j,0);
+    }
+    dictReleaseIterator(di);
+}
+
+/* Force the receiver to acknowledge the job as delivered. */
+void clusterSendSetAck(clusterNode *node, job *j) {
+    uint32_t maxowners = dictSize(j->nodes_delivered);
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_SETACK,node,j,maxowners);
 }
 
 /* -----------------------------------------------------------------------------

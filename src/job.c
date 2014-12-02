@@ -344,13 +344,14 @@ void processJob(job *j) {
 
 int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int period = 100; /* 100 ms default period. */
-    int max = 10000;
-    mstime_t now = mstime();
+    int max = 10000; /* 10k jobs * 1000 milliseconds = 10M jobs/sec max. */
+    mstime_t now = mstime(), latency;
     skiplistNode *current, *next;
     DISQUE_NOTUSED(eventLoop);
     DISQUE_NOTUSED(id);
     DISQUE_NOTUSED(clientData);
 
+    latencyStartMonitor(latency);
     server.mstime = now; /* Update it since it's used by processJob(). */
     current = server.awakeme->header->level[0].forward;
     while(current && max--) {
@@ -379,6 +380,8 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         if (period < 1) period = 1;
         else if (period > 100) period = 100;
     }
+    latencyEndMonitor(latency);
+    latencyAddSampleIfNeeded("jobs-processing",latency);
     return period;
 }
 

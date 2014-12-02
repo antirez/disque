@@ -154,6 +154,8 @@ void replyToBlockedClientTimedOut(client *c) {
             sdsnew("-NOREPL Timeout reached before replicating to "
                    "the requested number of nodes\r\n"));
         return;
+    } else if (c->btype == DISQUE_BLOCKED_QUEUES) {
+        addReply(c,shared.nullmultibulk);
     } else {
         serverPanic("Unknown btype in replyToBlockedClientTimedOut().");
     }

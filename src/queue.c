@@ -330,7 +330,7 @@ void getjobsCommand(client *c) {
         if (!strcasecmp(opt,"nohang")) {
             nohang = 1;
         } else if (!strcasecmp(opt,"timeout") && !lastarg) {
-            if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,
+            if (getTimeoutFromObjectOrReply(c,c->argv[j+1],&timeout,
                 UNIT_MILLISECONDS) != DISQUE_OK) return;
             j++;
         } else if (!strcasecmp(opt,"count") && !lastarg) {

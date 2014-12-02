@@ -38,8 +38,8 @@
 struct queue {
     robj *name;     /* Queue name as a string object. */
     skiplist *sl;   /* The skiplist with the queued jobs. */
-    mstime_t ctime; /* Creation time of this queue object. */
-    mstime_t atime; /* Last access time. Updated when a new element is
+    time_t ctime;   /* Creation time of this queue object. */
+    time_t atime;   /* Last access time. Updated when a new element is
                        queued or when a new client fetches elements or
                        blocks for elements to arrive. */
     list *clients;  /* Clients blocked here. */
@@ -70,7 +70,9 @@ struct queue {
 
 int queueJob(job *job);
 int dequeueJob(job *job);
-job *queueFetchJob(robj *qname);
+job *queueFetchJob(queue *q);
+job *queueNameFetchJob(robj *qname);
 unsigned long queueLength(robj *qname);
+void unblockClientBlockedForJobs(client *c);
 
 #endif

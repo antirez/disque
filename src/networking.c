@@ -106,6 +106,7 @@ client *createClient(int fd) {
     c->btype = DISQUE_BLOCKED_NONE;
     c->bpop.timeout = 0;
     c->bpop.job = NULL;
+    c->bpop.queues = dictCreate(&setDictType,NULL);
     c->peerid = NULL;
     if (fd != -1) listAddNodeTail(server.clients,c);
     return c;
@@ -621,6 +622,7 @@ void freeClient(client *c) {
 
     /* Deallocate structures used to block on blocking ops. */
     if (c->flags & DISQUE_BLOCKED) unblockClient(c);
+    dictRelease(c->bpop.queues);
 
     /* Close socket, unregister events, and remove list of replies and
      * accumulated arguments. */

@@ -1201,6 +1201,7 @@ void initServer(void) {
     /* Create the Disque databases, and initialize other internal state. */
     server.jobs = dictCreate(&jobsDictType,NULL);
     server.queues = dictCreate(&queuesDictType,NULL);
+    server.ready_queues = dictCreate(&setDictType,NULL);
     server.awakeme = skiplistCreate(skiplistCompareJobsToAwake);
     server.cronloops = 0;
     server.aof_child_pid = -1;

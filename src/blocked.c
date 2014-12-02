@@ -63,6 +63,7 @@
 
 #include "disque.h"
 #include "job.h"
+#include "queue.h"
 
 /* Get a timeout value from an object and store it into 'timeout'.
  * The final timeout is always stored as milliseconds as a time where the
@@ -131,6 +132,8 @@ void processUnblockedClients(void) {
 void unblockClient(client *c) {
     if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
         unblockClientWaitingJobRepl(c);
+    } else if (c->btype == DISQUE_BLOCKED_QUEUES) {
+        unblockClientBlockedForJobs(c);
     } else {
         serverPanic("Unknown btype in unblockClient().");
     }

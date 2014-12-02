@@ -61,8 +61,8 @@ queue *createQueue(robj *name) {
     q->name = name;
     incrRefCount(name);
     q->sl = skiplistCreate(skiplistCompareJobsInQueue);
-    q->ctime = mstime();
-    q->atime = q->ctime;
+    q->ctime = server.unixtime;
+    q->atime = 0;
     q->needjobs_bcast_time = 0;
     q->needjobs_adhoc_time = 0;
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
@@ -143,6 +143,7 @@ int queueJob(job *job) {
     queue *q = lookupQueue(job->queue);
     if (!q) q = createQueue(job->queue);
     serverAssert(skiplistInsert(q->sl,job) != NULL);
+    q->atime = server.unixtime;
     return DISQUE_OK;
 }
 
@@ -165,12 +166,18 @@ int dequeueJob(job *job) {
  *
  * The returned job is, among the jobs available, the one with lower
  * 'ctime'. */
-job *queueFetchJob(robj *qname) {
-    queue *q = lookupQueue(qname);
-    if (!q || skiplistLength(q->sl) == 0) return NULL;
+job *queueFetchJob(queue *q) {
+    if (skiplistLength(q->sl) == 0) return NULL;
     job *j = skiplistPopHead(q->sl);
     j->state = JOB_STATE_ACTIVE;
+    q->atime = server.unixtime;
     return j;
+}
+
+/* Like queueFetchJob() but take the queue name as input. */
+job *queueNameFetchJob(robj *qname) {
+    queue *q = lookupQueue(qname);
+    return q ? queueFetchJob(q) : NULL;
 }
 
 /* Return the length of the queue. If the queue does not eixst, zero
@@ -179,6 +186,107 @@ unsigned long queueLength(robj *qname) {
     queue *q = lookupQueue(qname);
     if (!q) return 0;
     return skiplistLength(q->sl);
+}
+
+/* Remove a queue that was not accessed for enough time, has no clients
+ * blocked, has no jobs inside. If the queue is removed DISQUE_OK is
+ * returned, otherwise DISQUE_ERR is returned. */
+#define QUEUE_MAX_IDLE_TIME (60*5)
+int GCQueue(queue *q) {
+    time_t elapsed = server.unixtime - q->atime;
+    if (elapsed < QUEUE_MAX_IDLE_TIME) return DISQUE_ERR;
+    if (q->clients && listLength(q->clients) != 0) return DISQUE_ERR;
+    if (skiplistLength(q->sl)) return DISQUE_ERR;
+    destroyQueue(q->name);
+    return DISQUE_OK;
+}
+
+/* -------------------------- Blocking on queues ---------------------------- */
+
+/* Handle blocking if GETJOBS fonud no jobs in the specified queues.
+ *
+ * 1) We set q->clients to the list of clients blocking for this queue.
+ * 2) We set client->bpop.queues as well, as a dictionary of queues a client
+ *    is blocked for. So we can resolve queues from clients.
+ * 3) When elements are added to queues with blocked clients, we call
+ *    signalQueueAsReady(), that will populate the dictionary
+ *    server.ready_queues with all the queues that may unblock clients.
+ * 4) Before returning into the event loop, handleClientsBlockedOnQueues()
+ *    is called, that iterate the list of ready queues, and unblock clients
+ *    serving elements from the queue. */
+void blockForJobs(client *c, robj **queues, int numqueues, mstime_t timeout) {
+    int j;
+
+    c->bpop.timeout = timeout;
+    for (j = 0; j < numqueues; j++) {
+        queue *q = lookupQueue(queues[j]);
+        if (!q) q = createQueue(queues[j]);
+
+        /* Handle duplicated queues in array. */
+        if (dictAdd(c->bpop.queues,queues[j],NULL) != DICT_OK) continue;
+
+        /* Add this client to the list of clients in the queue. */
+        if (q->clients == NULL) q->clients = listCreate();
+        listAddNodeTail(q->clients,c);
+    }
+    blockClient(c,DISQUE_BLOCKED_QUEUES);
+}
+
+/* Unblock client waiting for jobs in queues. Never call this directly,
+ * call unblockClient() instead. */
+void unblockClientBlockedForJobs(client *c) {
+    dictEntry *de;
+    dictIterator *di;
+
+    di = dictGetIterator(c->bpop.queues);
+    while((de = dictNext(di)) != NULL) {
+        robj *qname = dictGetKey(de);
+        queue *q = lookupQueue(qname);
+        serverAssert(q != NULL);
+
+        listDelNode(q->clients,listSearchKey(q->clients,c));
+        if (listLength(q->clients) == 0) {
+            listRelease(q->clients);
+            q->clients = NULL;
+            GCQueue(q);
+        }
+    }
+    dictReleaseIterator(di);
+    dictEmpty(c->bpop.queues,NULL);
+}
+
+/* Add the specified queue to server.ready_queues. */
+void signalQueueAsReady(queue *q) {
+    if (dictAdd(server.ready_queues,q->name,NULL) == DICT_OK)
+        incrRefCount(q->name);
+}
+
+/* Run the list of queues the received elements in the last event loop
+ * iteration, and unblock as many clients is possible. */
+void handleClientsBlockedOnQueues(void) {
+    dictEntry *de;
+    dictIterator *di;
+
+    di = dictGetIterator(server.ready_queues);
+    while((de = dictNext(di)) != NULL) {
+        queue *q = lookupQueue(dictGetKey(de));
+        if (!q) continue;
+        int numclients = listLength(q->clients);
+        while(numclients--) {
+            listNode *ln = listFirst(q->clients);
+            client *c = ln->value;
+            job *j = queueFetchJob(q);
+
+            if (!j) break; /* No longer elements, try next queue. */
+            addReplyMultiBulkLen(c,1);
+            addReplyMultiBulkLen(c,2);
+            addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
+            addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+            unblockClient(c); /* This will remove it from q->clients. */
+        }
+    }
+    dictReleaseIterator(di);
+    dictEmpty(server.ready_queues,NULL);
 }
 
 /* ------------------------- Queue related commands ------------------------- */
@@ -246,7 +354,7 @@ void getjobsCommand(client *c) {
     while(1) {
         long old_emitted = emitted_jobs;
         for (j = 0; j < numqueues; j++) {
-            job *job = queueFetchJob(queues[j]);
+            job *job = queueNameFetchJob(queues[j]);
             if (!job) continue;
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
             addReplyMultiBulkLen(c,2);
@@ -273,6 +381,7 @@ void getjobsCommand(client *c) {
     }
 
     /* If we reached this point, we need to block. */
+    blockForJobs(c,queues,numqueues,timeout);
 }
 
 

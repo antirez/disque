@@ -202,7 +202,8 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Client block type (btype field in client structure)
  * if DISQUE_BLOCKED flag is set. */
 #define DISQUE_BLOCKED_NONE 0    /* Not blocked, no DISQUE_BLOCKED flag set. */
-#define DISQUE_BLOCKED_JOB_REPL 1 /* WAIT job synchronous replication. */
+#define DISQUE_BLOCKED_JOB_REPL 1 /* Wait job synchronous replication. */
+#define DISQUE_BLOCKED_QUEUES 2   /* Wait for new jobs in a set of queues. */
 
 /* Client request types */
 #define DISQUE_REQ_INLINE 1
@@ -338,6 +339,9 @@ typedef struct blockingState {
 
     /* DISQUE_BLOCKED_JOB_REPL */
     struct job *job;        /* Job we are trying to replicate. */
+
+    /* DISQUE_BLOCKED_QUEUES */
+    dict *queues;           /* Queues we are waiting for. */
 } blockingState;
 
 /* With multiplexing we need to take per-client state.
@@ -493,6 +497,7 @@ struct disqueServer {
     /* Jobs & Queues */
     dict *jobs;                 /* Main jobs hash table, by job ID. */
     dict *queues;               /* Main queues hash table, by queue name. */
+    dict *ready_queues;         /* Queues ready to serve blocked clients. */
     skiplist *awakeme;          /* Jobs background processing queue. */
     /* AOF loading information */
     int loading;                /* We are loading data from disk if true */

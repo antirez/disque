@@ -39,6 +39,8 @@
 #include "queue.h"
 #include "skiplist.h"
 
+void signalQueueAsReady(queue *q);
+
 /* ------------------------ Low level queue functions ----------------------- */
 
 /* Job comparision inside a skiplist: by ctime, if ctime is the same by
@@ -144,6 +146,7 @@ int queueJob(job *job) {
     if (!q) q = createQueue(job->queue);
     serverAssert(skiplistInsert(q->sl,job) != NULL);
     q->atime = server.unixtime;
+    signalQueueAsReady(q);
     return DISQUE_OK;
 }
 
@@ -224,6 +227,7 @@ void blockForJobs(client *c, robj **queues, int numqueues, mstime_t timeout) {
 
         /* Handle duplicated queues in array. */
         if (dictAdd(c->bpop.queues,queues[j],NULL) != DICT_OK) continue;
+        incrRefCount(queues[j]);
 
         /* Add this client to the list of clients in the queue. */
         if (q->clients == NULL) q->clients = listCreate();
@@ -255,8 +259,10 @@ void unblockClientBlockedForJobs(client *c) {
     dictEmpty(c->bpop.queues,NULL);
 }
 
-/* Add the specified queue to server.ready_queues. */
+/* Add the specified queue to server.ready_queues if there is at least
+ * one client blocked for this queue. Otherwise no operation is performed. */
 void signalQueueAsReady(queue *q) {
+    if (q->clients == NULL || listLength(q->clients) == 0) return;
     if (dictAdd(server.ready_queues,q->name,NULL) == DICT_OK)
         incrRefCount(q->name);
 }
@@ -266,6 +272,9 @@ void signalQueueAsReady(queue *q) {
 void handleClientsBlockedOnQueues(void) {
     dictEntry *de;
     dictIterator *di;
+
+    /* Don't waste time if there is nothing to do. */
+    if (dictSize(server.ready_queues) == 0) return;
 
     di = dictGetIterator(server.ready_queues);
     while((de = dictNext(di)) != NULL) {

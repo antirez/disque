@@ -74,5 +74,6 @@ job *queueFetchJob(queue *q);
 job *queueNameFetchJob(robj *qname);
 unsigned long queueLength(robj *qname);
 void unblockClientBlockedForJobs(client *c);
+void handleClientsBlockedOnQueues(void);
 
 #endif

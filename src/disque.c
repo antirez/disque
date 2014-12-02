@@ -786,6 +786,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 void beforeSleep(struct aeEventLoop *eventLoop) {
     DISQUE_NOTUSED(eventLoop);
 
+    /* Unblock clients waiting to receive messages into queues.
+     * We do this both on processCommand() and here, since we need to
+     * unblock clients when queues are populated asynchronously. */
+    handleClientsBlockedOnQueues();
+
     /* Try to process pending commands for clients that were just unblocked. */
     if (listLength(server.unblocked_clients))
         processUnblockedClients();
@@ -1574,6 +1579,7 @@ int processCommand(client *c) {
     }
 
     call(c,DISQUE_CALL_FULL);
+    handleClientsBlockedOnQueues();
     return DISQUE_OK;
 }
 

@@ -35,7 +35,7 @@
 
 #define QUEUE_OPS_SAMPLES 3
 
-struct queue {
+typedef struct queue {
     robj *name;     /* Queue name as a string object. */
     skiplist *sl;   /* The skiplist with the queued jobs. */
     time_t ctime;   /* Creation time of this queue object. */
@@ -66,7 +66,7 @@ struct queue {
       consumed_ops_samples[QUEUE_OPS_SAMPLES];
     int produced_ops_idx; /* Current index in produced array. */
     int consumed_ops_idx; /* Current index in consumed array. */
-} typedef queue;
+} queue;
 
 int queueJob(job *job);
 int dequeueJob(job *job);

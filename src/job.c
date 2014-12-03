@@ -879,7 +879,7 @@ void addjobCommand(client *c) {
         if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
         if (job->delay == 0) {
-            queueJob(job); /* Will change the job state. */
+            if (!extrepl) queueJob(job); /* Will change the job state. */
         } else {
             /* Delayed jobs that don't wait for replications can move
              * forward to ACTIVE state ASAP, and get scheduled for
@@ -892,9 +892,9 @@ void addjobCommand(client *c) {
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
      * nodes. */
-    if (replicate > 1) {
-        clusterReplicateJob(job, extrepl ? replicate : replicate-1, async);
-    }
+    int additional_nodes = extrepl ? replicate : replicate-1;
+    if (additional_nodes > 0)
+        clusterReplicateJob(job, additional_nodes, async);
 
     /* If the job is asynchronously and externally replicated at the same time,
      * send a QUEUE message ASAP to one random node, and delete the job from
@@ -905,6 +905,8 @@ void addjobCommand(client *c) {
             clusterNode *n = dictGetVal(de);
             clusterSendQueueJob(n,job,job->delay);
         }
+        /* We don't have to unregister the job since we did not registered
+         * it if it's async + extrepl. */
         freeJob(job);
     }
 }

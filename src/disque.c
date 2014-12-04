@@ -2329,15 +2329,27 @@ void disqueAsciiArt(void) {
 #include "asciilogo.h"
     char *buf = zmalloc(1024*16);
 
-    snprintf(buf,1024*16,ascii_logo,
-        DISQUE_VERSION,
-        disqueGitSHA1(),
-        strtol(disqueGitDirty(),NULL,10) > 0,
-        (sizeof(long) == 8) ? "64" : "32",
-        server.port,
-        (long) getpid()
-    );
-    serverLogRaw(DISQUE_NOTICE|DISQUE_LOG_RAW,buf);
+    if (server.syslog_enabled) {
+        serverLog(DISQUE_NOTICE,
+            "Disque %s (%s/%d) %s bit, port %d, pid %ld ready to start.",
+            DISQUE_VERSION,
+            disqueGitSHA1(),
+            strtol(disqueGitDirty(),NULL,10) > 0,
+            (sizeof(long) == 8) ? "64" : "32",
+            server.port,
+            (long) getpid()
+        );
+    } else {
+        snprintf(buf,1024*16,ascii_logo,
+            DISQUE_VERSION,
+            disqueGitSHA1(),
+            strtol(disqueGitDirty(),NULL,10) > 0,
+            (sizeof(long) == 8) ? "64" : "32",
+            server.port,
+            (long) getpid()
+        );
+        serverLogRaw(DISQUE_NOTICE|DISQUE_LOG_RAW,buf);
+    }
     zfree(buf);
 }
 

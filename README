@@ -192,3 +192,23 @@ Client libraries
 ===
 
 Disque uses the same protocl as Redis itself. To adapt Redis clients, or to use it directly, should be pretty easy. However note that Disque default port is 7711 and not 6379.
+
+Implementation details
+===
+
+Jobs replication strategy
+---
+
+1. Try with reachable nodes, shuffled.
+2. Send to one new node every 50 milliseconds.
+
+Cluster topology
+---
+
+Cluster messages
+---
+
+Auto federation
+---
+
+

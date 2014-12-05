@@ -288,7 +288,8 @@ void handleClientsBlockedOnQueues(void) {
 
             if (!j) break; /* No longer elements, try next queue. */
             addReplyMultiBulkLen(c,1);
-            addReplyMultiBulkLen(c,2);
+            addReplyMultiBulkLen(c,3);
+            addReplyBulk(c,j->queue);
             addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
             addReplyBulkCBuffer(c,j->body,sdslen(j->body));
             unblockClient(c); /* This will remove it from q->clients. */
@@ -366,7 +367,8 @@ void getjobsCommand(client *c) {
             job *job = queueNameFetchJob(queues[j]);
             if (!job) continue;
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
-            addReplyMultiBulkLen(c,2);
+            addReplyMultiBulkLen(c,3);
+            addReplyBulk(c,job->queue);
             addReplyBulkCBuffer(c,job->id,JOB_ID_LEN);
             addReplyBulkCBuffer(c,job->body,sdslen(job->body));
             count--;

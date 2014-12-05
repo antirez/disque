@@ -110,6 +110,7 @@ struct serverCommand serverCommandTable[] = {
     /* Server commands. */
     {"auth",authCommand,2,"rlF",0,NULL,0,0,0,0,0},
     {"ping",pingCommand,-1,"rF",0,NULL,0,0,0,0,0},
+    {"info",infoCommand,-1,"rl",0,NULL,0,0,0,0,0},
     {"shutdown",shutdownCommand,-1,"arl",0,NULL,0,0,0,0,0},
     {"monitor",monitorCommand,1,"ar",0,NULL,0,0,0,0,0},
     {"debug",debugCommand,-2,"a",0,NULL,0,0,0,0,0},
@@ -1993,6 +1994,24 @@ sds genDisqueInfoString(char *section) {
             zmalloc_get_fragmentation_ratio(server.resident_set_size),
             ZMALLOC_LIB
             );
+    }
+
+    /* Jobs */
+    if (allsections || defsections || !strcasecmp(section,"jobs")) {
+        if (sections++) info = sdscat(info,"\r\n");
+        info = sdscatprintf(info,
+            "# Jobs\r\n"
+            "registered_jobs:%llu\r\n",
+            (unsigned long long) dictSize(server.jobs));
+    }
+
+    /* Queues */
+    if (allsections || defsections || !strcasecmp(section,"queues")) {
+        if (sections++) info = sdscat(info,"\r\n");
+        info = sdscatprintf(info,
+            "# Queues\r\n"
+            "registered_queues:%llu\r\n",
+            (unsigned long long) dictSize(server.queues));
     }
 
     /* Persistence */

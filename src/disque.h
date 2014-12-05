@@ -889,6 +889,7 @@ uint64_t disqueBuildId(void);
 /* Commands prototypes */
 void authCommand(client *c);
 void pingCommand(client *c);
+void infoCommand(client *c);
 void shutdownCommand(client *c);
 void monitorCommand(client *c);
 void debugCommand(client *c);

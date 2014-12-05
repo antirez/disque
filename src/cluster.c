@@ -1338,7 +1338,10 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
 
         job *j = lookupJob(hdr->data.jobid.job.id);
-        if (j && j->state == JOB_STATE_QUEUED) clusterSendQueued(j);
+        if (j) {
+            if (j->state == JOB_STATE_QUEUED) clusterSendQueued(j);
+            else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
+        }
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
     }

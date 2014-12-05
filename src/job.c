@@ -698,6 +698,27 @@ void jobReplicationAchieved(job *j) {
         updateJobAwakeTime(j,0); /* Queue with delay. */
 }
 
+/* This function is called periodically by clientsCron(). Its goal is to
+ * check if a client blocked waiting for a job synchronous replication
+ * is taking too time, and add a new node to the set of nodes contacted
+ * in order to replicate the job. This way some of the nodes initially
+ * contacted are not reachable, are slow, or are out of memory (and are
+ * not accepting our job), we have a chance to make the ADDJOB call
+ * succeed using other nodes.
+ *
+ * The function always returns 0 since it never terminates the client. */
+#define DELAYED_JOB_ADD_NODE_MIN_PERIOD 50 /* 50 milliseconds. */
+int clientsCronHandleDelayedJobReplication(client *c) {
+    /* Return ASAP if this client is not blocked for job replication. */
+    if (!c->flags & DISQUE_BLOCKED || c->btype != DISQUE_BLOCKED_JOB_REPL)
+        return 0;
+
+    mstime_t elapsed = server.mstime - c->bpop.added_node_time;
+    if (elapsed >= DELAYED_JOB_ADD_NODE_MIN_PERIOD)
+        clusterReplicateJob(c->bpop.job, 1, 0);
+    return 0;
+}
+
 /* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC]
  *
  * The function changes replication strategy if the memory warning level
@@ -796,8 +817,12 @@ void addjobCommand(client *c) {
     }
 
     /* Check if REPLICATE can't be honoured at all. */
-    if (replicate-(extrepl ? 0 : 1) > server.cluster->reachable_nodes_count) {
-        if (extrepl && replicate-1 <= server.cluster->reachable_nodes_count) {
+    int additional_nodes = extrepl ? replicate : replicate-1;
+
+    if (additional_nodes > server.cluster->reachable_nodes_count) {
+        if (extrepl &&
+            additional_nodes-1 == server.cluster->reachable_nodes_count)
+        {
             addReplySds(c,
                 sdsnew("-NOREPL Not enough reachable nodes "
                        "for the requested replication level, since I'm unable "
@@ -868,6 +893,7 @@ void addjobCommand(client *c) {
     if (replicate > 1 && !async) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
+        c->bpop.added_node_time = server.mstime;
         blockClient(c,DISQUE_BLOCKED_JOB_REPL);
         setJobAssociatedValue(job,c);
         /* Create the nodes_confirmed dictionary only if we actually need
@@ -892,7 +918,6 @@ void addjobCommand(client *c) {
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
      * nodes. */
-    int additional_nodes = extrepl ? replicate : replicate-1;
     if (additional_nodes > 0)
         clusterReplicateJob(job, additional_nodes, async);
 

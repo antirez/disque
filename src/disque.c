@@ -582,6 +582,8 @@ int clientsCronResizeQueryBuffer(client *c) {
     return 0;
 }
 
+int clientsCronHandleDelayedJobReplication(client *c); /* see job.c */
+
 void clientsCron(void) {
     /* Make sure to process at least 1/(server.hz*10) of clients per call.
      * Since this function is called server.hz times per second we are sure that
@@ -608,6 +610,7 @@ void clientsCron(void) {
          * terminated. */
         if (clientsCronHandleTimeout(c)) continue;
         if (clientsCronResizeQueryBuffer(c)) continue;
+        if (clientsCronHandleDelayedJobReplication(c)) continue;
     }
 }
 

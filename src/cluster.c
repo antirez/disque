@@ -1615,7 +1615,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         if (dictAdd(j->nodes_delivered,node->name,node) == DICT_OK) {
             /* Only counts non-duplicated nodes. */
             added++;
-            if (repl-- == 0) break;
+            if (--repl == 0) break;
         }
     }
 

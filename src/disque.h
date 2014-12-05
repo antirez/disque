@@ -345,6 +345,7 @@ typedef struct blockingState {
 
     /* DISQUE_BLOCKED_JOB_REPL */
     struct job *job;        /* Job we are trying to replicate. */
+    mstime_t added_node_time; /* Last time we added a new node. */
 
     /* DISQUE_BLOCKED_QUEUES */
     dict *queues;           /* Queues we are waiting for. */

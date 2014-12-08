@@ -188,10 +188,29 @@ If there are no jobs for the specified queues the command blocks, and messages a
 
 Acknowledges the execution of one or more jobs via job IDs. The node receiving the ACK will replicate it to multiple nodes and will try to garbage collect both the job and the ACKs from the cluster so that memory can be freed.
 
+Other commands
+===
+
+    INFO
+    HELLO => id ... version ... nodes ...
+    QLEN <qname> => Length of queue
+    QSTAT <qname> => produced ... consumed ... idle ... sources [...] ctime ...
+    SHOW <msgid> => Describe the full msg content
+    SCANJOBS <cursor> [COUNT ...] [QUEUE ...]
+    SCANQUEUES <cursor> [COUNT ...] [MAXIDLE ...]
+
 Client libraries
 ===
 
 Disque uses the same protocl as Redis itself. To adapt Redis clients, or to use it directly, should be pretty easy. However note that Disque default port is 7711 and not 6379.
+
+While a vanilly Redis client may work well with Disque, clients should optionally use the following protocol in order to connect with a Disque cluster:
+
+1. The client should be given a number of ip addresses and ports where nodes are located. The client should select random nodes and should try to connect until one available is found.
+2. On a successful connection the `HELLO` command should be used in order to retrieve the Node ID and other potentially useful information (server version, number of nodes).
+3. If a consumer sees an high message rate received from foreing nodes, it may optionally have logic in order to retrieve messages directly from the nodes where producers are producing the messages for a given topic. The consumer can easily check the source of the messages by checking the Node ID prefix in the messages IDs.
+
+This way producers and consumers will eventually try to minimize nodes messages exchanges whenever possible.
 
 Implementation details
 ===
@@ -199,16 +218,54 @@ Implementation details
 Jobs replication strategy
 ---
 
-1. Try with reachable nodes, shuffled.
-2. Send to one new node every 50 milliseconds.
+1. Disque tries to replicate to W-1 (or W if OOM) reachable nodes, shuffled.
+2. ADDJOB message is used to replicate, the job is sent together with the list of nodes that may have a copy.
+2. Send to one new node every 50 milliseconds. A new ADDJOB is sent to each node that may have already a copy, plus the new node. All the nodes should update the list of nodes that may have a copy of the message.
+3. If the specified timeout is reached, the node that originally received the ADDJOB command from the client, gives up and returns an error to the client. When this happens the node performs a best-effort procedure to delete the job from nodes that may have a copy.
 
 Cluster topology
 ---
 
+Disque is a full mesh, with each node connected to each other. Disque performs
+distributed failure detection via gossip, only in order to adjust the
+replication strategy (try reachable nodes first when trying to replicate
+a message), and in order to inform clients about non reachable nodes when
+they want the list of nodes they can connect to.
+
+Being Disque multi-master the event of nodes failing is not handled in any
+special way.
+
 Cluster messages
 ---
+
+Nodes communicate via a set of messages, using the node-to-node message bus.
+A few of the messages are used in order to check that other nodes are
+reachable and to mark nodes as failing. Those messages are PING, PONG and
+FAIL. Since failure detection is only used to adjust the replication strategy
+(talk with reachable nodes first in order to improve latency), the details
+are yet not described. Other messages are more important since they are used
+in order to replicate jobs, re-issue jobs trying to minimize multiple delivers,
+and in order to auto-federate to serve consumers when messages are produced
+in different nodes compared to where consumers are.
+
+The following is a list of messages and what they do:
+
+* ADDJOB: ask the receiver to replicate a job, that is, to add a copy of the job among the registered jobs in the target node. When a job is accepted, the receiver replies to GOTJOB to the sender. A job may not be accepted if the receiving node is near out of memory.
+* GOTJOB: The reply to ADDJOB to confirm the job was replicated.
+* QUEUEJOB: Ask a node to put a given job into its queue. This message is used when a job is replicated by a node that does not want to take a copy, so it asks another node (among the ones that acknowledged the job replication) to queue it for the first time. If this message is lost, after the retry time some node will try to re-queue the message, unless retry is set to zero.
+* QUEUED: When a node re-queue a job, it sends QUEUED to all the nodes that may have a copy of the message, so that the other nodes will update the time at which they'll retry to queue the job.
+* WILLQUEUE: This is send 500 milliseconds before a job is re-queued to all the nodes that may have a copy. If some of the receivers already have the job queued, they'll reply with QUEUED in order to prevent the sender to queue the job again (avoid multiple delivery when possible).
+* SETACK: This message is sent to force a node to mark a job as delivered: the job will no longer be considered active, will not be re-queued, and so forth. Also SETACK is send to the sender if the receiver of QUEUED or WILLQUEUE message has the same job marked as acknowledged (successfully delivered) already.
+* GOTACK: This message is sent in order to acknowledge a SETACK message. The receiver can mark a given node that may have a copy of a job, as informed about the fact that the job was acknowledged by the worker.
+* DELJOB: Ask the receiver to remove a job. Is only sent in order to perform garbage collection of jobs by nodes that are sure the job was already delivered correctly. Usually the node sending DELJOB only does that when its sure that all the nodes that may have a copy of the message already marked the message ad delivered, however after some time the Job GC may be performed anyway in order to reclaim memory, and in that case, an otherwise avoidable mutliple delivery of a job may happen.
+
+There are two additional messages that are used for federation, NEEDJOBS and YOURJOBS, but they are covered in the next section.
 
 Auto federation
 ---
 
+Auto federation is based on two cluster requests, plus metrics and heuristics in order to exchange messages with a good frequency and with the right nodes.
 
+The message NEEDJOBS is at the base of the federation, and asks a node to obtain jobs about a given queue. The receiving node will de-queue jobs from the queue (but will still hold a copy of the job), and send those messages to the node that requested them.
+
+Nodes reply to NEEDJOBS with YOURJOBS, a cluster message that has one or multiple jobs inside.

@@ -163,7 +163,7 @@ API
 Disque API is composed of a small set of commands, since the system solves a
 single very specific problem. The three main commands are:
 
-    ADDJOB queue_name job <ms-timeout> [REPLICATE <count>] [TTL <sec>] [RETRY <sec>] [ASYNC]
+    ADDJOB queue_name job <ms-timeout> [REPLICATE <count>] [DELAY <sec>] [RETRY <sec>] [TTL <sec>] [MAXLEN <count>] [ASYNC]
 
 Adds a job to the specified queue. Arguments are as follows:
 
@@ -171,8 +171,9 @@ Adds a job to the specified queue. Arguments are as follows:
 * *job* is a string representing the job. Disque is job meaning agnostic, for it a job is just a message to deliver. Job max size is 4GB.
 * *ms-timeout* is the command timeout in milliseconds. If no ASYNC is specified, and the replication level specified is not reached in the specified number of milliseconds, the command returns with an error, and the node does a best-effort cleanup, that is, it will try to delete copies of the job across the cluster. However the job may still be delivered later. Note that the actual timeout resolution is 1/10 of second or worse with the default server hz.
 * *REPLICATE count* is the number of nodes the job should be replicated to.
-* *TTL sec* is the max job life in seconds. After this time, the job is deleted even if it was not successfully delivered.
+* *DELAY sec* is the number of seconds that should elapse before the job is queued by any server.
 * *RETRY sec* period after which, if no ACK is received, the job is put again into the queue for delivery. If RETRY is 0, the job has an at-least-once delivery semantics.
+* *TTL sec* is the max job life in seconds. After this time, the job is deleted even if it was not successfully delivered.
 * *ASYNC* asks the server to let the command return ASAP and replicate the job to other nodes in the background. The job gets queued ASAP, while normally the job is put into the queue only when the client gets a positive reply.
 
 The command returns the Job ID of the added job, assuming ASYNC is specified, or if the job was replicated correctly to the specified number of nodes. Otherwise an error is returned.
@@ -191,13 +192,20 @@ Acknowledges the execution of one or more jobs via job IDs. The node receiving t
 Other commands
 ===
 
-    INFO
+    INFO => Generic server information / stats.
     HELLO => id ... version ... nodes ...
+
     QLEN <qname> => Length of queue
     QSTAT <qname> => produced ... consumed ... idle ... sources [...] ctime ...
-    SHOW <msgid> => Describe the full msg content
-    SCANJOBS <cursor> [COUNT ...] [QUEUE ...]
-    SCANQUEUES <cursor> [COUNT ...] [MAXIDLE ...]
+    QPEEK <qname> <count> => Return without consuming <count> jobs.
+
+    QUEUE <job-id> ... <job-id> => Queue jobs if not already queued.
+    DEQUEUE <job-id> ... <job-id> => Remove the job from the queue.
+    DEL <job-id> ... <job-id> => Completely delete a job from a node.
+    SHOW <msgid> => Describe the full msg content.
+
+    SCANJOBS <cursor> [STATE ...] [QUEUE ...] [COUNT ...] => Iterate job IDs.
+    SCANQUEUES <cursor> [COUNT ...] [MAXIDLE ...] => Iterate queue names.
 
 Client libraries
 ===

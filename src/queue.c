@@ -102,6 +102,16 @@ int destroyQueue(robj *name) {
     return DISQUE_OK;
 }
 
+/* Send a job as a return value of a command. This is about jobs but inside
+ * queue.c since this is the format used in order to return a job from a
+ * queue, as an array [queue_name,id,body]. */
+void addReplyJob(client *c, job *j) {
+    addReplyMultiBulkLen(c,3);
+    addReplyBulk(c,j->queue);
+    addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
+    addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+}
+
 /* ------------------------ Queue higher level API -------------------------- */
 
 /* Queue the job and change its state accordingly. If the job is already
@@ -288,10 +298,7 @@ void handleClientsBlockedOnQueues(void) {
 
             if (!j) break; /* No longer elements, try next queue. */
             addReplyMultiBulkLen(c,1);
-            addReplyMultiBulkLen(c,3);
-            addReplyBulk(c,j->queue);
-            addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
-            addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+            addReplyJob(c,j);
             unblockClient(c); /* This will remove it from q->clients. */
         }
     }
@@ -367,10 +374,7 @@ void getjobsCommand(client *c) {
             job *job = queueNameFetchJob(queues[j]);
             if (!job) continue;
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
-            addReplyMultiBulkLen(c,3);
-            addReplyBulk(c,job->queue);
-            addReplyBulkCBuffer(c,job->id,JOB_ID_LEN);
-            addReplyBulkCBuffer(c,job->body,sdslen(job->body));
+            addReplyJob(c,job);
             count--;
             emitted_jobs++;
             if (count == 0) break;

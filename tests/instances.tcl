@@ -1,7 +1,6 @@
 # Multi-instance test framework.
-# This is used in order to test Sentinel and Redis Cluster, and provides
-# basic capabilities for spawning and handling N parallel Redis / Sentinel
-# instances.
+# This is used in order to test Disque and provides
+# basic capabilities for spawning and handling N parallel instances.
 #
 # Copyright (C) 2014 Salvatore Sanfilippo antirez@gmail.com
 # This software is released under the BSD License. See the COPYING file for
@@ -10,7 +9,7 @@
 package require Tcl 8.5
 
 set tcl_precision 17
-source ../support/redis.tcl
+source ../support/redis.tcl     ; # Disque uses the Redis protocol.
 source ../support/util.tcl
 source ../support/server.tcl
 source ../support/test.tcl
@@ -19,20 +18,20 @@ set ::verbose 0
 set ::pause_on_error 0
 set ::simulate_error 0
 set ::sentinel_instances {}
-set ::redis_instances {}
+set ::disque_instances {}
 set ::sentinel_base_port 20000
-set ::redis_base_port 30000
+set ::disque_base_port 25000
 set ::pids {} ; # We kill everything at exit
 set ::dirs {} ; # We remove all the temp dirs at exit
 set ::run_matching {} ; # If non empty, only tests matching pattern are run.
 
 if {[catch {cd tmp}]} {
     puts "tmp directory not found."
-    puts "Please run this test from the Redis source root."
+    puts "Please run this test from the Disque source root."
     exit 1
 }
 
-# Spawn a redis or sentinel instance, depending on 'type'.
+# Spawn a disque instance, depending on 'type'.
 proc spawn_instance {type base_port count {conf {}}} {
     for {set j 0} {$j < $count} {incr j} {
         set port [find_available_port $base_port]
@@ -58,12 +57,10 @@ proc spawn_instance {type base_port count {conf {}}} {
         close $cfg
 
         # Finally exec it and remember the pid for later cleanup.
-        if {$type eq "redis"} {
-            set prgname redis-server
-        } elseif {$type eq "sentinel"} {
-            set prgname redis-sentinel
+        if {$type eq "disque"} {
+            set prgname disque-server
         } else {
-            error "Unknown instance type."
+            error "Unknown instance type $type"
         }
         set pid [exec ../../../src/${prgname} $cfgfile &]
         lappend ::pids $pid
@@ -143,31 +140,23 @@ proc pause_on_error {} {
         set cmd [lindex $argv 0]
         if {$cmd eq {continue}} {
             break
-        } elseif {$cmd eq {show-redis-logs}} {
+        } elseif {$cmd eq {show-disque-logs}} {
             set count 10
             if {[lindex $argv 1] ne {}} {set count [lindex $argv 1]}
-            foreach_redis_id id {
-                puts "=== REDIS $id ===="
-                puts [exec tail -$count redis_$id/log.txt]
-                puts "---------------------\n"
-            }
-        } elseif {$cmd eq {show-sentinel-logs}} {
-            set count 10
-            if {[lindex $argv 1] ne {}} {set count [lindex $argv 1]}
-            foreach_sentinel_id id {
-                puts "=== SENTINEL $id ===="
-                puts [exec tail -$count sentinel_$id/log.txt]
+            foreach_disque_id id {
+                puts "=== DISQUE $id ===="
+                puts [exec tail -$count disque_$id/log.txt]
                 puts "---------------------\n"
             }
         } elseif {$cmd eq {ls}} {
-            foreach_redis_id id {
-                puts -nonewline "Redis $id"
+            foreach_disque_id id {
+                puts -nonewline "Disque $id"
                 set errcode [catch {
                     set str {}
-                    append str "@[RI $id tcp_port]: "
-                    append str "[RI $id role] "
-                    if {[RI $id role] eq {slave}} {
-                        append str "[RI $id master_host]:[RI $id master_port]"
+                    append str "@[DI $id tcp_port]: "
+                    append str "[DI $id role] "
+                    if {[DI $id role] eq {slave}} {
+                        append str "[DI $id master_host]:[DI $id master_port]"
                     }
                     set str
                 } retval]
@@ -192,13 +181,10 @@ proc pause_on_error {} {
                 }
             }
         } elseif {$cmd eq {help}} {
-            puts "ls                     List Sentinel and Redis instances."
-            puts "show-sentinel-logs \[N\] Show latest N lines of logs."
-            puts "show-redis-logs \[N\]    Show latest N lines of logs."
-            puts "S <id> cmd ... arg     Call command in Sentinel <id>."
-            puts "R <id> cmd ... arg     Call command in Redis <id>."
-            puts "SI <id> <field>        Show Sentinel <id> INFO <field>."
-            puts "RI <id> <field>        Show Sentinel <id> INFO <field>."
+            puts "ls                     List Disque instances."
+            puts "show-disque-logs \[N\] Show latest N lines of logs."
+            puts "D <id> cmd ... arg     Call command in Disque <id>."
+            puts "DI <id> <field>        Show Disque <id> INFO <field>."
             puts "continue               Resume test."
         } else {
             set errcode [catch {eval $line} retval]
@@ -242,20 +228,9 @@ proc run_tests {} {
     }
 }
 
-# The "S" command is used to interact with the N-th Sentinel.
-# The general form is:
-#
-# S <sentinel-id> command arg arg arg ...
-#
-# Example to ping the Sentinel 0 (first instance): S 0 PING
-proc S {n args} {
-    set s [lindex $::sentinel_instances $n]
-    [dict get $s link] {*}$args
-}
-
-# Like R but to chat with Redis instances.
-proc R {n args} {
-    set r [lindex $::redis_instances $n]
+# Command to talk with a Disque instance.
+proc D {n args} {
+    set r [lindex $::disque_instances $n]
     [dict get $r link] {*}$args
 }
 
@@ -271,15 +246,11 @@ proc get_info_field {info field} {
     return {}
 }
 
-proc SI {n field} {
-    get_info_field [S $n info] $field
+proc DI {n field} {
+    get_info_field [D $n info] $field
 }
 
-proc RI {n field} {
-    get_info_field [R $n info] $field
-}
-
-# Iterate over IDs of sentinel or redis instances.
+# Iterate over IDs of instances.
 proc foreach_instance_id {instances idvar code} {
     upvar 1 $idvar id
     for {set id 0} {$id < [llength $instances]} {incr id} {
@@ -296,13 +267,8 @@ proc foreach_instance_id {instances idvar code} {
     }
 }
 
-proc foreach_sentinel_id {idvar code} {
-    set errcode [catch {uplevel 1 [list foreach_instance_id $::sentinel_instances $idvar $code]} result]
-    return -code $errcode $result
-}
-
-proc foreach_redis_id {idvar code} {
-    set errcode [catch {uplevel 1 [list foreach_instance_id $::redis_instances $idvar $code]} result]
+proc foreach_disque_id {idvar code} {
+    set errcode [catch {uplevel 1 [list foreach_instance_id $::disque_instances $idvar $code]} result]
     return -code $errcode $result
 }
 
@@ -316,31 +282,6 @@ proc set_instance_attrib {type id attrib newval} {
     set d [lindex [set ::${type}_instances] $id]
     dict set d $attrib $newval
     lset ::${type}_instances $id $d
-}
-
-# Create a master-slave cluster of the given number of total instances.
-# The first instance "0" is the master, all others are configured as
-# slaves.
-proc create_redis_master_slave_cluster n {
-    foreach_redis_id id {
-        if {$id == 0} {
-            # Our master.
-            R $id slaveof no one
-            R $id flushall
-        } elseif {$id < $n} {
-            R $id slaveof [get_instance_attrib redis 0 host] \
-                          [get_instance_attrib redis 0 port]
-        } else {
-            # Instances not part of the cluster.
-            R $id slaveof no one
-        }
-    }
-    # Wait for all the slaves to sync.
-    wait_for_condition 1000 50 {
-        [RI 0 connected_slaves] == ($n-1)
-    } else {
-        fail "Unable to create a master-slaves cluster."
-    }
 }
 
 proc get_instance_id_by_port {type port} {
@@ -385,10 +326,10 @@ proc restart_instance {type id} {
 
     # Execute the instance with its old setup and append the new pid
     # file for cleanup.
-    if {$type eq "redis"} {
-        set prgname redis-server
+    if {$type eq "disque"} {
+        set prgname disque-server
     } else {
-        set prgname redis-sentinel
+        error "Unknown instance type $type"
     }
     set pid [exec ../../../src/${prgname} $cfgfile &]
     set_instance_attrib $type $id pid $pid
@@ -396,7 +337,7 @@ proc restart_instance {type id} {
 
     # Check that the instance is running
     if {[server_is_up 127.0.0.1 $port 100] == 0} {
-        abort_sentinel_test "Problems starting $type #$id: ping timeout"
+        abort_disque_test "Problems starting $type #$id: ping timeout"
     }
 
     # Connect with it with a fresh link

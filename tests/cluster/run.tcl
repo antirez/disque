@@ -11,9 +11,8 @@ set ::instances_count 20 ; # How many instances we use at max.
 
 proc main {} {
     parse_options
-    spawn_instance redis $::redis_base_port $::instances_count {
-        "cluster-enabled yes"
-        "appendonly yes"
+    spawn_instance disque $::disque_base_port $::instances_count {
+        "loglevel notice"
     }
     run_tests
     cleanup

@@ -4,7 +4,7 @@ set ::valgrind_errors {}
 
 proc start_server_error {config_file error} {
     set err {}
-    append err "Cant' start the Redis server\n"
+    append err "Cant' start the Disque server\n"
     append err "CONFIGURATION:"
     append err [exec cat $config_file]
     append err "\nERROR:"
@@ -192,7 +192,7 @@ proc start_server {options {code undefined}} {
     }
 
     # write new configuration to temporary file
-    set config_file [tmpfile redis.conf]
+    set config_file [tmpfile disque.conf]
     set fp [open $config_file w+]
     foreach directive [dict keys $config] {
         puts -nonewline $fp "$directive "
@@ -204,9 +204,9 @@ proc start_server {options {code undefined}} {
     set stderr [format "%s/%s" [dict get $config "dir"] "stderr"]
 
     if {$::valgrind} {
-        exec valgrind --suppressions=src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full src/redis-server $config_file > $stdout 2> $stderr &
+        exec valgrind --suppressions=src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full src/disque-server $config_file > $stdout 2> $stderr &
     } else {
-        exec src/redis-server $config_file > $stdout 2> $stderr &
+        exec src/disque-server $config_file > $stdout 2> $stderr &
     }
 
     # check that the server actually started

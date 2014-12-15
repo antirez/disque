@@ -30,6 +30,14 @@ proc has_flag {node flag} {
     expr {[lsearch -exact [dict get $node flags] $flag] != -1}
 }
 
+proc count_cluster_nodes_with_flag {id flag} {
+    set count 0
+    foreach node [get_cluster_nodes $id] {
+        if {[has_flag $node $flag]} {incr count}
+    }
+    return $count
+}
+
 # Returns the parsed myself node entry as a dictionary.
 proc get_myself id {
     set nodes [get_cluster_nodes $id]

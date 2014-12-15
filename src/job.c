@@ -710,7 +710,7 @@ void jobReplicationAchieved(job *j) {
 #define DELAYED_JOB_ADD_NODE_MIN_PERIOD 50 /* 50 milliseconds. */
 int clientsCronHandleDelayedJobReplication(client *c) {
     /* Return ASAP if this client is not blocked for job replication. */
-    if (!c->flags & DISQUE_BLOCKED || c->btype != DISQUE_BLOCKED_JOB_REPL)
+    if (!(c->flags & DISQUE_BLOCKED) || c->btype != DISQUE_BLOCKED_JOB_REPL)
         return 0;
 
     mstime_t elapsed = server.mstime - c->bpop.added_node_time;

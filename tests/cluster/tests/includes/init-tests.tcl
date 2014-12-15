@@ -47,15 +47,6 @@ test "Cluster Join and auto-discovery test" {
         D $a cluster meet 127.0.0.1 $b_port
     }
 
-    for {set i 0} {$i < 10} {incr i} {
-        puts $i
-        foreach node [get_cluster_nodes 0] {
-            puts $node
-        }
-        puts END
-        after 1000
-    }
-
     foreach_disque_id id {
         wait_for_condition {
             [llength [get_cluster_nodes $id]] == [llength $ids]

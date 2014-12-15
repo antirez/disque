@@ -30,6 +30,8 @@ proc has_flag {node flag} {
     expr {[lsearch -exact [dict get $node flags] $flag] != -1}
 }
 
+# Return the number of instances having the specified flag set from the
+# POV of the instance 'id'.
 proc count_cluster_nodes_with_flag {id flag} {
     set count 0
     foreach node [get_cluster_nodes $id] {

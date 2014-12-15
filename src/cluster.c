@@ -405,8 +405,6 @@ void clusterReset(int hard) {
     if (hard) {
         sds oldname;
 
-        serverLog(DISQUE_WARNING,"configEpoch set to 0 via CLUSTER RESET HARD");
-
         /* To change the Node ID we need to remove the old name from the
          * nodes table, change the ID, and re-add back with new name. */
         oldname = sdsnewlen(myself->name, DISQUE_CLUSTER_NAMELEN);
@@ -416,7 +414,11 @@ void clusterReset(int hard) {
         clusterAddNode(myself);
     }
 
-    /* TODO: flush away all the jobs data. */
+    /* TODO: flush away all the jobs and queues data. */
+
+    /* TODO: flush the deleted nodes hash table and the deleted nodes
+     * entries. There are no longer jobs or queues that may reference
+     * them. */
 
     /* Make sure to persist the new config and update the state. */
     clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|

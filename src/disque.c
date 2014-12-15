@@ -1240,7 +1240,7 @@ void initServer(void) {
         exit(1);
     }
 
-    /* Create the Disque databases, and initialize other internal state. */
+    /* Create the Disque data structures, and init other internal state. */
     server.jobs = dictCreate(&jobsDictType,NULL);
     server.queues = dictCreate(&queuesDictType,NULL);
     server.ready_queues = dictCreate(&setDictType,NULL);

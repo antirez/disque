@@ -24,6 +24,7 @@ set ::disque_base_port 25000
 set ::pids {} ; # We kill everything at exit
 set ::dirs {} ; # We remove all the temp dirs at exit
 set ::run_matching {} ; # If non empty, only tests matching pattern are run.
+set ::condition_max_wait_time 50000 ; # 50 seconds max wait for things to happen
 
 if {[catch {cd tmp}]} {
     puts "tmp directory not found."
@@ -110,12 +111,16 @@ proc parse_options {} {
             set ::pause_on_error 1
         } elseif {$opt eq "--fail"} {
             set ::simulate_error 1
+        } elseif {$opt eq "--timeout"} {
+            incr j
+            set ::condition_max_wait_time [expr {$val*1000}]
         } elseif {$opt eq "--help"} {
             puts "Hello, I'm sentinel.tcl and I run Sentinel unit tests."
             puts "\nOptions:"
             puts "--single <pattern>      Only runs tests specified by pattern."
             puts "--pause-on-error        Pause for manual inspection on error."
             puts "--fail                  Simulate a test failure."
+            puts "--timeout <sec>         Max wait time for tested conditions."
             puts "--help                  Shows this help."
             exit 0
         } else {

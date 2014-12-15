@@ -51,7 +51,15 @@ proc assert_type {type key} {
 # Wait for the specified condition to be true, with the specified number of
 # max retries and delay between retries. Otherwise the 'elsescript' is
 # executed.
-proc wait_for_condition {maxtries delay e _else_ elsescript} {
+proc wait_for_condition {e _else_ elsescript} {
+    if {[info exists ::condition_max_wait_time]} {
+        set maxtries 1000
+        set delay [expr {$::condition_max_wait_time / $maxtries}]
+    } else {
+        # If nothing is specified max wait time is 50 seconds.
+        set maxtries 1000
+        set delay 50
+    }
     while {[incr maxtries -1] >= 0} {
         set errcode [catch {uplevel 1 [list expr $e]} result]
         if {$errcode == 0} {

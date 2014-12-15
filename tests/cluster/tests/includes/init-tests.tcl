@@ -15,7 +15,7 @@ test "(init) Restart killed instances" {
 test "Cluster nodes are reachable" {
     foreach_disque_id id {
         # Every node should be reachable.
-        wait_for_condition 1000 50 {
+        wait_for_condition {
             ([catch {D $id ping} ping_reply] == 0) &&
             ($ping_reply eq {PONG})
         } else {
@@ -57,7 +57,7 @@ test "Cluster Join and auto-discovery test" {
     }
 
     foreach_disque_id id {
-        wait_for_condition 1000 50 {
+        wait_for_condition {
             [llength [get_cluster_nodes $id]] == [llength $ids]
         } else {
             fail "Cluster failed to join into a full mesh."

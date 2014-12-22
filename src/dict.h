@@ -146,6 +146,19 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 #define dictSize(d) ((d)->ht[0].used+(d)->ht[1].used)
 #define dictIsRehashing(d) ((d)->rehashidx != -1)
 
+/* Foreach macro. */
+#define dictForeach(_d,_devar) { \
+    dictIterator *_diter = dictGetIterator(_d); \
+    dictEntry *_devar; \
+    while((_devar = dictNext(_diter)) != NULL) {
+
+#define dictSafeForeach(_d,_devar) { \
+    dictIterator *_diter = dictGetSafeIterator(_d); \
+    dictEntry *_devar; \
+    while((_devar = dictNext(_diter)) != NULL) {
+
+#define dictEndForeach } dictReleaseIterator(_diter); }
+
 /* API */
 dict *dictCreate(dictType *type, void *privDataPtr);
 int dictExpand(dict *d, unsigned long size);

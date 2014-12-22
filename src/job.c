@@ -99,6 +99,28 @@ void generateJobID(char *id, int ttl) {
     *id++ = 'Q';
 }
 
+/* Validate the string 'id' as a job ID. 'len' is the number of bytes the
+ * string is composed of. The function just checks length and prefix/suffix.
+ * It's pretty pointless to use more CPU to validate it better since anyway
+ * the lookup will fail. */
+int validateJobId(char *id, size_t len) {
+    if (len != JOB_ID_LEN) return DISQUE_ERR;
+    if (id[0] != 'D' ||
+        id[1] != 'I' ||
+        id[JOB_ID_LEN-2] != 'S' ||
+        id[JOB_ID_LEN-1] != 'Q') return DISQUE_ERR;
+    return DISQUE_OK;
+}
+
+/* Like validateJobId() but if the ID is invalid an error message is sent
+ * to the client 'c'. */
+int validateJobIdOrReply(client *c, char *id, size_t len) {
+    int retval = validateJobId(id,len);
+    if (retval == DISQUE_ERR) addReplySds(c,
+            sdsnew("-BADJOBID Invalid Job ID format.\r\n"));
+    return retval;
+}
+
 /* Create a new job in a given state. If "ID" is NULL, a new ID will be
  * created as assigned.
  *
@@ -187,6 +209,14 @@ void setJobAssociatedValue(job *j, void *val) {
 void *jobGetAssociatedValue(job *j) {
     struct dictEntry *de = dictFind(server.jobs, j->id);
     return de ? dictGetVal(de) : NULL;
+}
+
+/* Return the job state as a C string pointer. This is mainly useful for
+ * reporting / debugign tasks. */
+char *jobStateToString(int state) {
+    char *states[] = {"wait-repl","active","queued","acked"};
+    if (state < 0 || state > JOB_STATE_ACKED) return "unknown";
+    return states[state];
 }
 
 /* ------------------------- Garbage collection ----------------------------- */
@@ -934,4 +964,74 @@ void addjobCommand(client *c) {
          * it if it's async + extrepl. */
         freeJob(job);
     }
+}
+
+/* SHOW <job-id> */
+void showCommand(client *c) {
+    if (validateJobIdOrReply(c,c->argv[1]->ptr,sdslen(c->argv[1]->ptr))
+        == DISQUE_ERR) return;
+
+    job *j = lookupJob(c->argv[1]->ptr);
+    if (!j) {
+        addReply(c,shared.nullbulk);
+        return;
+    }
+
+    addReplyMultiBulkLen(c,24);
+
+    addReplyBulkCString(c,"id");
+    addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
+
+    addReplyBulkCString(c,"queue");
+    addReplyBulk(c,j->queue);
+
+    addReplyBulkCString(c,"state");
+    addReplyBulkCString(c,jobStateToString(j->state));
+
+    addReplyBulkCString(c,"repl");
+    addReplyLongLong(c,j->repl);
+
+    int64_t ttl = j->etime - time(NULL);
+    if (ttl < 0) ttl = 0;
+    addReplyBulkCString(c,"ttl");
+    addReplyLongLong(c,ttl);
+
+    addReplyBulkCString(c,"ctime");
+    addReplyLongLong(c,j->ctime);
+
+    addReplyBulkCString(c,"delay");
+    addReplyLongLong(c,j->delay);
+
+    addReplyBulkCString(c,"retry");
+    addReplyLongLong(c,j->retry);
+
+    addReplyBulkCString(c,"nodes-delivered");
+    addReplyMultiBulkLen(c,dictSize(j->nodes_delivered));
+    dictForeach(j->nodes_delivered,de)
+        addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
+    dictEndForeach
+
+    addReplyBulkCString(c,"nodes-confirmed");
+    if (j->nodes_confirmed) {
+        addReplyMultiBulkLen(c,dictSize(j->nodes_confirmed));
+        dictForeach(j->nodes_confirmed,de)
+            addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
+        dictEndForeach
+    } else {
+        addReplyMultiBulkLen(c,0);
+    }
+
+    mstime_t next_requeue = j->qtime - mstime();
+    if (next_requeue < 0) next_requeue = 0;
+    addReplyBulkCString(c,"next-requeue-within");
+    if (j->qtime == 0)
+        addReply(c,shared.nullbulk);
+    else
+        addReplyLongLong(c,next_requeue);
+
+    addReplyBulkCString(c,"body");
+    if (j->body)
+        addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+    else
+        addReply(c,shared.nullbulk);
 }

@@ -107,11 +107,14 @@ typedef struct job {
     robj *queue;            /* Job queue name. */
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
-    dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. */
+    dict *nodes_confirmed;  /* Nodes that confirmed to have a copy. If the job
+                               state is ACKED, this is a list of nodes that
+                               confirmed to have the job in acknowledged
+                               state. */
     /* Note: qtime and awakeme are in milliseconds because we need to
      * desync different nodes in an effective way to avoid useless multiple
      * deliveries when jobs are re-queued. */
-    mstime_t qtime;         /* Next queue time: local unxt ime the job will be
+    mstime_t qtime;         /* Next queue time: local unix time the job will be
                                requeued in this node if not ACKed before.
                                Qtime is updated when we receive QUEUED
                                messages to avoid to re-queue if other nodes

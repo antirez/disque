@@ -268,7 +268,7 @@ void updateJobAwakeTime(job *j, mstime_t at) {
         } else if ((j->state == JOB_STATE_ACTIVE ||
                     j->state == JOB_STATE_QUEUED) && j->qtime) {
             /* Schedule the job to be queued, and if the job is flagged
-             * BAST_WILLQUEUE, make sure to awake the job a bit earlier
+             * BCAST_WILLQUEUE, make sure to awake the job a bit earlier
              * to broadcast a WILLQUEUE message. */
             mstime_t qtime = j->qtime;
             if (j->flags & JOB_FLAG_BCAST_WILLQUEUE)
@@ -977,7 +977,7 @@ void showCommand(client *c) {
         return;
     }
 
-    addReplyMultiBulkLen(c,24);
+    addReplyMultiBulkLen(c,26);
 
     addReplyBulkCString(c,"id");
     addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
@@ -1028,6 +1028,14 @@ void showCommand(client *c) {
         addReply(c,shared.nullbulk);
     else
         addReplyLongLong(c,next_requeue);
+
+    mstime_t next_awake = j->awakeme - mstime();
+    if (next_awake < 0) next_awake = 0;
+    addReplyBulkCString(c,"next-awake-within");
+    if (j->awakeme == 0)
+        addReply(c,shared.nullbulk);
+    else
+        addReplyLongLong(c,next_awake);
 
     addReplyBulkCString(c,"body");
     if (j->body)

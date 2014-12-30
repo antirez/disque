@@ -604,8 +604,7 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     while(aux--) {
         clusterNode *node = clusterLookupNode((char*)p);
-        if (!node) continue; /* Not known... */
-        dictAdd(j->nodes_delivered,node->name,node);
+        if (node) dictAdd(j->nodes_delivered,node->name,node);
         p += DISQUE_CLUSTER_NAMELEN;
         len -= DISQUE_CLUSTER_NAMELEN;
     }

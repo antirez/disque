@@ -25,6 +25,7 @@ set ::pids {} ; # We kill everything at exit
 set ::dirs {} ; # We remove all the temp dirs at exit
 set ::run_matching {} ; # If non empty, only tests matching pattern are run.
 set ::condition_max_wait_time 50000 ; # 50 seconds max wait for things to happen
+set ::loglevel {}
 
 if {[catch {cd tmp}]} {
     puts "tmp directory not found."
@@ -34,6 +35,10 @@ if {[catch {cd tmp}]} {
 
 # Spawn a disque instance, depending on 'type'.
 proc spawn_instance {type base_port count {conf {}}} {
+    if {$::loglevel ne {}} {
+        lappend conf "loglevel $::loglevel"
+    }
+
     for {set j 0} {$j < $count} {incr j} {
         set port [find_available_port $base_port]
         incr base_port
@@ -51,6 +56,7 @@ proc spawn_instance {type base_port count {conf {}}} {
         puts $cfg "port $port"
         puts $cfg "dir ./$dirname"
         puts $cfg "logfile log.txt"
+
         # Add additional config files
         foreach directive $conf {
             puts $cfg $directive
@@ -114,6 +120,13 @@ proc parse_options {} {
         } elseif {$opt eq "--timeout"} {
             incr j
             set ::condition_max_wait_time [expr {$val*1000}]
+        } elseif {$opt eq "--loglevel"} {
+            incr j
+            set ::loglevel $val
+            if {[lsearch -exact {warning notice verbose debug} $val] == -1} {
+                puts "Unknown loglevel: $val"
+                exit 1
+            }
         } elseif {$opt eq "--help"} {
             puts "Hello, I'm sentinel.tcl and I run Sentinel unit tests."
             puts "\nOptions:"

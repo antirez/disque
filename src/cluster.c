@@ -1266,12 +1266,12 @@ int clusterProcessPacket(clusterLink *link) {
         if (getMemoryWarningLevel() > 0) return 1;
 
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL);
-        j->flags |= JOB_FLAG_BCAST_QUEUED;
         if (j == NULL) {
             serverLog(DISQUE_WARNING,
                 "Received corrupted job description from node %.40s",
                 hdr->sender);
         } else {
+            j->flags |= JOB_FLAG_BCAST_QUEUED;
             j->state = JOB_STATE_ACTIVE;
             if (registerJob(j) == DISQUE_ERR) {
                 /* The job already exists. Just update the list of nodes

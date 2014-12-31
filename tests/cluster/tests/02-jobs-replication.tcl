@@ -58,3 +58,22 @@ test "ADDJOB, asynchronous replication to multiple nodes" {
         fail "Not enough nodes reached via asynchronous replication"
     }
 }
+
+test "Synchronos ADDJOB fails if not enough nodes are available" {
+    catch {D 0 addjob myqueue myjob 5000 replicate 100} job_id
+    assert_match {NOREPL*} $job_id
+}
+
+test "Synchronous ADDJOB fails if not enough nodes are reachable" {
+    # We kill three instances and send ADDJOB ASAP before the nodes
+    # are marked as not reachable.
+    kill_instance disque 1
+    kill_instance disque 2
+    kill_instance disque 3
+    set impossible_repl [expr {$::instances_count-3+1}]
+    catch {D 0 addjob myqueue myjob 5000 replicate $impossible_repl} job_id
+    assert_match {NOREPL*} $job_id
+    restart_instance disque 1
+    restart_instance disque 2
+    restart_instance disque 3
+}

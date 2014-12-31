@@ -2,7 +2,7 @@
 
 source "../tests/includes/init-tests.tcl"
 
-test "ADDJOBS, single node" {
+test "ADDJOB, single node" {
     set id [D 0 addjob myqueue myjob 5000 replicate 1]
     set job [D 0 show $id]
     assert {$id ne {}}
@@ -59,12 +59,12 @@ test "ADDJOB, asynchronous replication to multiple nodes" {
     }
 }
 
-test "Synchronos ADDJOB fails if not enough nodes are available" {
+test "Sync ADDJOB fails if not enough nodes are available" {
     catch {D 0 addjob myqueue myjob 5000 replicate 100} job_id
     assert_match {NOREPL*} $job_id
 }
 
-test "Synchronous ADDJOB fails if not enough nodes are reachable" {
+test "Sync ADDJOB fails if not enough nodes are reachable" {
     # We kill three instances and send ADDJOB ASAP before the nodes
     # are marked as not reachable.
     kill_instance disque 1
@@ -76,4 +76,26 @@ test "Synchronous ADDJOB fails if not enough nodes are reachable" {
     restart_instance disque 1
     restart_instance disque 2
     restart_instance disque 3
+}
+
+# For the probabilistic nature of this test, better to execute it a few times.
+for {set j 1} {$j <= 3} {incr j} {
+    test "Sync ADDJOB uses more nodes when first contacted are down ($j)" {
+        # We kill three instances and send ADDJOB ASAP before the nodes
+        # are marked as not reachable.
+        kill_instance disque 1
+        kill_instance disque 2
+        kill_instance disque 3
+        # Now let's request a replication equal to the number of nodes still
+        # alive. We'll likely also pick a few of the ones that are down.
+        # For the replication to succeeed, instance 0 will have to try other
+        # nodes before the timeout.
+        set max_possible_repl [expr {$::instances_count-3}]
+        catch {D 0 addjob myqueue myjob 5000 replicate $max_possible_repl} job_id
+        assert_match {DI*} $job_id
+        restart_instance disque 1
+        restart_instance disque 2
+        restart_instance disque 3
+    }
+    after 1000; # Make likely that restarted nodes fail status is cleared.
 }

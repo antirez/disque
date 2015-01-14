@@ -126,7 +126,8 @@ struct serverCommand serverCommandTable[] = {
     {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"getjobs",getjobsCommand,-2,"wF",0,NULL,0,0,0,0,0},
-    {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0}
+    {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
+    {"ackjob",ackjobCommand,-1,"wF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

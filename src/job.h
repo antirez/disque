@@ -28,8 +28,8 @@
  */
 
 
-#ifndef __DISQUE_JOBS_H
-#define __DISQUE_JOBS_H
+#ifndef __DISQUE_JOB_H
+#define __DISQUE_JOB_H
 
 /* A Job ID is 48 bytes:
  * "DISQ" + 40 bytes random hex (160 bits) + 4 bytes TTL.

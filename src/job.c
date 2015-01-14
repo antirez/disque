@@ -32,6 +32,7 @@
 #include "cluster.h"
 #include "job.h"
 #include "queue.h"
+#include "ack.h"
 #include "sha1.h"
 #include "endianconv.h"
 
@@ -219,13 +220,6 @@ char *jobStateToString(int state) {
     return states[state];
 }
 
-/* ------------------------- Garbage collection ----------------------------- */
-
-/* Try to garbage collect the job. */
-void GCJob(job *j) {
-    serverLog(DISQUE_NOTICE,"GC %.48s", j->id);
-}
-
 /* ----------------------------- Awakeme list ------------------------------
  * Disque needs to perform periodic tasks on registered jobs, for example
  * we need to remove expired jobs (TTL reached), requeue existing jobs that
@@ -364,7 +358,7 @@ void processJob(job *j) {
 
     /* Try a job garbage collection. */
     if (j->state == JOB_STATE_ACKED) {
-        GCJob(j);
+        tryJobGC(j);
         updateJobAwakeTime(j,0);
     }
 

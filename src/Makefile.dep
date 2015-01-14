@@ -4,60 +4,72 @@ ae_kqueue.o: ae_kqueue.c
 ae_select.o: ae_select.c
 anet.o: anet.c fmacros.h anet.h
 aof.o: aof.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h bio.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h bio.h
 bio.o: bio.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h bio.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h bio.h
 blocked.o: blocked.c disque.h fmacros.h config.h ae.h sds.h dict.h \
-  adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  job.h
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h job.h queue.h
 cluster.o: cluster.c disque.h fmacros.h config.h ae.h sds.h dict.h \
-  adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  cluster.h job.h endianconv.h
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h cluster.h job.h queue.h endianconv.h
 config.o: config.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  cluster.h job.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h cluster.h job.h queue.h
 crc16.o: crc16.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h
 crc64.o: crc64.c
 debug.o: debug.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h sha1.h \
-  crc64.h bio.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h sha1.h crc64.h bio.h
 dict.o: dict.c fmacros.h dict.h zmalloc.h disqueassert.h
 disque-check-aof.o: disque-check-aof.c fmacros.h config.h
 disque-cli.o: disque-cli.c fmacros.h version.h ../deps/hiredis/hiredis.h \
   sds.h zmalloc.h ../deps/linenoise/linenoise.h help.h anet.h ae.h
 disque.o: disque.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  cluster.h job.h slowlog.h bio.h asciilogo.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h cluster.h job.h queue.h slowlog.h bio.h asciilogo.h
 endianconv.o: endianconv.c
 job.o: job.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  cluster.h job.h queue.h sha1.h endianconv.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h cluster.h job.h queue.h sha1.h endianconv.h
 latency.o: latency.c disque.h fmacros.h config.h ae.h sds.h dict.h \
-  adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h
 lzf_c.o: lzf_c.c lzfP.h
 lzf_d.o: lzf_d.c lzfP.h
 memtest.o: memtest.c config.h
 networking.o: networking.c disque.h fmacros.h config.h ae.h sds.h dict.h \
-  adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h
 object.o: object.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h
 pqsort.o: pqsort.c
 queue.o: queue.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  cluster.h job.h queue.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h cluster.h job.h queue.h
 release.o: release.c release.h version.h crc64.h
 rio.o: rio.c fmacros.h rio.h sds.h util.h crc64.h config.h disque.h ae.h \
-  dict.h adlist.h zmalloc.h anet.h version.h latency.h sparkline.h
+  dict.h adlist.h skiplist.h zmalloc.h anet.h version.h latency.h \
+  sparkline.h
 sds.o: sds.c sds.h zmalloc.h
 setproctitle.o: setproctitle.c
 sha1.o: sha1.c sha1.h config.h
+skiplist.o: skiplist.c disque.h fmacros.h config.h ae.h sds.h dict.h \
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h
 slowlog.o: slowlog.c disque.h fmacros.h config.h ae.h sds.h dict.h \
-  adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h \
-  slowlog.h
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h slowlog.h
 sparkline.o: sparkline.c disque.h fmacros.h config.h ae.h sds.h dict.h \
-  adlist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
+  adlist.h skiplist.h zmalloc.h anet.h version.h util.h latency.h \
+  sparkline.h rio.h
 syncio.o: syncio.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
-  zmalloc.h anet.h version.h util.h latency.h sparkline.h rio.h
+  skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
+  rio.h
 util.o: util.c fmacros.h util.h sds.h
 zmalloc.o: zmalloc.c config.h zmalloc.h

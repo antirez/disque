@@ -140,5 +140,8 @@ void jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
 void updateJobAwakeTime(job *j, mstime_t at);
 void updateJobRequeueTime(job *j, mstime_t qtime);
+void setJobTtlFromId(job *job);
+void acknowledgeJob(job *j);
+int validateJobIdOrReply(client *c, char *id, size_t len);
 
 #endif

@@ -123,13 +123,6 @@ int queueJob(job *job) {
 
     serverLog(DISQUE_NOTICE,"QUEUED %.48s", job->id);
 
-    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
-     * hash table again for ACKs tracking in order to garbage collect the
-     * job once processed. */
-    if (job->nodes_confirmed) {
-        dictRelease(job->nodes_confirmed);
-        job->nodes_confirmed = NULL;
-    }
     job->state = JOB_STATE_QUEUED;
 
     /* Put the job into the queue and update the time we'll queue it again. */

@@ -36,6 +36,8 @@
 #include "sha1.h"
 #include "endianconv.h"
 
+#include <ctype.h>
+
 /* ------------------------- Low level jobs functions ----------------------- */
 
 /* Generate a new Job ID and writes it to the string pointed by 'id'
@@ -80,6 +82,7 @@ void generateJobID(char *id, int ttl) {
     SHA1Final(hash,&ctx);
 
     ttl /= 60; /* Store TTL in minutes. */
+    if (ttl > 65535) ttl = 65535;
     hash[16] = (ttl&0xff00)>>8;
     hash[17] = ttl&0xff;
 
@@ -98,6 +101,42 @@ void generateJobID(char *id, int ttl) {
 
     *id++ = 'S';
     *id++ = 'Q';
+}
+
+/* Helper function for setJobTtlFromId() in order to extract the TTL stored
+ * as hex big endian number in the Job ID. The function is only used for this
+ * but is more generic. 'p' points to the first digit for 'count' hex digits.
+ * The number is assumed to be stored in big endian format. For each byte
+ * the first hex char is the most significative. If invalid digits are found
+ * considered to be zero, however errno is set to EINVAL if this happens. */
+uint64_t hexToInt(char *p, size_t count) {
+    uint64_t value;
+    char *charset = "0123456789abcdef";
+
+    errno = 0;
+    while(count--) {
+        int c = tolower(*p++);
+        char *pos = strchr(charset,c);
+        int v;
+        if (!pos) {
+            errno = EINVAL;
+            v = 0;
+        } else {
+            v = pos-charset;
+        }
+        value = (value << 4) | v;
+    }
+    return value;
+}
+
+/* Set the job ttl from the encoded ttl in its ID. This is useful when we
+ * create a new job just to store the fact it's acknowledged. Thanks to
+ * the TTL encoded in the ID we are able to set the expire time for the job
+ * regardless of the fact we have no info about the job. */
+void setJobTtlFromId(job *job) {
+    int expire_minutes = hexToInt(job->id+42,4);
+    /* Convert back to absolute unix time. */
+    job->etime = server.unixtime + expire_minutes*60;
 }
 
 /* Validate the string 'id' as a job ID. 'len' is the number of bytes the
@@ -160,7 +199,7 @@ void freeJob(job *j) {
  * (by job ID) later. If a node knows about a job, the job must be registered
  * and can be retrieved via lookupJob(), regardless of is state.
  *
- * On success DISQUE_OK is returned. If there is already a node with the
+ * On success DISQUE_OK is returned. If there is already a job with the
  * specified ID, no operation is performed and the function returns
  * DISQUE_ERR. */
 int registerJob(job *j) {
@@ -193,6 +232,21 @@ int unregisterJob(job *j) {
     /* Remove the job from the jobs hash table. */
     dictDelete(server.jobs, j->id);
     return DISQUE_OK;
+}
+
+/* Change job state as acknowledged. If it is already in that state, the
+ * function does nothing. */
+void acknowledgeJob(job *j) {
+    if (j->state == JOB_STATE_ACKED) return;
+
+    j->state = JOB_STATE_ACKED;
+    /* Remove the nodes_confirmed hash table if it exists.
+     * tryJobGC() will take care to create a new one used for the GC
+     * process. */
+    if (j->nodes_confirmed) {
+        dictRelease(j->nodes_confirmed);
+        j->nodes_confirmed = NULL;
+    }
 }
 
 /* We use the server.jobs hash table in a space efficient way by storing the
@@ -695,6 +749,14 @@ void jobReplicationAchieved(job *j) {
      * will be freed by unblockClient() if found still in the old state. */
     j->state = JOB_STATE_ACTIVE;
 
+    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
+     * hash table again for ACKs tracking in order to garbage collect the
+     * job once processed. */
+    if (j->nodes_confirmed) {
+        dictRelease(j->nodes_confirmed);
+        j->nodes_confirmed = NULL;
+    }
+
     /* Reply to the blocked client with the Job ID and unblock the client. */
     client *c = jobGetAssociatedValue(j);
     setJobAssociatedValue(j,NULL);
@@ -921,7 +983,7 @@ void addjobCommand(client *c) {
         setJobAssociatedValue(job,c);
         /* Create the nodes_confirmed dictionary only if we actually need
          * it for synchronous replication. It will be released later
-         * when we move way from JOB_STATE_WAIT_REPL. */
+         * when we move away from JOB_STATE_WAIT_REPL. */
         job->nodes_confirmed = dictCreate(&clusterNodesDictType,NULL);
         /* Confirm itself as an acknowledged receiver if this node will
          * retain a copy of the job. */

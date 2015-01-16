@@ -56,6 +56,9 @@ void tryJobGC(job *j) {
  *
  * If a job was already acknowledged, the ACKJOB command still has the
  * effect of forcing a GC attempt ASAP.
+ *
+ * The command returns the number of jobs already known and that were
+ * already not in the ACKED state.
  */
 void ackjobCommand(client *c) {
     int j, known = 0;
@@ -80,9 +83,11 @@ void ackjobCommand(client *c) {
         if (job && job->state != JOB_STATE_ACKED) {
             dequeueJob(job); /* Safe to call if job is not queued. */
             acknowledgeJob(job);
+            known++;
         }
         /* Anyway... start a GC attempt on the acked job. */
         tryJobGC(job);
     }
+    addReplyLongLong(c,known);
 }
 

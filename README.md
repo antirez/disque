@@ -35,7 +35,7 @@ Disque is a distributed system where **all nodes have the same role** (aka, it i
 
 Disque is Available (as in "A" of CAP): producers and consumers can make progresses as long as a single node is reachable.
 
-Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with replication factor of 3 but may want to run away before knowing if the contacted node was really be able to replicate it to the specified number of nodes or not.
+Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with replication factor of 3 but may want to run away before knowing if the contacted node was really able to replicate it to the specified number of nodes or not.
 
 Disque **automatically re-queue messages that are not acknowledged** as already processed by consumers, after a message-specific retry time.
 
@@ -192,20 +192,42 @@ Acknowledges the execution of one or more jobs via job IDs. The node receiving t
 Other commands
 ===
 
-    INFO => Generic server information / stats.
-    HELLO => id ... version ... nodes ...
+    INFO
+Generic server information / stats.
 
-    QLEN <qname> => Length of queue
-    QSTAT <qname> => produced ... consumed ... idle ... sources [...] ctime ...
-    QPEEK <qname> <count> => Return without consuming <count> jobs.
+    HELLO
+Returns id ... version ... nodes ...
 
-    QUEUE <job-id> ... <job-id> => Queue jobs if not already queued.
-    DEQUEUE <job-id> ... <job-id> => Remove the job from the queue.
-    DEL <job-id> ... <job-id> => Completely delete a job from a node.
-    SHOW <msgid> => Describe the full msg content.
+    QLEN <qname>
+Length of queue
 
-    SCANJOBS <cursor> [STATE ...] [QUEUE ...] [COUNT ...] => Iterate job IDs.
-    SCANQUEUES <cursor> [COUNT ...] [MAXIDLE ...] => Iterate queue names.
+    QSTAT <qname>
+Return produced ... consumed ... idle ... sources [...] ctime ...
+
+    QPEEK <qname> <count>
+Return without consuming <count> jobs.
+
+    QUEUE <job-id> ... <job-id>
+Queue jobs if not already queued.
+
+    DEQUEUE <job-id> ... <job-id>
+Remove the job from the queue.
+
+    DELJOB [BCAST] [FORCE] <job-id> ... <job-id>
+Completely delete a job from a node.
+If BCAST is given, a DELJOB cluster message is broadcasted to the set of nodes
+that may have the job. If FORCE is given, when the job is not known, instead of
+returning an error the node will broadcast a DELJOB cluster message to all the
+nodes in the cluster.
+
+    SHOW <job-id>
+Describe the job.
+
+    SCANJOBS <cursor> [STATE ...] [QUEUE ...] [COUNT ...]
+Iterate job IDs.
+
+    SCANQUEUES <cursor> [COUNT ...] [MAXIDLE ...]
+Iterate queue names.
 
 Client libraries
 ===

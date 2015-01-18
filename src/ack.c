@@ -87,6 +87,8 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
      * send us ACKJOB about a job we were not aware. */
     int dummy_ack = dictSize(job->nodes_delivered) == 0;
 
+    serverLog(DISQUE_NOTICE,"RECEIVED GOTACK FOR JOB %.48s", job->id);
+
     /* If this is a dummy ACK, and we reached a node that knows about this job,
      * it's up to it to perform the garbage collection, so we can forget about
      * this job and reclaim memory. */

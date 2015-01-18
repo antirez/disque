@@ -1331,6 +1331,14 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) gotAckReceived(sender,j,known);
+    } else if (type == CLUSTERMSG_TYPE_DELJOB) {
+        if (!sender) return 1;
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j) {
+            serverLog(DISQUE_NOTICE,"RECEIVED DELJOB FOR JOB %.48s", j->id);
+            unregisterJob(j);
+            freeJob(j);
+        }
     } else if (type == CLUSTERMSG_TYPE_QUEUEJOB) {
         if (!sender) return 1;
         uint32_t delay = ntohl(hdr->data.jobid.job.aux);
@@ -1342,6 +1350,7 @@ int clusterProcessPacket(clusterLink *link) {
         j->flags &= ~JOB_FLAG_BCAST_QUEUED;
 
         if (j && j->state < JOB_STATE_QUEUED) {
+            serverLog(DISQUE_NOTICE,"RECEIVED QUEUEJOB FOR JOB %.48s", j->id);
             if (delay == 0) {
                 queueJob(j);
             } else {
@@ -1546,6 +1555,7 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
                type == CLUSTERMSG_TYPE_QUEUED ||
                type == CLUSTERMSG_TYPE_SETACK ||
                type == CLUSTERMSG_TYPE_GOTACK ||
+               type == CLUSTERMSG_TYPE_DELJOB ||
                type == CLUSTERMSG_TYPE_WILLQUEUE)
     {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);

@@ -204,6 +204,7 @@ void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
 void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay);
 void clusterBroadcastQueued(job *j);
+void clusterBroadcastDelJob(job *j);
 void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);
 

@@ -35,11 +35,108 @@
 
 /* ------------------------- Low level ack functions ------------------------ */
 
+/* Change job state as acknowledged. If it is already in that state, the
+ * function does nothing. */
+void acknowledgeJob(job *job) {
+    if (job->state == JOB_STATE_ACKED) return;
+
+    dequeueJob(job);
+    job->state = JOB_STATE_ACKED;
+    /* Remove the nodes_confirmed hash table if it exists.
+     * tryJobGC() will take care to create a new one used for the GC
+     * process. */
+    if (job->nodes_confirmed) {
+        dictRelease(job->nodes_confirmed);
+        job->nodes_confirmed = NULL;
+    }
+}
+
 /* ------------------------- Garbage collection ----------------------------- */
 
 /* Try to garbage collect the job. */
-void tryJobGC(job *j) {
-    serverLog(DISQUE_NOTICE,"GC %.48s", j->id);
+void tryJobGC(job *job) {
+    if (job->state != JOB_STATE_ACKED) return;
+    serverLog(DISQUE_NOTICE,"GC %.48s", job->id);
+
+    /* nodes_confirmed is used in order to store all the nodes that have the
+     * job in ACKed state, so that the job can be evicted when we are
+     * confident the job will not be reissued. */
+    if (job->nodes_confirmed == NULL) {
+        job->nodes_confirmed = dictCreate(&clusterNodesDictType,NULL);
+        dictAdd(job->nodes_confirmed,myself->name,myself);
+    }
+
+    /* Send a SETACK message to all the nodes that may have a message but are
+     * still not listed in the nodes_confirmed hash table. However if this
+     * is a dumb ACK (created by ACKJOB command acknowledging a job we don't
+     * know) we have to broadcast the SETACK to everybody in search of the
+     * owner. */
+    dict *targets = dictSize(job->nodes_delivered) == 0 ?
+                    server.cluster->nodes : job->nodes_delivered;
+    dictForeach(targets,de)
+        clusterNode *node = dictGetVal(de);
+        if (dictFind(job->nodes_confirmed,node->name) == NULL)
+            clusterSendSetAck(node,job);
+    dictEndForeach
+}
+
+/* This function is called by cluster.c every time we receive a GOTACK message
+ * about a job we know. */
+void gotAckReceived(clusterNode *sender, job *job, int known) {
+    /* A dummy ACK is an acknowledged job that we created just becakse a client
+     * send us ACKJOB about a job we were not aware. */
+    int dummy_ack = dictSize(job->nodes_delivered) == 0;
+
+    /* If this is a dummy ACK, and we reached a node that knows about this job,
+     * it's up to it to perform the garbage collection, so we can forget about
+     * this job and reclaim memory. */
+    if (dummy_ack && known) {
+        serverLog(DISQUE_NOTICE,"Deleting %.48s: authoritative node reached",
+            job->id);
+        unregisterJob(job);
+        freeJob(job);
+        return;
+    }
+
+    /* If the sender knows about the job, we do two things:
+     * 1) Add the node to the list of nodes_delivered. It is likely already
+     *    there... so this should be useless.
+     * 2) Add the node to the list of nodes that acknowledged the ACK. */
+    if (known) {
+        dictAdd(job->nodes_delivered,sender->name,sender);
+        dictAdd(job->nodes_confirmed,sender->name,sender);
+    }
+
+    /* If our job is actually a dummy ACK, we are still interested to collect
+     * all the nodes in the cluster that reported they don't have a clue:
+     * eventually if everybody in the cluster has no clue, we can safely remove
+     * the dummy ACK. */
+    if (!known && dummy_ack) {
+        dictAdd(job->nodes_confirmed,sender->name,sender);
+        if (dictSize(job->nodes_confirmed)+1 >= dictSize(server.cluster->nodes))
+        {
+            serverLog(DISQUE_NOTICE,
+                "Deleting %.48s: dummy ACK not known cluster-wide",
+                job->id);
+            unregisterJob(job);
+            freeJob(job);
+            return;
+        }
+    }
+
+    /* Finally the common case: our SETACK reached everybody. Broadcast
+     * a DELJOB to all the nodes involved, and delete the job. */
+    if (!dummy_ack && dictSize(job->nodes_confirmed) >=
+                      dictSize(job->nodes_delivered))
+    {
+        serverLog(DISQUE_NOTICE,
+            "Deleting %.48s: All nodes involved acknowledged the job",
+            job->id);
+        clusterBroadcastDelJob(job);
+        unregisterJob(job);
+        freeJob(job);
+        return;
+    }
 }
 
 /* --------------------------  Acks related commands ------------------------ */
@@ -74,7 +171,7 @@ void ackjobCommand(client *c) {
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
         /* Case 1: No such job. Create one just to hold the ACK. */
-        if (j == NULL) {
+        if (job == NULL) {
             job = createJob(c->argv[j]->ptr,JOB_STATE_ACKED,0);
             setJobTtlFromId(job);
             serverAssert(registerJob(job) == DISQUE_OK);

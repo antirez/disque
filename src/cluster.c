@@ -31,6 +31,7 @@
 #include "disque.h"
 #include "cluster.h"
 #include "endianconv.h"
+#include "ack.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -64,6 +65,9 @@ void clusterSetNodeAsMaster(clusterNode *n);
 void clusterDelNode(clusterNode *delnode);
 void clusterShuffleReachableNodes(void);
 void clusterSendGotJob(clusterNode *node, job *j);
+void clusterSendGotAck(clusterNode *node, char *jobid, int known);
+void clusterBroadcastQueued(job *j) ;
+void clusterBroadcastDelJob(job *j);
 sds representDisqueNodeFlags(sds ci, uint16_t flags);
 
 /* -----------------------------------------------------------------------------
@@ -1098,6 +1102,7 @@ int clusterProcessPacket(clusterLink *link) {
                type == CLUSTERMSG_TYPE_QUEUEJOB ||
                type == CLUSTERMSG_TYPE_QUEUED ||
                type == CLUSTERMSG_TYPE_SETACK ||
+               type == CLUSTERMSG_TYPE_GOTACK ||
                type == CLUSTERMSG_TYPE_WILLQUEUE)
     {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
@@ -1293,6 +1298,39 @@ int clusterProcessPacket(clusterLink *link) {
             if (dictSize(j->nodes_confirmed) == j->repl)
                 jobReplicationAchieved(j);
         }
+    } else if (type == CLUSTERMSG_TYPE_SETACK) {
+        if (!sender) return 1;
+        uint32_t mayhave = ntohl(hdr->data.jobid.job.aux);
+
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j) acknowledgeJob(j);
+        if (j == NULL || dictSize(j->nodes_delivered) <= mayhave) {
+            /* If we don't know the job or our set of nodes that may have
+             * the job is not larger than the sender, reply with GOTACK. */
+            int known = j ? 1 : 0;
+            clusterSendGotAck(sender,hdr->data.jobid.job.id,known);
+        } else {
+            /* We have the jbo but we know more nodes that may have it
+             * than the sender if we are here. Don't reply to GOTACK unless
+             * mayhave is 0 (the sender just received an ACK from client about
+             * a job it does not know), in order to let the sender delete it. */
+            if (mayhave == 0)
+                clusterSendGotAck(sender,hdr->data.jobid.job.id,1);
+            /* Anyway, start a GC about this job. Because one of the two is
+             * true:
+             * 1) mayhave in the sender is 0, so it's up to us to start a GC
+             *    because the sender has just a dummy ACK.
+             * 2) Or, we prevented the sender from finishing the GC since
+             *    we are not replying with GOTACK, and we need to take
+             *    responsability to evict the job in the cluster. */
+            tryJobGC(j);
+        }
+    } else if (type == CLUSTERMSG_TYPE_GOTACK) {
+        if (!sender) return 1;
+        uint32_t known = ntohl(hdr->data.jobid.job.aux);
+
+        job *j = lookupJob(hdr->data.jobid.job.id);
+        if (j) gotAckReceived(sender,j,known);
     } else if (type == CLUSTERMSG_TYPE_QUEUEJOB) {
         if (!sender) return 1;
         uint32_t delay = ntohl(hdr->data.jobid.job.aux);
@@ -1341,7 +1379,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) {
-            if (j->state == JOB_STATE_QUEUED) clusterSendQueued(j);
+            if (j->state == JOB_STATE_QUEUED) clusterBroadcastQueued(j);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }
     } else {
@@ -1507,6 +1545,7 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
                type == CLUSTERMSG_TYPE_QUEUEJOB ||
                type == CLUSTERMSG_TYPE_QUEUED ||
                type == CLUSTERMSG_TYPE_SETACK ||
+               type == CLUSTERMSG_TYPE_GOTACK ||
                type == CLUSTERMSG_TYPE_WILLQUEUE)
     {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
@@ -1671,14 +1710,14 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
 
 /* Helper function to send all the messages that have just a type,
  * a Job ID, and an optional 'aux' additional value. */
-void clusterSendJobIDMessage(int type, clusterNode *node, job *j, int mr) {
+void clusterSendJobIDMessage(int type, clusterNode *node, char *id, int aux) {
     unsigned char buf[sizeof(clusterMsg)];
     clusterMsg *hdr = (clusterMsg*) buf;
 
     if (node->link == NULL) return; /* This is a best effort message. */
     clusterBuildMessageHdr(hdr,type);
-    memcpy(hdr->data.jobid.job.id,j->id,JOB_ID_LEN);
-    hdr->data.jobid.job.aux = htonl(mr);
+    memcpy(hdr->data.jobid.job.id,id,JOB_ID_LEN);
+    hdr->data.jobid.job.aux = htonl(aux);
     clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 
@@ -1692,7 +1731,7 @@ void clusterBroadcastJobIDMessage(job *j, int type, uint32_t aux) {
         clusterNode *node = dictGetVal(de);
         if (node == myself) continue;
         if (node->link)
-            clusterSendJobIDMessage(type,node,j,aux);
+            clusterSendJobIDMessage(type,node,j->id,aux);
     }
     dictReleaseIterator(di);
 }
@@ -1703,13 +1742,13 @@ void clusterBroadcastJobIDMessage(job *j, int type, uint32_t aux) {
  * will be able to reply to the client that the job was accepted by the
  * system when enough nodes have a copy of the job. */
 void clusterSendGotJob(clusterNode *node, job *j) {
-    clusterSendJobIDMessage(CLUSTERMSG_TYPE_GOTJOB,node,j,0);
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_GOTJOB,node,j->id,0);
 }
 
 /* Force the receiver to queue a job, if it has that job in an active
  * state. */
 void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay) {
-    clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j,delay);
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j->id,delay);
 }
 
 /* Tell the receiver that the specified job was just re-queued by the
@@ -1720,9 +1759,15 @@ void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay) {
  *
  * This message is sent to all the nodes we believe may have a copy
  * of the message and are reachable. */
-void clusterSendQueued(job *j) {
+void clusterBroadcastQueued(job *j) {
     serverLog(DISQUE_NOTICE,"BCAST QUEUED: %.48s",j->id);
     clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_QUEUED,0);
+}
+
+/* Send a DELJOB message to all the nodes that may have a copy. */
+void clusterBroadcastDelJob(job *j) {
+    serverLog(DISQUE_NOTICE,"BCAST DELJOB: %.48s",j->id);
+    clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_DELJOB,0);
 }
 
 /* Tell the receiver to reply with a QUEUED message if it has the job
@@ -1736,7 +1781,12 @@ void clusterSendWillQueue(job *j) {
 /* Force the receiver to acknowledge the job as delivered. */
 void clusterSendSetAck(clusterNode *node, job *j) {
     uint32_t maxowners = dictSize(j->nodes_delivered);
-    clusterSendJobIDMessage(CLUSTERMSG_TYPE_SETACK,node,j,maxowners);
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_SETACK,node,j->id,maxowners);
+}
+
+/* Acknowledge a SETACK message. */
+void clusterSendGotAck(clusterNode *node, char *jobid, int known) {
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_GOTACK,node,jobid,known);
 }
 
 /* -----------------------------------------------------------------------------

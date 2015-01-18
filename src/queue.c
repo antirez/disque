@@ -140,7 +140,7 @@ int queueJob(job *job) {
      * re-queued for lack of acknowledge, this is useful to (best effort)
      * avoid multiple nodes to re-queue the same job. */
     if (job->flags & JOB_FLAG_BCAST_QUEUED)
-        clusterSendQueued(job);
+        clusterBroadcastQueued(job);
     else
         job->flags |= JOB_FLAG_BCAST_QUEUED; /* Next time, broadcast. */
 

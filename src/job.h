@@ -129,19 +129,20 @@ typedef struct job {
 /* Number of bytes of directly serializable fields in the job structure. */
 #define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4)
 
+job *createJob(char *id, int state, int ttl);
 void deleteJobFromCluster(job *j);
 sds serializeJob(job *j);
 void fixForeingJobTimes(job *j);
 void updateJobNodes(job *j);
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next);
 int registerJob(job *j);
+int unregisterJob(job *j);
 void freeJob(job *j);
 void jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
 void updateJobAwakeTime(job *j, mstime_t at);
 void updateJobRequeueTime(job *j, mstime_t qtime);
 void setJobTtlFromId(job *job);
-void acknowledgeJob(job *j);
 int validateJobIdOrReply(client *c, char *id, size_t len);
 
 #endif

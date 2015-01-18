@@ -234,21 +234,6 @@ int unregisterJob(job *j) {
     return DISQUE_OK;
 }
 
-/* Change job state as acknowledged. If it is already in that state, the
- * function does nothing. */
-void acknowledgeJob(job *j) {
-    if (j->state == JOB_STATE_ACKED) return;
-
-    j->state = JOB_STATE_ACKED;
-    /* Remove the nodes_confirmed hash table if it exists.
-     * tryJobGC() will take care to create a new one used for the GC
-     * process. */
-    if (j->nodes_confirmed) {
-        dictRelease(j->nodes_confirmed);
-        j->nodes_confirmed = NULL;
-    }
-}
-
 /* We use the server.jobs hash table in a space efficient way by storing the
  * job only at 'key' pointer, so the 'value' pointer is free to be used
  * for state specific associated information.

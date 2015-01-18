@@ -94,16 +94,18 @@ typedef struct clusterState {
  * kind of packet. PONG is the reply to ping, in the exact format as a PING,
  * while MEET is a special PING that forces the receiver to add the sender
  * as a node (if it is not already in the list). */
-#define CLUSTERMSG_TYPE_PING 0          /* Ping */
-#define CLUSTERMSG_TYPE_PONG 1          /* Pong (reply to Ping) */
-#define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message */
-#define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing */
-#define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver */
+#define CLUSTERMSG_TYPE_PING 0          /* Ping. */
+#define CLUSTERMSG_TYPE_PONG 1          /* Reply to Ping. */
+#define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message. */
+#define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing. */
+#define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver. */
 #define CLUSTERMSG_TYPE_GOTJOB 5        /* Job received acknowledge. */
 #define CLUSTERMSG_TYPE_QUEUEJOB 6      /* Queue the specified job. */
 #define CLUSTERMSG_TYPE_QUEUED 7        /* Update your job qtime. */
 #define CLUSTERMSG_TYPE_SETACK 8        /* Move job state as ACKed. */
 #define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */
+#define CLUSTERMSG_TYPE_GOTACK 10       /* Acknowledge SETACK. */
+#define CLUSTERMSG_TYPE_DELJOB 11       /* Delete the specified job. */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -201,7 +203,7 @@ clusterNode *clusterLookupNode(char *name);
 void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
 void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay);
-void clusterSendQueued(job *j);
+void clusterBroadcastQueued(job *j);
 void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);
 

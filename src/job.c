@@ -157,7 +157,7 @@ int validateJobId(char *id, size_t len) {
 int validateJobIdOrReply(client *c, char *id, size_t len) {
     int retval = validateJobId(id,len);
     if (retval == DISQUE_ERR) addReplySds(c,
-            sdsnew("-BADJOBID Invalid Job ID format.\r\n"));
+            sdsnew("-BADID Invalid Job ID format.\r\n"));
     return retval;
 }
 

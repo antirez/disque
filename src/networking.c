@@ -721,7 +721,8 @@ void freeClientsInAsyncFreeQueue(void) {
 
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     client *c = privdata;
-    int nwritten = 0, totwritten = 0, objlen;
+    ssize_t nwritten = 0, totwritten = 0;
+    size_t objlen;
     size_t objmem;
     robj *o;
     UNUSED(el);
@@ -1543,7 +1544,7 @@ int checkClientOutputBufferLimits(client *c) {
  * called from contexts where the client can't be freed safely, i.e. from the
  * lower level functions pushing data inside the client output buffers. */
 void asyncCloseClientOnOutputBufferLimitReached(client *c) {
-    serverAssert(c->reply_bytes < ULONG_MAX-(1024*64));
+    serverAssert(c->reply_bytes < SIZE_MAX-(1024*64));
     if (c->reply_bytes == 0 || c->flags & CLIENT_CLOSE_ASAP) return;
     if (checkClientOutputBufferLimits(c)) {
         sds client = catClientInfoString(sdsempty(),c);

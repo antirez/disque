@@ -326,8 +326,8 @@ typedef struct client {
     int multibulklen;       /* number of multi bulk arguments left to read */
     long bulklen;           /* length of bulk argument in multi bulk request */
     list *reply;
-    unsigned long reply_bytes; /* Tot bytes of objects in reply list */
-    int sentlen;            /* Amount of bytes already sent in the current
+    size_t reply_bytes;     /* Tot bytes of objects in reply list */
+    size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
     time_t ctime;           /* Client creation time */
     time_t lastinteraction; /* time of the last interaction, used for timeout */
@@ -339,7 +339,7 @@ typedef struct client {
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */
-    int bufpos;
+    size_t bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;
 

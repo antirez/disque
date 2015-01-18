@@ -115,7 +115,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
      * the dummy ACK. */
     if (!known && dummy_ack) {
         dictAdd(job->nodes_confirmed,sender->name,sender);
-        if (dictSize(job->nodes_confirmed)+1 >= dictSize(server.cluster->nodes))
+        if (dictSize(job->nodes_confirmed) >= dictSize(server.cluster->nodes))
         {
             serverLog(DISQUE_NOTICE,
                 "Deleting %.48s: dummy ACK not known cluster-wide",

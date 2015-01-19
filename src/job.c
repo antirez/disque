@@ -241,7 +241,7 @@ int unregisterJob(job *j) {
         /* Change job state otherwise unblockClientWaitingJobRepl() will
          * try to remove the job itself. */
         j->state = JOB_STATE_ACTIVE;
-        deleteJobFromCluster(j);
+        clusterBroadcastDelJob(j);
         unblockClient(c);
     }
 

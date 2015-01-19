@@ -229,6 +229,22 @@ int unregisterJob(job *j) {
     /* If the job is queued, remove from queue. */
     if (j->state == JOB_STATE_QUEUED) dequeueJob(j);
 
+    /* If there is a client blocked for this job, inform it that the job
+     * got deleted, and unblock it. This should only happen when the job
+     * gets expired before the requested replication level is reached. */
+    if (j->state == JOB_STATE_WAIT_REPL) {
+        client *c = jobGetAssociatedValue(j);
+        setJobAssociatedValue(j,NULL);
+        addReplySds(c,
+            sdsnew("-NOREPL job removed (expired?) before the requested "
+                   "replication level was achieved\r\n"));
+        /* Change job state otherwise unblockClientWaitingJobRepl() will
+         * try to remove the job itself. */
+        j->state = JOB_STATE_ACTIVE;
+        deleteJobFromCluster(j);
+        unblockClient(c);
+    }
+
     /* Remove the job from the jobs hash table. */
     dictDelete(server.jobs, j->id);
     return DISQUE_OK;

@@ -717,8 +717,10 @@ void unblockClientWaitingJobRepl(client *c) {
     /* If the job is still waiting for synchronous replication, but the client
      * waiting it gets freed or reaches the timeout, we unblock the client and
      * forget about the job. */
-    if (c->bpop.job->state == JOB_STATE_WAIT_REPL)
+    if (c->bpop.job->state == JOB_STATE_WAIT_REPL) {
+        c->bpop.job->state = JOB_STATE_ACTIVE;
         deleteJobFromCluster(c->bpop.job);
+    }
     c->bpop.job = NULL;
 }
 

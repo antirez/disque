@@ -81,7 +81,6 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_CONFIGLINE_MAX    1024
 #define DISQUE_DBCRON_DBS_PER_CALL 16
 #define DISQUE_MAX_WRITE_PER_EVENT (1024*64)
-#define DISQUE_SHARED_SELECT_CMDS 10
 #define DISQUE_SHARED_INTEGERS 10000
 #define DISQUE_SHARED_BULKHDR_LEN 32
 #define DISQUE_MAX_LOGMSG_LEN    1024 /* Default maximum length of syslog messages */
@@ -392,7 +391,6 @@ struct sharedObjectsStruct {
     *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk, *subscribebulk,
     *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *rpop, *lpop,
     *lpush, *emptyscan, *minstring, *maxstring,
-    *select[DISQUE_SHARED_SELECT_CMDS],
     *integers[DISQUE_SHARED_INTEGERS],
     *mbulkhdr[DISQUE_SHARED_BULKHDR_LEN], /* "*<value>\r\n" */
     *bulkhdr[DISQUE_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */

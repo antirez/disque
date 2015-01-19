@@ -687,11 +687,7 @@ void updateJobNodes(job *j) {
  * confirmed to the producer.
  */
 void deleteJobFromCluster(job *j) {
-    /* Send DELJOB message to the right nodes. */
-
-    /* TODO: work in progress... */
-
-    /* Unregister the job and free it. */
+    clusterBroadcastDelJob(j);
     unregisterJob(j);
     freeJob(j);
 }

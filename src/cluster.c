@@ -1194,7 +1194,8 @@ int clusterProcessPacket(clusterLink *link) {
                 serverLog(DISQUE_DEBUG,"Handshake with node %.40s completed.",
                     link->node->name);
                 link->node->flags &= ~DISQUE_NODE_HANDSHAKE;
-                clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
+                clusterDoBeforeSleep(CLUSTER_TODO_UPDATE_STATE|
+                                     CLUSTER_TODO_SAVE_CONFIG);
             } else if (memcmp(link->node->name,hdr->sender,
                         DISQUE_CLUSTER_NAMELEN) != 0)
             {

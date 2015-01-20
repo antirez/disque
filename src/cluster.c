@@ -1075,7 +1075,8 @@ int clusterProcessPacket(clusterLink *link) {
 
     /* Perform sanity checks */
     if (totlen < 16) return 1; /* At least signature, version, totlen, count. */
-    if (ntohs(hdr->ver) != 0) return 1; /* Can't handle versions other than 0.*/
+    if (ntohs(hdr->ver) != CLUSTER_PROTO_VER)
+        return 1; /* Can't handle versions other than the current one.*/
     if (totlen > sdslen(link->rcvbuf)) return 1;
     if (type == CLUSTERMSG_TYPE_PING || type == CLUSTERMSG_TYPE_PONG ||
         type == CLUSTERMSG_TYPE_MEET)
@@ -1540,6 +1541,7 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
     int totlen = 0;
 
     memset(hdr,0,sizeof(*hdr));
+    hdr->ver = htons(CLUSTER_PROTO_VER);
     hdr->sig[0] = 'D';
     hdr->sig[1] = 'b';
     hdr->sig[2] = 'u';

@@ -753,6 +753,7 @@ int rewriteAppendOnlyFile(char *filename) {
         rioSetAutoSync(&aof,DISQUE_AOF_AUTOSYNC_BYTES);
 
     /* TODO: Rerwite jobs state here. */
+    di = NULL; /* Technically we used an iterator in the TODO step. */
 
     /* Do an initial slow fsync here while the parent is still sending
      * data, in order to make the next final fsync faster. */

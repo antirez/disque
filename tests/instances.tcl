@@ -15,6 +15,7 @@ source ../support/server.tcl
 source ../support/test.tcl
 
 set ::verbose 0
+set ::valgrind 0
 set ::pause_on_error 0
 set ::simulate_error 0
 set ::sentinel_instances {}
@@ -69,7 +70,13 @@ proc spawn_instance {type base_port count {conf {}}} {
         } else {
             error "Unknown instance type $type"
         }
-        set pid [exec ../../../src/${prgname} $cfgfile &]
+
+        if {$::valgrind} {
+            set pid [exec valgrind --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
+        } else {
+            set pid [exec ../../../src/${prgname} $cfgfile &]
+        }
+
         lappend ::pids $pid
 
         # Check availability
@@ -102,6 +109,7 @@ proc cleanup {} {
 proc abort_sentinel_test msg {
     puts "WARNING: Aborting the test."
     puts ">>>>>>>> $msg"
+    if {$::pause_on_error} pause_on_error
     cleanup
     exit 1
 }
@@ -117,6 +125,8 @@ proc parse_options {} {
             set ::pause_on_error 1
         } elseif {$opt eq "--fail"} {
             set ::simulate_error 1
+        } elseif {$opt eq {--valgrind}} {
+            set ::valgrind 1
         } elseif {$opt eq "--timeout"} {
             incr j
             set ::condition_max_wait_time [expr {$val*1000}]
@@ -319,6 +329,8 @@ proc get_instance_id_by_port {type port} {
 # The instance can be restarted with restart-instance.
 proc kill_instance {type id} {
     set pid [get_instance_attrib $type $id pid]
+    set port [get_instance_attrib $type $id port]
+
     if {$pid == -1} {
         error "You tried to kill $type $id twice."
     }
@@ -328,6 +340,19 @@ proc kill_instance {type id} {
 
     # Remove the PID from the list of pids to kill at exit.
     set ::pids [lsearch -all -inline -not -exact $::pids $pid]
+
+    # Wait for the port it was using to be available again, so that's not
+    # an issue to start a new server ASAP with the same port.
+    set retry 10
+    while {[incr retry -1]} {
+        set port_is_free [catch {set s [socket 127.0.01 $port]}]
+        if {$port_is_free} break
+        catch {close $s}
+        after 1000
+    }
+    if {$retry == 0} {
+        error "Port $port does not return available after killing instance."
+    }
 }
 
 # Return true of the instance of the specified type/id is killed.
@@ -349,7 +374,13 @@ proc restart_instance {type id} {
     } else {
         error "Unknown instance type $type"
     }
-    set pid [exec ../../../src/${prgname} $cfgfile &]
+
+    if {$::valgrind} {
+        set pid [exec valgrind --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
+    } else {
+        set pid [exec ../../../src/${prgname} $cfgfile &]
+    }
+
     set_instance_attrib $type $id pid $pid
     lappend ::pids $pid
 

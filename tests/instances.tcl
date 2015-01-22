@@ -34,6 +34,23 @@ if {[catch {cd tmp}]} {
     exit 1
 }
 
+# Execute the specified instance of the server specified by 'type', using
+# the provided configuration file. Returns the PID of the process.
+proc exec_instance {type cfgfile} {
+    if {$type eq "disque"} {
+        set prgname disque-server
+    } else {
+        error "Unknown instance type."
+    }
+
+    if {$::valgrind} {
+        set pid [exec valgrind --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
+    } else {
+        set pid [exec ../../../src/${prgname} $cfgfile &]
+    }
+    return $pid
+}
+
 # Spawn a disque instance, depending on 'type'.
 proc spawn_instance {type base_port count {conf {}}} {
     if {$::loglevel ne {}} {
@@ -65,18 +82,7 @@ proc spawn_instance {type base_port count {conf {}}} {
         close $cfg
 
         # Finally exec it and remember the pid for later cleanup.
-        if {$type eq "disque"} {
-            set prgname disque-server
-        } else {
-            error "Unknown instance type $type"
-        }
-
-        if {$::valgrind} {
-            set pid [exec valgrind --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
-        } else {
-            set pid [exec ../../../src/${prgname} $cfgfile &]
-        }
-
+        set pid [exec_instance $type $cfgfile]
         lappend ::pids $pid
 
         # Check availability
@@ -369,18 +375,7 @@ proc restart_instance {type id} {
 
     # Execute the instance with its old setup and append the new pid
     # file for cleanup.
-    if {$type eq "disque"} {
-        set prgname disque-server
-    } else {
-        error "Unknown instance type $type"
-    }
-
-    if {$::valgrind} {
-        set pid [exec valgrind --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
-    } else {
-        set pid [exec ../../../src/${prgname} $cfgfile &]
-    }
-
+    set pid [exec_instance $type $cfgfile]
     set_instance_attrib $type $id pid $pid
     lappend ::pids $pid
 

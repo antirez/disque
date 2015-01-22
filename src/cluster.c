@@ -654,7 +654,11 @@ int clusterNodeFailureReportsCount(clusterNode *node) {
  * flag is set), the node is actually just disconnected, moved into
  * a deleted_nodes hash table, and flagged as deleted: we may still have
  * references of it in jobs and other places, and the cleanup is a useless
- * and complex effort. */
+ * and complex effort.
+ *
+ * Note that this is the low level part of freeing a node, and should only
+ * be called by clusterDelNode() that also handles the higher level logic
+ * of removing a node from the cluster. */
 void freeClusterNode(clusterNode *n) {
     serverAssert(dictDelete(server.cluster->nodes,n->name) == DICT_OK);
     if (n->link) freeClusterLink(n->link);
@@ -679,11 +683,9 @@ int clusterAddNode(clusterNode *node) {
 }
 
 /* Remove a node from the cluster:
- * 1) Mark all the nodes handled by it as unassigned.
- * 2) Remove all the failure reports sent by this node.
- * 3) Free the node, that will in turn remove it from the hash table
- *    and from the list of slaves of its master, if it is a slave node.
- */
+ * 1) Remove all the failure reports sent by this node.
+ * 2) Free the node using freeClusterNode() that will remove it from
+ *    the hash table and actually free the node resources. */
 void clusterDelNode(clusterNode *delnode) {
     dictIterator *di;
     dictEntry *de;
@@ -1189,7 +1191,7 @@ int clusterProcessPacket(clusterLink *link) {
                     }
                     /* Free this node as we already have it. This will
                      * cause the link to be freed as well. */
-                    freeClusterNode(link->node);
+                    clusterDelNode(link->node);
                     return 0;
                 }
 
@@ -1839,7 +1841,7 @@ void clusterCron(void) {
         /* A Node in HANDSHAKE state has a limited lifespan equal to the
          * configured node timeout. */
         if (nodeInHandshake(node) && now - node->ctime > handshake_timeout) {
-            freeClusterNode(node);
+            clusterDelNode(node);
             continue;
         }
 

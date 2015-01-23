@@ -1606,7 +1606,8 @@ void clusterSendPing(clusterLink *link, int type) {
          * 3) Nodes with the NOADDR flag set.
          */
         if (this == myself ||
-            this->flags & (DISQUE_NODE_HANDSHAKE|DISQUE_NODE_NOADDR))
+            this->flags & (DISQUE_NODE_HANDSHAKE|DISQUE_NODE_NOADDR) ||
+            this->link = NULL)
         {
                 freshnodes--; /* otherwise we may loop forever. */
                 continue;

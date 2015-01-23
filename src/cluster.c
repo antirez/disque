@@ -1133,7 +1133,7 @@ int clusterProcessPacket(clusterLink *link) {
          * However if we don't have an address at all, we update the address
          * even with a normal PING packet. If it's wrong it will be fixed
          * by MEET later. */
-        if (type == CLUSTERMSG_TYPE_MEET && myself->ip[0] == '\0') {
+        if (type == CLUSTERMSG_TYPE_MEET || myself->ip[0] == '\0') {
             char ip[DISQUE_IP_STR_LEN];
 
             if (anetSockName(link->fd,ip,sizeof(ip),NULL) != -1 &&

@@ -1607,7 +1607,7 @@ void clusterSendPing(clusterLink *link, int type) {
          */
         if (this == myself ||
             this->flags & (DISQUE_NODE_HANDSHAKE|DISQUE_NODE_NOADDR) ||
-            this->link = NULL)
+            this->link == NULL)
         {
                 freshnodes--; /* otherwise we may loop forever. */
                 continue;

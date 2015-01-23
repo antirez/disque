@@ -110,7 +110,7 @@ void generateJobID(char *id, int ttl) {
  * the first hex char is the most significative. If invalid digits are found
  * considered to be zero, however errno is set to EINVAL if this happens. */
 uint64_t hexToInt(char *p, size_t count) {
-    uint64_t value;
+    uint64_t value = 0;
     char *charset = "0123456789abcdef";
 
     errno = 0;

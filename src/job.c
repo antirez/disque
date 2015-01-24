@@ -430,16 +430,32 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     DISQUE_NOTUSED(id);
     DISQUE_NOTUSED(clientData);
 
+#ifdef DEBUG_SCHEDULER
+    static time_t last_log = 0;
+    int canlog = 0;
+    if (server.port == 25000 && time(NULL) != last_log) {
+        last_log = time(NULL);
+        canlog = 1;
+    }
+
+    if (canlog) printf("--- LEN: %d ---\n",
+        (int) skiplistLength(server.awakeme));
+#endif
+
     latencyStartMonitor(latency);
     server.mstime = now; /* Update it since it's used by processJob(). */
     current = server.awakeme->header->level[0].forward;
     while(current && max--) {
         job *j = current->obj;
 
-#if 0
-        serverLog(DISQUE_NOTICE,"%.48s %d",
-            j->id,
-            (int) (j->awakeme-server.mstime));
+#ifdef DEBUG_SCHEDULER
+        if (canlog) {
+            printf("%.48s %d (in %d) [%s]\n",
+                j->id,
+                (int) j->awakeme,
+                (int) (j->awakeme-server.mstime),
+                jobStateToString(j->state));
+        }
 #endif
 
         if (j->awakeme > now) break;
@@ -461,6 +477,9 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
     latencyEndMonitor(latency);
     latencyAddSampleIfNeeded("jobs-processing",latency);
+#ifdef DEBUG_SCHEDULER
+    if (canlog) printf("---\n\n");
+#endif
     return period;
 }
 

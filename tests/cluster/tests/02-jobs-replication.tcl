@@ -99,3 +99,14 @@ for {set j 1} {$j <= 3} {incr j} {
     }
     after 1000; # Make likely that restarted nodes fail status is cleared.
 }
+
+test "Replicating job expires before reaching the replication level" {
+    # Put one instance down.
+    kill_instance disque 1
+    set impossible_repl $::instances_count
+    catch {
+        D 0 addjob myqueue myjob 15000 replicate $impossible_repl ttl 1
+    } job_id
+    assert_match {NOREPL*} $job_id
+    restart_instance disque 1
+}

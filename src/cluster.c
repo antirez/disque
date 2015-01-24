@@ -2238,12 +2238,14 @@ void clusterCommand(client *c) {
         sds info = sdscatprintf(sdsempty(),
             "cluster_state:%s\r\n"
             "cluster_known_nodes:%lu\r\n"
+            "cluster_reachable_nodes:%d\r\n"
             "cluster_size:%d\r\n"
             "cluster_stats_messages_sent:%lld\r\n"
             "cluster_stats_messages_received:%lld\r\n"
             , statestr[server.cluster->state],
             dictSize(server.cluster->nodes),
             server.cluster->size,
+            server.cluster->reachable_nodes_count,
             server.cluster->stats_bus_messages_sent,
             server.cluster->stats_bus_messages_received
         );

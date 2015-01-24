@@ -5,6 +5,7 @@ proc count_job_copies {job {states {queued active}}} {
     set delivered [dict get $job nodes-delivered]
     set copies 0
     foreach_disque_id j {
+        if {[instance_is_killed disque $j]} continue
         set node_id [dict get [get_myself $j] id]
         if {[lsearch -exact $delivered $node_id] == -1} continue
         set job [D $j show $job_id]

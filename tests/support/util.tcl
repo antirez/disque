@@ -145,6 +145,10 @@ proc randomKey {} {
     }
 }
 
+proc randomQueue {} {
+    return "queue-[randstring 40 40 alpha]"
+}
+
 proc findKeyWithType {r type} {
     for {set j 0} {$j < 20} {incr j} {
         set k [{*}$r randomkey]

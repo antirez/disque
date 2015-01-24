@@ -1,4 +1,5 @@
 source "../tests/includes/init-tests.tcl"
+source "../tests/includes/job-utils.tcl"
 
 test "ADDJOB, single node" {
     set id [D 0 addjob myqueue myjob 5000 replicate 1]
@@ -6,25 +7,6 @@ test "ADDJOB, single node" {
     assert {$id ne {}}
     assert {[llength [dict get $job nodes-delivered]] == 1}
     assert {[dict get $job state] eq "queued"}
-}
-
-# Count how many copies of the jobs are found among the nodes that
-# may have received a copy.
-proc count_job_copies {job} {
-    set job_id [dict get $job id]
-    set delivered [dict get $job nodes-delivered]
-    set copies 0
-    foreach_disque_id j {
-        set node_id [dict get [get_myself $j] id]
-        if {[lsearch -exact $delivered $node_id] == -1} continue
-        set job [D $j show $job_id]
-        if {$job ne {} &&
-            ([dict get $job state] eq {queued} ||
-             [dict get $job state] eq {active})} {
-             incr copies
-        }
-    }
-    return $copies
 }
 
 test "ADDJOB, synchronous replication to multiple nodes" {

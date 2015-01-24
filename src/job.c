@@ -352,10 +352,10 @@ void updateJobRequeueTime(job *j, mstime_t qtime) {
 int skiplistCompareJobsToAwake(const void *a, const void *b) {
     const job *ja = a, *jb = b;
 
-    if (ja->awakeme > jb->awakeme) return -1;
-    if (jb->awakeme > ja->awakeme) return 1;
-    if (ja->ctime > jb->ctime) return -1;
-    if (jb->ctime > ja->ctime) return 1;
+    if (ja->awakeme > jb->awakeme) return 1;
+    if (jb->awakeme > ja->awakeme) return -1;
+    if (ja->ctime > jb->ctime) return 1;
+    if (jb->ctime > ja->ctime) return -1;
     return memcmp(ja->id,jb->id,JOB_ID_LEN);
 }
 

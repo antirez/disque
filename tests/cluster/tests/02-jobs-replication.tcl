@@ -1,5 +1,3 @@
-# Check the basic monitoring and failover capabilities.
-
 source "../tests/includes/init-tests.tcl"
 
 test "ADDJOB, single node" {

@@ -106,4 +106,14 @@ for {set j 0} {$j < 10} {incr j} {
     }
 }
 
-# TODO: Local jobs order is retained (using retry 0 + replicate 1)
+test "Single node jobs are correctly ordered in a FIFO fashion" {
+    set qname [randomQueue]
+    for {set j 0} {$j < 100} {incr j} {
+        D 0 addjob $qname $j 5000 replicate 1 retry 0
+    }
+    for {set j 0} {$j < 100} {incr j} {
+        set job [D 0 getjobs from $qname TIMEOUT 5000]
+        set body [lindex $job 0 2]
+        assert {$body == $j}
+    }
+}

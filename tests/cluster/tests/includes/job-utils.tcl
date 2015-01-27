@@ -16,3 +16,18 @@ proc count_job_copies {job {states {queued active}}} {
     }
     return $copies
 }
+
+# Return the list of instance IDs having a given job in the specified state.
+proc get_job_instances {job {states {queued}}} {
+    set job_id [dict get $job id]
+    set res {}
+    foreach_disque_id j {
+        if {[instance_is_killed disque $j]} continue
+        set job [D $j show $job_id]
+        if {$job ne {} &&
+            [lsearch -exact $states [dict get $job state]] != -1} {
+             lappend res $j
+        }
+    }
+    return $res
+}

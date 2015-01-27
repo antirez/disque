@@ -956,7 +956,7 @@ void addjobCommand(client *c) {
      * jobs are delivered roughly in the order they are added into a given
      * node. */
     job->ctime = mstime()*1000000;
-    if (job->ctime == prev_ctime) job->ctime++;
+    if (job->ctime <= prev_ctime) job->ctime = prev_ctime+1;
     prev_ctime = job->ctime;
 
     job->etime = server.unixtime + ttl;

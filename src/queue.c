@@ -48,8 +48,8 @@ void signalQueueAsReady(queue *q);
 int skiplistCompareJobsInQueue(const void *a, const void *b) {
     const job *ja = a, *jb = b;
 
-    if (ja->ctime > jb->ctime) return -1;
-    if (jb->ctime > ja->ctime) return 1;
+    if (ja->ctime > jb->ctime) return 1;
+    if (jb->ctime > ja->ctime) return -1;
     return memcmp(ja->id,jb->id,JOB_ID_LEN);
 }
 

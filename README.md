@@ -1,7 +1,7 @@
 Disque, an in-memory, distributed job queue
 ===
 
-Disque is a distributed, in memory, jobs (messages) queue.
+Disque is a distributed, in memory, message broker.
 It's goal is to capture the essence of the use case for Redis as a back end
 for job queues libraries (mainly using blocking list operations), and move
 it into an ad-hoc, self-contained, scalable, and fault tolerant design, with
@@ -15,8 +15,10 @@ weekends.
 What it does exactly?
 ---
 
-Disque is a message queue. Producers add messages that are served to
-consumers. Since message queues are often used in order to process delayed
+Disque is a distributed and fault tolerant message broker, so it works as middle layer among processes that want to exchange messages.
+
+Producers add messages that are served to consumers.
+Since message queues are often used in order to process delayed
 jobs, Disque often uses "job" in the API and in the documentation, however
 jobs are actually just messages in the form of strings, so Disque can be used
 for other use cases. In this documentation "jobs" and "messages" are used
@@ -40,6 +42,8 @@ Disque supports **optional asynchronous commands** that are low latency for the 
 Disque **automatically re-queue messages that are not acknowledged** as already processed by consumers, after a message-specific retry time.
 
 Disque queues only provide **weak ordering**. Each queue sorts messages based on the wall clock of the local node where the message was created (plus an incremental counter for messages created in the same millisecond), so messages created in the same node are normally delivered in the same order they were created. This property is weak because is violated in different cases: when messages are re-issued because not acknowledged, because of nodes local clock drifts, and when messages are moved to other nodes for load balancing. However it means that normally messages are not delivered in random order and usually messages created first are delivered first.
+
+Since Disque does not provide strict FIFO semantics, technically speaking it should not be called a *message queue*, and is better identified as a message broker. However I believe that at this point in the IT industry a *message queue* is often more lightly used to identify a generic broker that may or may not be able to guarantee order in all the cases.
 
 Disque provides the user with fine-grainde control for each job **using three time related parameters**, and one replication parameter. For each job, the user can control:
 1. The replication factor (how many nodes have a copy).
@@ -299,3 +303,8 @@ Auto federation is based on two cluster requests, plus metrics and heuristics in
 The message NEEDJOBS is at the base of the federation, and asks a node to obtain jobs about a given queue. The receiving node will de-queue jobs from the queue (but will still hold a copy of the job), and send those messages to the node that requested them.
 
 Nodes reply to NEEDJOBS with YOURJOBS, a cluster message that has one or multiple jobs inside.
+
+FAQ 
+---
+
+1. What Disque means? DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*.

@@ -33,47 +33,56 @@
 
 #include "skiplist.h"
 
-#define QUEUE_OPS_SAMPLES 3
-
 typedef struct queue {
-    robj *name;     /* Queue name as a string object. */
-    skiplist *sl;   /* The skiplist with the queued jobs. */
-    time_t ctime;   /* Creation time of this queue object. */
-    time_t atime;   /* Last access time. Updated when a new element is
-                       queued or when a new client fetches elements or
-                       blocks for elements to arrive. */
-    list *clients;  /* Clients blocked here. */
+    robj *name;      /* Queue name as a string object. */
+    skiplist *sl;    /* The skiplist with the queued jobs. */
+    uint32_t ctime;  /* Creation time of this queue object. */
+    uint32_t atime;  /* Last access time. Updated when a new element is
+                        queued or when a new client fetches elements or
+                        blocks for elements to arrive. */
+    list *clients;   /* Clients blocked here. */
 
     /* Federation related. */
     mstime_t needjobs_bcast_time; /* Last NEEDJOBS cluster broadcast. */
     mstime_t needjobs_adhoc_time; /* Last NEEDJOBS to notable nodes. */
-    dict *needjobs_responders;    /* Set of nodes that provided jobs. */
 
-    /* OPS samples is used in order to compute the number of jobs received
-     * and served per second. Each time the sample at the current index
-     * (*_ops_idx) is still the current unix timestamp and an op is
-     * performed, we increment its counter. Otherwise the index is advanced
-     * and a new sample is created. By observing the array of samples we can
-     * easily compute the approximated amount of ops per second this queue
-     * is undergoing.
+    /* Set of nodes that provided jobs. The key is the node, the value
+     * is the unix time of the last time we received data from this node
+     * about this queue. */
+    dict *needjobs_responders;
+
+    /* Tracking of incoming messages rate (messages received from other
+     * nodes because of NEEDJOBS).
      *
-     * When we see we are consuming much faster than producing, messages
-     * can be sent to other nodes to obtain more jobs. */
-    struct {
-        uint32_t time;
-        uint32_t count;
-    } produced_ops_samples[QUEUE_OPS_SAMPLES],
-      consumed_ops_samples[QUEUE_OPS_SAMPLES];
-    int produced_ops_idx; /* Current index in produced array. */
-    int consumed_ops_idx; /* Current index in consumed array. */
+     * This is not going to be perfect, but we need to be memory
+     * efficient, and have some rought ideas to optimize NEEDJOBS messages.
+     *
+     * As soon as we receive jobs in the current second, we increment
+     * the current count. Otherwise we store the current data into the
+     * previous data, and set the current time to the current unix time.
+     *
+     * Instantaneous receives jobs/sec is just:
+     *
+     *     jobs_sec = (current_count+prev_count) / (now-prev_time)
+     */
+    uint32_t current_import_jobs_time;
+    uint32_t prev_import_jobs_time;
+    uint32_t current_import_jobs_count;
+    uint32_t prev_import_jobs_count;
+    uint32_t needjobs_bcast_attempt; /* Num of tries without reply. */
 } queue;
 
 int queueJob(job *job);
 int dequeueJob(job *job);
-job *queueFetchJob(queue *q);
-job *queueNameFetchJob(robj *qname);
+job *queueFetchJob(queue *q, unsigned long *qlen);
+job *queueNameFetchJob(robj *qname, unsigned long *qlen);
 unsigned long queueLength(robj *qname);
 void unblockClientBlockedForJobs(client *c);
 void handleClientsBlockedOnQueues(void);
+
+#define NEEDJOBS_CLIENTS_WAITING 0 /* Called because clients are waiting. */
+#define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
+void needJobsForQueue(queue *q, int type);
+void needJobsForQueueName(robj *qname, int type);
 
 #endif

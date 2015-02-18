@@ -584,6 +584,8 @@ int clientsCronResizeQueryBuffer(client *c) {
     return 0;
 }
 
+int clientsCronSendNeedJobs(client *c); /* see queue.c */
+
 int clientsCronHandleDelayedJobReplication(client *c); /* see job.c */
 
 void clientsCron(void) {
@@ -613,6 +615,7 @@ void clientsCron(void) {
         if (clientsCronHandleTimeout(c)) continue;
         if (clientsCronResizeQueryBuffer(c)) continue;
         if (clientsCronHandleDelayedJobReplication(c)) continue;
+        if (clientsCronSendNeedJobs(c)) continue;
     }
 }
 

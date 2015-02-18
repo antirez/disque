@@ -66,14 +66,15 @@ queue *createQueue(robj *name) {
     q->ctime = server.unixtime;
     q->atime = 0;
     q->needjobs_bcast_time = 0;
+    q->needjobs_bcast_attempt = 0;
     q->needjobs_adhoc_time = 0;
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
     q->clients = NULL; /* Created on demand to save memory. */
 
-    memset(q->produced_ops_samples,0,sizeof(q->produced_ops_samples));
-    memset(q->consumed_ops_samples,0,sizeof(q->consumed_ops_samples));
-    q->produced_ops_idx = 0;
-    q->consumed_ops_idx = 0;
+    q->current_import_jobs_time = server.unixtime;
+    q->current_import_jobs_count = 0;
+    q->prev_import_jobs_time = server.unixtime;
+    q->prev_import_jobs_count = 0;
 
     incrRefCount(name); /* Another refernce in the hash table key. */
     dictAdd(server.queues,q->name,q);
@@ -171,24 +172,28 @@ int dequeueJob(job *job) {
  * specified queue, NULL is returned.
  *
  * The returned job is, among the jobs available, the one with lower
- * 'ctime'. */
-job *queueFetchJob(queue *q) {
+ * 'ctime'.
+ *
+ * If 'qlen' is not NULL, the residual length of the queue is stored
+ * at *qlen. */
+job *queueFetchJob(queue *q, unsigned long *qlen) {
     if (skiplistLength(q->sl) == 0) return NULL;
     job *j = skiplistPopHead(q->sl);
     j->state = JOB_STATE_ACTIVE;
     q->atime = server.unixtime;
+    if (qlen) *qlen = skiplistLength(q->sl);
     return j;
 }
 
 /* Like queueFetchJob() but take the queue name as input. */
-job *queueNameFetchJob(robj *qname) {
+job *queueNameFetchJob(robj *qname, unsigned long *qlen) {
     queue *q = lookupQueue(qname);
-    return q ? queueFetchJob(q) : NULL;
+    return q ? queueFetchJob(q,qlen) : NULL;
 }
 
-/* Return the length of the queue. If the queue does not eixst, zero
+/* Return the length of the queue. If the queue does not exist, zero
  * is returned. */
-unsigned long queueLength(robj *qname) {
+unsigned long queueNameLength(robj *qname) {
     queue *q = lookupQueue(qname);
     if (!q) return 0;
     return skiplistLength(q->sl);
@@ -285,11 +290,13 @@ void handleClientsBlockedOnQueues(void) {
         if (!q) continue;
         int numclients = listLength(q->clients);
         while(numclients--) {
+            unsigned long qlen;
             listNode *ln = listFirst(q->clients);
             client *c = ln->value;
-            job *j = queueFetchJob(q);
+            job *j = queueFetchJob(q,&qlen);
 
             if (!j) break; /* No longer elements, try next queue. */
+            if (qlen == 0) needJobsForQueue(q,NEEDJOBS_REACHED_ZERO);
             addReplyMultiBulkLen(c,1);
             addReplyJob(c,j);
             unblockClient(c); /* This will remove it from q->clients. */
@@ -299,11 +306,164 @@ void handleClientsBlockedOnQueues(void) {
     dictEmpty(server.ready_queues,NULL);
 }
 
+/* If a client is blocked into one or mutliple queues waiting for
+ * data, we should periodically call needJobsForQueue() with the
+ * queues name in order to send NEEDJOBS messages from time to time. */
+int clientsCronSendNeedJobs(client *c) {
+    if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_QUEUES) {
+        dictForeach(c->bpop.queues,de)
+            queue *q = dictGetKey(de);
+            needJobsForQueue(q,NEEDJOBS_CLIENTS_WAITING);
+        dictEndForeach
+    }
+}
+
+/* ------------------------------ Federation -------------------------------- */
+
+/* Return a very rough estimate of the current import message rate.
+ * Imported messages are messaged received as NEEDJOBS replies. */
+#define IMPORT_RATE_WINDOW 5 /* 5 seconds max window. */
+uint32_t getQueueImportRate(queue *q) {
+    uint32_t elapsed = server.unixtime - q->prev_import_jobs_time;
+    uint32_t messages = q->prev_import_jobs_count +
+                        q->current_import_jobs_count;
+
+    /* If we did not received any message in the latest few seconds,
+     * consider the import rate zero. */
+    if ((server.unixtime - q->current_import_jobs_time) > IMPORT_RATE_WINDOW)
+        return 0;
+
+    /* Min interval is 2 seconds in order to never overestimate. */
+    if (elapsed < 2) elapsed = 2;
+
+    return messages/elapsed;
+}
+
+/* Check the queue source nodes list (nodes that replied with jobs to our
+ * NEEDJOBS request), purge the ones that timed out, and return the number
+ * of sources which are still valid. */
+unsigned long getQueueValidResponders(queue *q) {
+    if (q->needjobs_responders == NULL ||
+        dictSize(q->needjobs_responders) == 0) return 0;
+
+    dictSafeForeach(q->needjobs_responders,de)
+        int64_t lastmsg = dictGetSignedIntegerVal(de);
+        if (server.unixtime-lastmsg > 5) {
+            clusterNode *node = dictGetKey(de);
+            dictDelete(q->needjobs_responders,node);
+        }
+    dictEndForeach
+    return dictSize(q->needjobs_responders);
+}
+
+/* This function is called every time we realize we need jobs for a given
+ * queue, because we have clients blocked into this queue which are currently
+ * empty.
+ *
+ * Calling this function may result into NEEDJOBS messages send to specific
+ * nodes that are remembered as potential sources for messages in this queue,
+ * or more rarely into NEEDJOBS messages to be broadcasted cluster-wide in
+ * order to discover new nodes that may be source of messages.
+ *
+ * This function in called in two different contests:
+ *
+ * 1) When a client attempts to fetch messages for an empty queue.
+ * 2) From time to time for every queue we have clients blocked into.
+ * 3) When a queue reaches 0 jobs since the last was fetched.
+ *
+ * When called in case 1 and 2, type is set to NEEDJOBS_CLIENTS_WAITING,
+ * for case 3 instead type is set to NEEDJOBS_REACHED_ZERO, and in this
+ * case the node may send a NEEDJOBS message to the set of known sources
+ * for this queue, regardless of needjobs_adhoc_time value (that is, without
+ * trying to trottle the requests, since there is an active flow of messages
+ * between this node and source nodes).
+ */
+
+/* Min and max amount of jobs we request to other nodes. */
+#define NEEDJOBS_MIN_REQUEST 5
+#define NEEDJOBS_MAX_REQUEST 100
+#define NEEDJOBS_BCAST_ALL_INITIAL_DELAY 2000 /* 2 seconds. */
+#define NEEDJOBS_BCAST_ALL_MAX_DELAY 30000    /* 30 seconds. */
+#define NEEDJOBS_BCAST_SRC_DELAY 500
+
+void needJobsForQueue(queue *q, int type) {
+    uint32_t import_per_sec; /* Jobs import rate in the latest secs. */
+    uint32_t to_fetch;       /* Number of jobs we should try to obtain. */
+    unsigned long num_responders = 0;
+    mstime_t bcast_delay;
+    mstime_t now = mstime();
+
+    import_per_sec = getQueueImportRate(q);
+
+    /* When called with NEEDJOBS_REACHED_ZERO, we have to do something only
+     * if there is some active traffic, in order to improve latency.
+     * Otherwise we wait for the first client to block, that will trigger
+     * a new call to this function, but with NEEDJOBS_CLIENTS_WAITING type. */
+    if (type == NEEDJOBS_REACHED_ZERO && import_per_sec == 0) return;
+
+    /* Guess how many replies we need from each node. If we already have
+     * a list of sources, assume that each source is capable of providing
+     * some message, otherwise just use import_per_sec as a first guess,
+     * however we adjust with min and max figures. */
+    num_responders = getQueueValidResponders(q);
+    if (num_responders > 0)
+        to_fetch = import_per_sec / num_responders;
+    else
+        to_fetch = import_per_sec;
+    if (to_fetch < NEEDJOBS_MIN_REQUEST) to_fetch = NEEDJOBS_MIN_REQUEST;
+    else if (to_fetch > NEEDJOBS_MAX_REQUEST) to_fetch = NEEDJOBS_MAX_REQUEST;
+
+    /* Check if we can do a cluster-wide broadcast of NEEDJOBS.
+     * We can do it only at exponential intervals (with a max time limit) */
+    q->needjobs_bcast_attempt++;
+    bcast_delay = NEEDJOBS_BCAST_ALL_INITIAL_DELAY * needjobs_bcast_attempt;
+    if (bcast_delay > NEEDJOBS_BCAST_ALL_MAX_DELAY)
+        bcast_delay = NEEDJOBS_BCAST_ALL_MAX_DELAY;
+
+    /* Broadcast the message cluster wide if possible, otherwise if we
+     * did so too recently, just send an ad-hoc message to the list of
+     * recent responders for this queue. */
+    if (now - q->needjobs_bcast_time > bcast_delay) {
+        q->needjobs_bcast_time = now;
+        /* TODO: send NEEDJOBS to every node. */
+    } else if ((type == NEEDJOBS_REACHED_ZERO ||
+                now - q->needjobs_adhoc_time > NEEDJOBS_BCAST_SRC_DELAY) &&
+                num_responders > 0)
+    {
+        q->needjobs_adhoc_time = now;
+        /* TODO: send NEEDJOBS to responders. */
+    }
+}
+
+/* needJobsForQueue() wrapper taking a queue name insteead of a queue
+ * structure. The queue will be created automatically if non existing. */
+void needJobsForQueueName(robj *qname, int type) {
+    queue *q = lookupQueue(qname);
+
+    /* Create the queue if it does not exist. We need the queue structure
+     * to store meta-data needed to broadcast NEEDJOBS messages anyway. */
+    if (!q) q = createQueue(qname);
+    needJobsForQueue(q,type);
+}
+
+void needJobsReceiveJobsFromNode(clusterNode *node, robj *qname) {
+    dictAdd(q->needjobs_responders, node, NULL);
+    de = dictFind(q->needjobs_responders, node);
+    dictSetSignedIntegerVal(de,server.unixtime);
+    q->needjobs_bcast_attempt = 0;
+
+    /* TODO:
+     * 1) Update received jobs stats.
+     * 2) Check if we don't have the jobs, create it if needed.
+     * 2) Queue jobs into the queue.
+     */
+}
+
 /* ------------------------- Queue related commands ------------------------- */
 
 /* QLEN <qname> -- Return the number of jobs queued. */
 void qlenCommand(client *c) {
-    addReplyLongLong(c,queueLength(c->argv[1]));
+    addReplyLongLong(c,queueNameLength(c->argv[1]));
 }
 
 /* GETJOBS [NOHANG] [TIMEOUT <ms>] [COUNT <count>] FROM <qname1>
@@ -364,8 +524,20 @@ void getjobsCommand(client *c) {
     while(1) {
         long old_emitted = emitted_jobs;
         for (j = 0; j < numqueues; j++) {
-            job *job = queueNameFetchJob(queues[j]);
-            if (!job) continue;
+            unsigned long qlen;
+            queue *q = lookupQueue(queues[j]);
+            job *job = NULL;
+            if (q) job = queueNameFetchJob(queues[j],&qlen);
+
+            if (!job) {
+                if (!q)
+                    needJobsForQueueName(queues[j],NEEDJOBS_CLIENTS_WAITING);
+                else
+                    needJobsForQueue(q,NEEDJOBS_CLIENTS_WAITING);
+                continue;
+            } else if (job && qlen == 0) {
+                needJobsForQueue(q,NEEDJOBS_REACHED_ZERO);
+            }
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
             addReplyJob(c,job);
             count--;

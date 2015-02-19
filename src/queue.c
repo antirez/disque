@@ -447,8 +447,8 @@ void needJobsForQueueName(robj *qname, int type) {
     needJobsForQueue(q,type);
 }
 
-/* Called from cluster.c when a NEEDJOBS reply is received. */
-void needJobsReceiveJobsFromNode(clusterNode *node, robj *qname, char *serializedjobs) {
+/* Called from cluster.c when a YOURJOBS message is received. */
+void receiveYourJobs(clusterNode *node, robj *qname, char *serializedjobs) {
     dictEntry *de;
     queue *q;
 
@@ -467,6 +467,10 @@ void needJobsReceiveJobsFromNode(clusterNode *node, robj *qname, char *serialize
      * 2) Check if we don't have the jobs, create it if needed.
      * 2) Queue jobs into the queue.
      */
+}
+
+/* Called from cluster.c when a NEEDJOBS message is received. */
+void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
 }
 
 /* ------------------------- Queue related commands ------------------------- */

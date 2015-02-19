@@ -1114,6 +1114,12 @@ int clusterProcessPacket(clusterLink *link) {
 
         explen += sizeof(clusterMsgDataJobID);
         if (totlen != explen) return 1;
+    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
+        uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+        explen += sizeof(clusterMsgDataNeedJobs) - 8;
+        if (totlen < explen) return 1;
+        explen += ntohl(hdr->data.jobsreq.about.qnamelen);
+        if (totlen != explen) return 1;
     }
 
     /* Check if the sender is a known node. */
@@ -1401,6 +1407,16 @@ int clusterProcessPacket(clusterLink *link) {
             if (j->state == JOB_STATE_QUEUED) clusterBroadcastQueued(j);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }
+    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
+        if (!sender) return 1;
+        uint32_t qnamelen = ntohl(hdr->data.jobsreq.about.qnamelen);
+        uint32_t count = ntohl(hdr->data.jobsreq.about.count);
+        robj *qname = createStringObject(hdr->data.jobsreq.about.qname,
+                                         qnamelen);
+        serverLog(DISQUE_NOTICE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
+            qname->ptr,count);
+        receiveNeedJobs(sender,qname,count);
+        decrRefCount(qname);
     } else {
         serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
     }
@@ -1874,7 +1890,7 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     clusterMsg *hdr;
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-    totlen += sizeof(clusterMsgDataNeedJobs) + qnamelen;
+    totlen += sizeof(clusterMsgDataNeedJobs) - 8 + qnamelen;
     hdr = zmalloc(totlen);
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_NEEDJOBS);

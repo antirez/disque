@@ -72,6 +72,8 @@ typedef struct queue {
     uint32_t needjobs_bcast_attempt; /* Num of tries without reply. */
 } queue;
 
+struct clusterNode;
+
 int queueJob(job *job);
 int dequeueJob(job *job);
 job *queueFetchJob(queue *q, unsigned long *qlen);
@@ -84,5 +86,7 @@ void handleClientsBlockedOnQueues(void);
 #define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
 void needJobsForQueue(queue *q, int type);
 void needJobsForQueueName(robj *qname, int type);
+void receiveYourJobs(struct clusterNode *node, robj *qname, char *serializedjobs);
+void receiveNeedJobs(struct clusterNode *node, robj *qname, uint32_t count);
 
 #endif

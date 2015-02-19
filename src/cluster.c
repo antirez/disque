@@ -1868,6 +1868,10 @@ void clusterSendGotAck(clusterNode *node, char *jobid, int known) {
     clusterSendJobIDMessage(CLUSTERMSG_TYPE_GOTACK,node,jobid,known);
 }
 
+/* Send a NEEDJOBS message to the specified set of nodes. */
+void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
+}
+
 /* -----------------------------------------------------------------------------
  * CLUSTER cron job
  * -------------------------------------------------------------------------- */

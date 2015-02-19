@@ -106,6 +106,8 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */
 #define CLUSTERMSG_TYPE_GOTACK 10       /* Acknowledge SETACK. */
 #define CLUSTERMSG_TYPE_DELJOB 11       /* Delete the specified job. */
+#define CLUSTERMSG_TYPE_NEEDJOBS 11     /* I need jobs for some queue. */
+#define CLUSTERMSG_TYPE_YOURJOBS 12     /* NEEDJOBS reply with jobs. */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -128,7 +130,7 @@ typedef struct {
 /* This data section is used in different message types where we need to
  * transmit one or multiple full jobs.
  *
- * Used by: ADDJOB. */
+ * Used by: ADDJOB, YOURJOBS. */
 typedef struct {
     uint32_t numjobs;   /* Number of jobs stored here. */
     uint32_t datasize;  /* Number of bytes following to describe jobs. */
@@ -136,18 +138,26 @@ typedef struct {
      * prefixed length + serialized job data for each job:
      * [4 bytes len] + [serialized job] + [4 bytes len] + [serialized job] ...
      * For a total of exactly 'datasize' bytes. */
-     unsigned char jobs_data[8]; /* defined as 8 just for alignment concerns. */
+     unsigned char jobs_data[8]; /* Defined as 8 bytes just for alignment. */
 } clusterMsgDataJob;
 
 /* This data section is used when we need to send just a job ID.
  *
- * Used by: GOTJOB, SETACK. */
+ * Used by: GOTJOB, SETACK, and many more. */
 typedef struct {
     char id[JOB_ID_LEN];
     uint32_t aux; /* Optional field:
                      For SETACK: Number of nodes that may have this message.
                      For QUEUEJOB: Delay starting from msg reception. */
 } clusterMsgDataJobID;
+
+/* This data section is used by NEEDJOBS to specify in what queue we need
+ * a job, and how many jobs we request. */
+typedef struct {
+    uint32_t count;     /* How many jobs we request. */
+    uint32_t qnamelen;  /* Queue name total length. */
+    char qname[8];      /* Defined as 8 bytes just for alignment. */
+} clusterMsgDataNeedJobs;
 
 union clusterMsgData {
     /* PING, MEET and PONG. */
@@ -170,6 +180,11 @@ union clusterMsgData {
     struct {
         clusterMsgDataJobID job;
     } jobid;
+
+    /* Messages requesting jobs (NEEDJOBS). */
+    struct {
+        clusterMsgDataNeedJobs about;
+    } jobsreq;
 };
 
 #define CLUSTER_PROTO_VER 0 /* Cluster bus protocol version. */
@@ -210,5 +225,6 @@ void clusterBroadcastQueued(job *j);
 void clusterBroadcastDelJob(job *j);
 void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);
+void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes);
 
 #endif /* __DISQUE_CLUSTER_H */

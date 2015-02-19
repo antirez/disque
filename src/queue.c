@@ -316,6 +316,7 @@ int clientsCronSendNeedJobs(client *c) {
             needJobsForQueue(q,NEEDJOBS_CLIENTS_WAITING);
         dictEndForeach
     }
+    return 0;
 }
 
 /* ------------------------------ Federation -------------------------------- */
@@ -416,7 +417,7 @@ void needJobsForQueue(queue *q, int type) {
     /* Check if we can do a cluster-wide broadcast of NEEDJOBS.
      * We can do it only at exponential intervals (with a max time limit) */
     q->needjobs_bcast_attempt++;
-    bcast_delay = NEEDJOBS_BCAST_ALL_INITIAL_DELAY * needjobs_bcast_attempt;
+    bcast_delay = NEEDJOBS_BCAST_ALL_INITIAL_DELAY * q->needjobs_bcast_attempt;
     if (bcast_delay > NEEDJOBS_BCAST_ALL_MAX_DELAY)
         bcast_delay = NEEDJOBS_BCAST_ALL_MAX_DELAY;
 
@@ -425,13 +426,13 @@ void needJobsForQueue(queue *q, int type) {
      * recent responders for this queue. */
     if (now - q->needjobs_bcast_time > bcast_delay) {
         q->needjobs_bcast_time = now;
-        /* TODO: send NEEDJOBS to every node. */
+        clusterSendNeedJobs(q->name,to_fetch,server.cluster->nodes);
     } else if ((type == NEEDJOBS_REACHED_ZERO ||
                 now - q->needjobs_adhoc_time > NEEDJOBS_BCAST_SRC_DELAY) &&
                 num_responders > 0)
     {
         q->needjobs_adhoc_time = now;
-        /* TODO: send NEEDJOBS to responders. */
+        clusterSendNeedJobs(q->name,to_fetch,q->needjobs_responders);
     }
 }
 
@@ -446,7 +447,16 @@ void needJobsForQueueName(robj *qname, int type) {
     needJobsForQueue(q,type);
 }
 
-void needJobsReceiveJobsFromNode(clusterNode *node, robj *qname) {
+/* Called from cluster.c when a NEEDJOBS reply is received. */
+void needJobsReceiveJobsFromNode(clusterNode *node, robj *qname, char *serializedjobs) {
+    dictEntry *de;
+    queue *q;
+
+    q = lookupQueue(qname);
+    if (!q) q = createQueue(qname);
+    if (q->needjobs_responders == NULL)
+        q->needjobs_responders = dictCreate(&clusterNodesDictType,NULL);
+
     dictAdd(q->needjobs_responders, node, NULL);
     de = dictFind(q->needjobs_responders, node);
     dictSetSignedIntegerVal(de,server.unixtime);

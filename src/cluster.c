@@ -1870,6 +1870,26 @@ void clusterSendGotAck(clusterNode *node, char *jobid, int known) {
 
 /* Send a NEEDJOBS message to the specified set of nodes. */
 void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
+    uint32_t totlen, qnamelen = sdslen(qname->ptr);
+    clusterMsg *hdr;
+
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataNeedJobs) + qnamelen;
+    hdr = zmalloc(totlen);
+
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_NEEDJOBS);
+    hdr->data.jobsreq.about.count = htonl(numjobs);
+    hdr->data.jobsreq.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.jobsreq.about.qname, qname->ptr, qnamelen);
+    hdr->totlen = htonl(totlen);
+
+    dictForeach(nodes,de)
+        clusterNode *node = dictGetKey(de);
+        if (node->link == NULL) continue;
+        clusterSendMessage(node->link,(unsigned char*)hdr,totlen);
+    dictEndForeach
+
+    zfree(hdr);
 }
 
 /* -----------------------------------------------------------------------------

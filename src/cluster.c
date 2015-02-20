@@ -1414,7 +1414,7 @@ int clusterProcessPacket(clusterLink *link) {
         robj *qname = createStringObject(hdr->data.jobsreq.about.qname,
                                          qnamelen);
         serverLog(DISQUE_NOTICE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
-            qname->ptr,count);
+            (char*)qname->ptr,count);
         receiveNeedJobs(sender,qname,count);
         decrRefCount(qname);
     } else {
@@ -1534,17 +1534,17 @@ void clusterSendMessage(clusterLink *link, unsigned char *msg, size_t msglen) {
     server.cluster->stats_bus_messages_sent++;
 }
 
-/* Send a message to all the nodes that are part of the cluster having
- * a connected link.
+/* Send a message to all the nodes in the specified dictionary of nodes, that
+ * are part of the cluster and have a connected link.
  *
  * It is guaranteed that this function will never have as a side effect
  * some node->link to be invalidated, so it is safe to call this function
  * from event handlers that will do stuff with node links later. */
-void clusterBroadcastMessage(void *buf, size_t len) {
+void clusterBroadcastMessage(dict *nodes, void *buf, size_t len) {
     dictIterator *di;
     dictEntry *de;
 
-    di = dictGetSafeIterator(server.cluster->nodes);
+    di = dictGetSafeIterator(nodes);
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
 
@@ -1723,7 +1723,7 @@ void clusterSendFail(char *nodename) {
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_FAIL);
     memcpy(hdr->data.fail.about.nodename,nodename,DISQUE_CLUSTER_NAMELEN);
-    clusterBroadcastMessage(buf,ntohl(hdr->totlen));
+    clusterBroadcastMessage(server.cluster->nodes,buf,ntohl(hdr->totlen));
 }
 
 /* -----------------------------------------------------------------------------
@@ -1891,7 +1891,7 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     clusterMsg *hdr;
 
     serverLog(DISQUE_NOTICE,"Sending NEEDJOBS for %s %d, %d nodes",
-        qname->ptr, (int)numjobs, (int)dictSize(nodes));
+        (char*)qname->ptr, (int)numjobs, (int)dictSize(nodes));
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
     totlen += sizeof(clusterMsgDataNeedJobs) - 8 + qnamelen;
@@ -1904,13 +1904,7 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     hdr->data.jobsreq.about.qnamelen = htonl(qnamelen);
     memcpy(hdr->data.jobsreq.about.qname, qname->ptr, qnamelen);
     hdr->totlen = htonl(totlen);
-
-    dictForeach(nodes,de)
-        clusterNode *node = dictGetKey(de);
-        if (node->link == NULL || node == myself) continue;
-        clusterSendMessage(node->link,(unsigned char*)hdr,totlen);
-    dictEndForeach
-
+    clusterBroadcastMessage(nodes,hdr,totlen);
     zfree(hdr);
 }
 

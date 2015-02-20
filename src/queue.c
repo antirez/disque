@@ -416,8 +416,8 @@ void needJobsForQueue(queue *q, int type) {
 
     /* Check if we can do a cluster-wide broadcast of NEEDJOBS.
      * We can do it only at exponential intervals (with a max time limit) */
-    q->needjobs_bcast_attempt++;
-    bcast_delay = NEEDJOBS_BCAST_ALL_INITIAL_DELAY * q->needjobs_bcast_attempt;
+    bcast_delay = NEEDJOBS_BCAST_ALL_INITIAL_DELAY *
+                  (1 << q->needjobs_bcast_attempt);
     if (bcast_delay > NEEDJOBS_BCAST_ALL_MAX_DELAY)
         bcast_delay = NEEDJOBS_BCAST_ALL_MAX_DELAY;
 
@@ -427,6 +427,7 @@ void needJobsForQueue(queue *q, int type) {
     printf("Elapsed since last bcast: %lld, needed %lld\n", now - q->needjobs_bcast_time, bcast_delay);
     if (now - q->needjobs_bcast_time > bcast_delay) {
         q->needjobs_bcast_time = now;
+        q->needjobs_bcast_attempt++;
         clusterSendNeedJobs(q->name,to_fetch,server.cluster->nodes);
     } else if ((type == NEEDJOBS_REACHED_ZERO ||
                 now - q->needjobs_adhoc_time > NEEDJOBS_BCAST_SRC_DELAY) &&
@@ -458,10 +459,14 @@ void receiveYourJobs(clusterNode *node, robj *qname, char *serializedjobs) {
     if (q->needjobs_responders == NULL)
         q->needjobs_responders = dictCreate(&clusterNodesDictType,NULL);
 
-    dictAdd(q->needjobs_responders, node, NULL);
+    if (dictAdd(q->needjobs_responders, node, NULL) == DICT_OK) {
+        /* We reset the broadcast attempt counter, that will model the delay
+         * to wait before every cluster-wide broadcast, every time we receive
+         * jobs from a node not already known as a source. */
+        q->needjobs_bcast_attempt = 0;
+    }
     de = dictFind(q->needjobs_responders, node);
     dictSetSignedIntegerVal(de,server.unixtime);
-    q->needjobs_bcast_attempt = 0;
 
     /* TODO:
      * 1) Update received jobs stats.

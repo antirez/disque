@@ -312,8 +312,8 @@ void handleClientsBlockedOnQueues(void) {
 int clientsCronSendNeedJobs(client *c) {
     if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_QUEUES) {
         dictForeach(c->bpop.queues,de)
-            queue *q = dictGetKey(de);
-            needJobsForQueue(q,NEEDJOBS_CLIENTS_WAITING);
+            robj *qname = dictGetKey(de);
+            needJobsForQueueName(qname,NEEDJOBS_CLIENTS_WAITING);
         dictEndForeach
     }
     return 0;
@@ -424,6 +424,7 @@ void needJobsForQueue(queue *q, int type) {
     /* Broadcast the message cluster wide if possible, otherwise if we
      * did so too recently, just send an ad-hoc message to the list of
      * recent responders for this queue. */
+    printf("Elapsed since last bcast: %lld, needed %lld\n", now - q->needjobs_bcast_time, bcast_delay);
     if (now - q->needjobs_bcast_time > bcast_delay) {
         q->needjobs_bcast_time = now;
         clusterSendNeedJobs(q->name,to_fetch,server.cluster->nodes);

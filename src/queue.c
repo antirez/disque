@@ -424,7 +424,6 @@ void needJobsForQueue(queue *q, int type) {
     /* Broadcast the message cluster wide if possible, otherwise if we
      * did so too recently, just send an ad-hoc message to the list of
      * recent responders for this queue. */
-    printf("Elapsed since last bcast: %lld, needed %lld\n", now - q->needjobs_bcast_time, bcast_delay);
     if (now - q->needjobs_bcast_time > bcast_delay) {
         q->needjobs_bcast_time = now;
         q->needjobs_bcast_attempt++;

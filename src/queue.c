@@ -64,7 +64,7 @@ queue *createQueue(robj *name) {
     incrRefCount(name);
     q->sl = skiplistCreate(skiplistCompareJobsInQueue);
     q->ctime = server.unixtime;
-    q->atime = 0;
+    q->atime = server.unixtime;
     q->needjobs_bcast_time = 0;
     q->needjobs_bcast_attempt = 0;
     q->needjobs_adhoc_time = 0;

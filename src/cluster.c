@@ -1924,6 +1924,8 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
 
     if (!node->link) return;
 
+    serverLog(DISQUE_NOTICE,"Sending %d jobs to %.40s", (int)count,node->name);
+
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
     totlen += sizeof(clusterMsgDataJob) -
               sizeof(hdr->data.jobs.serialized.jobs_data);
@@ -1934,7 +1936,7 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
         totlen += sdslen(serialized);
     }
 
-    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_ADDJOB);
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_YOURJOBS);
     hdr->data.jobs.serialized.numjobs = htonl(count);
     hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
     hdr->totlen = htonl(totlen);

@@ -476,7 +476,9 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
             j->state = JOB_STATE_ACTIVE;
             registerJob(j);
         }
-        /* Queue the job, whatever was already known or just created. */
+        /* Don't need to send QUEUED when adding this job into the queue,
+         * we are just moving from the queue of one node to another. */
+        j->flags &= ~JOB_FLAG_BCAST_QUEUED;
         if (queueJob(j) == DISQUE_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */

@@ -106,8 +106,8 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */
 #define CLUSTERMSG_TYPE_GOTACK 10       /* Acknowledge SETACK. */
 #define CLUSTERMSG_TYPE_DELJOB 11       /* Delete the specified job. */
-#define CLUSTERMSG_TYPE_NEEDJOBS 11     /* I need jobs for some queue. */
-#define CLUSTERMSG_TYPE_YOURJOBS 12     /* NEEDJOBS reply with jobs. */
+#define CLUSTERMSG_TYPE_NEEDJOBS 12     /* I need jobs for some queue. */
+#define CLUSTERMSG_TYPE_YOURJOBS 13     /* NEEDJOBS reply with jobs. */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this

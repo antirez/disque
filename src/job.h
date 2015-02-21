@@ -131,7 +131,7 @@ typedef struct job {
 
 job *createJob(char *id, int state, int ttl);
 void deleteJobFromCluster(job *j);
-sds serializeJob(job *j);
+sds serializeJob(sds msg, job *j);
 void fixForeingJobTimes(job *j);
 void updateJobNodes(job *j);
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next);

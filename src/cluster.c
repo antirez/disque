@@ -1764,7 +1764,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         clusterMsg *hdr = (clusterMsg*) buf;
         uint32_t totlen;
 
-        sds serialized = serializeJob(j);
+        sds serialized = serializeJob(sdsempty(),j);
 
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataJob) -

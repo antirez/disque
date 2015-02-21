@@ -42,7 +42,7 @@ typedef struct queue {
                         blocks for elements to arrive. */
     list *clients;   /* Clients blocked here. */
 
-    /* Federation related. */
+    /* === Federation related fields === */
     mstime_t needjobs_bcast_time; /* Last NEEDJOBS cluster broadcast. */
     mstime_t needjobs_adhoc_time; /* Last NEEDJOBS to notable nodes. */
 
@@ -78,7 +78,8 @@ int queueJob(job *job);
 int dequeueJob(job *job);
 job *queueFetchJob(queue *q, unsigned long *qlen);
 job *queueNameFetchJob(robj *qname, unsigned long *qlen);
-unsigned long queueLength(robj *qname);
+unsigned long queueLength(queue *q);
+unsigned long queueNameLength(robj *qname);
 void unblockClientBlockedForJobs(client *c);
 void handleClientsBlockedOnQueues(void);
 
@@ -86,7 +87,7 @@ void handleClientsBlockedOnQueues(void);
 #define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
 void needJobsForQueue(queue *q, int type);
 void needJobsForQueueName(robj *qname, int type);
-void receiveYourJobs(struct clusterNode *node, robj *qname, char *serializedjobs);
+void receiveYourJobs(struct clusterNode *node, robj *qname, uint32_t numjobs, char *serializedjobs);
 void receiveNeedJobs(struct clusterNode *node, robj *qname, uint32_t count);
 
 #endif

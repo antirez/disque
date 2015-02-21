@@ -39,6 +39,8 @@
 #include "queue.h"
 #include "skiplist.h"
 
+#include <math.h>
+
 void signalQueueAsReady(queue *q);
 
 /* ------------------------ Low level queue functions ----------------------- */
@@ -191,12 +193,16 @@ job *queueNameFetchJob(robj *qname, unsigned long *qlen) {
     return q ? queueFetchJob(q,qlen) : NULL;
 }
 
-/* Return the length of the queue. If the queue does not exist, zero
- * is returned. */
-unsigned long queueNameLength(robj *qname) {
-    queue *q = lookupQueue(qname);
+/* Return the length of the queue, or zero if NULL is passed here. */
+unsigned long queueLength(queue *q) {
     if (!q) return 0;
     return skiplistLength(q->sl);
+}
+
+/* Queue length by queue name. The function returns 0 if the queue does
+ * not exist. */
+unsigned long queueNameLength(robj *qname) {
+    return queueLength(lookupQueue(qname));
 }
 
 /* Remove a queue that was not accessed for enough time, has no clients
@@ -337,7 +343,7 @@ uint32_t getQueueImportRate(queue *q) {
     /* Min interval is 2 seconds in order to never overestimate. */
     if (elapsed < 2) elapsed = 2;
 
-    return messages/elapsed;
+    return ceil((double)messages/elapsed);
 }
 
 /* Check the queue source nodes list (nodes that replied with jobs to our
@@ -449,7 +455,7 @@ void needJobsForQueueName(robj *qname, int type) {
 }
 
 /* Called from cluster.c when a YOURJOBS message is received. */
-void receiveYourJobs(clusterNode *node, robj *qname, char *serializedjobs) {
+void receiveYourJobs(clusterNode *node, robj *qname, uint32_t numjobs, char *serializedjobs) {
     dictEntry *de;
     queue *q;
 
@@ -476,6 +482,21 @@ void receiveYourJobs(clusterNode *node, robj *qname, char *serializedjobs) {
 
 /* Called from cluster.c when a NEEDJOBS message is received. */
 void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
+    queue *q = lookupQueue(qname);
+    unsigned long qlen = queueLength(q);
+    uint32_t replyjobs = count; /* Number of jobs we are willing to provide. */
+
+    /* Ignore requests for jobs if:
+     * 1) No such queue here, or queue is empty.
+     * 2) We are actively importing jobs ourselves for this queue. */
+    if (qlen == 0 || getQueueImportRate(q) > 0) return;
+
+    /* To avoid that a single node is able to deplete our queue easily,
+     * we provide the number of jobs requested only if we have more than
+     * 2 times what it requested. Otherwise we provide at max half the jobs
+     * we have, but always at least a single job. */
+    if (qlen < count*2) replyjobs = qlen/2;
+    if (replyjobs == 0) replyjobs = 1;
 }
 
 /* ------------------------- Queue related commands ------------------------- */

@@ -523,9 +523,8 @@ char *serializeSdsString(char *p, sds s) {
  *
  * Since each job has a prefixed length it is possible to glue multiple
  * jobs one after the other in a single string. */
-sds serializeJob(job *j) {
+sds serializeJob(sds msg, job *j) {
     size_t len;
-    sds msg;
     struct job *sj;
     char *p;
     uint32_t count;
@@ -540,7 +539,8 @@ sds serializeJob(job *j) {
     len += dictSize(j->nodes_delivered) * DISQUE_CLUSTER_NAMELEN;
 
     /* Total serialized length prefix, not including the length itself. */
-    msg = sdsnewlen(NULL,len);
+    msg = sdsMakeRoomFor(msg,len);
+    sdsIncrLen(msg,len);
     count = intrev32ifbe(len-4);
     memcpy(msg,&count,sizeof(count));
 

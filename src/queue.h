@@ -87,7 +87,7 @@ void handleClientsBlockedOnQueues(void);
 #define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
 void needJobsForQueue(queue *q, int type);
 void needJobsForQueueName(robj *qname, int type);
-void receiveYourJobs(struct clusterNode *node, robj *qname, uint32_t numjobs, char *serializedjobs);
+void receiveYourJobs(struct clusterNode *node, uint32_t numjobs, unsigned char *serializedjobs, uint32_t serializedlen);
 void receiveNeedJobs(struct clusterNode *node, robj *qname, uint32_t count);
 
 #endif

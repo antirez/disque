@@ -455,29 +455,53 @@ void needJobsForQueueName(robj *qname, int type) {
 }
 
 /* Called from cluster.c when a YOURJOBS message is received. */
-void receiveYourJobs(clusterNode *node, robj *qname, uint32_t numjobs, char *serializedjobs) {
+void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *serializedjobs, uint32_t serializedlen) {
     dictEntry *de;
     queue *q;
+    uint32_t j;
+    unsigned char *nextjob = serializedjobs;
 
-    q = lookupQueue(qname);
-    if (!q) q = createQueue(qname);
-    if (q->needjobs_responders == NULL)
-        q->needjobs_responders = dictCreate(&clusterNodesDictType,NULL);
+    for (j = 0; j < numjobs; j++) {
+        uint32_t remlen = serializedlen - (nextjob-serializedjobs);
+        job *j, *sj = deserializeJob(nextjob,remlen,&nextjob);
+        
+        /* If the job does not exist, we need to add it to our jobs.
+         * Otherwise just get a reference to the job we already have
+         * in memory and free the deserialized one. */
+        j = lookupJob(sj->id);
+        if (j) {
+            freeJob(sj);
+        } else {
+            j = sj;
+            j->state = JOB_STATE_ACTIVE;
+            registerJob(j);
+        }
+        /* Queue the job, whatever was already known or just created. */
+        if (queueJob(j) == DISQUE_ERR) continue;
 
-    if (dictAdd(q->needjobs_responders, node, NULL) == DICT_OK) {
-        /* We reset the broadcast attempt counter, that will model the delay
-         * to wait before every cluster-wide broadcast, every time we receive
-         * jobs from a node not already known as a source. */
-        q->needjobs_bcast_attempt = 0;
+        /* Update queue stats needed to optimize nodes federation. */
+        q = lookupQueue(j->queue);
+        if (!q) q = createQueue(j->queue);
+        if (q->needjobs_responders == NULL)
+            q->needjobs_responders = dictCreate(&clusterNodesDictType,NULL);
+
+        if (dictAdd(q->needjobs_responders, node, NULL) == DICT_OK) {
+            /* We reset the broadcast attempt counter, that will model the
+             * delay to wait before every cluster-wide broadcast, every time
+             * we receive jobs from a node not already known as a source. */
+            q->needjobs_bcast_attempt = 0;
+        }
+
+        de = dictFind(q->needjobs_responders, node);
+        dictSetSignedIntegerVal(de,server.unixtime);
+
+        if (server.unixtime > q->current_import_jobs_time) {
+            q->prev_import_jobs_time = q->current_import_jobs_time;
+            q->prev_import_jobs_count = q->current_import_jobs_count;
+            q->current_import_jobs_time = server.unixtime;
+        }
+        q->current_import_jobs_count++;
     }
-    de = dictFind(q->needjobs_responders, node);
-    dictSetSignedIntegerVal(de,server.unixtime);
-
-    /* TODO:
-     * 1) Update received jobs stats.
-     * 2) Check if we don't have the jobs, create it if needed.
-     * 2) Queue jobs into the queue.
-     */
 }
 
 /* Called from cluster.c when a NEEDJOBS message is received. */
@@ -485,6 +509,7 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
     queue *q = lookupQueue(qname);
     unsigned long qlen = queueLength(q);
     uint32_t replyjobs = count; /* Number of jobs we are willing to provide. */
+    uint32_t j;
 
     /* Ignore requests for jobs if:
      * 1) No such queue here, or queue is empty.
@@ -497,6 +522,13 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
      * we have, but always at least a single job. */
     if (qlen < count*2) replyjobs = qlen/2;
     if (replyjobs == 0) replyjobs = 1;
+
+    job *jobs[NEEDJOBS_MAX_REQUEST];
+    for (j = 0; j < replyjobs; j++) {
+        jobs[j] = queueFetchJob(q,NULL);
+        serverAssert(jobs[j] != NULL);
+    }
+    clusterSendYourJobs(node,jobs,replyjobs);
 }
 
 /* ------------------------- Queue related commands ------------------------- */

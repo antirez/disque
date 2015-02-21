@@ -1096,7 +1096,8 @@ int clusterProcessPacket(clusterLink *link) {
 
         explen += sizeof(clusterMsgDataFail);
         if (totlen != explen) return 1;
-    } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
+    } else if (type == CLUSTERMSG_TYPE_ADDJOB ||
+               type == CLUSTERMSG_TYPE_YOURJOBS) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         explen += sizeof(clusterMsgDataJob) -
@@ -1305,6 +1306,12 @@ int clusterProcessPacket(clusterLink *link) {
                     clusterSendGotJob(sender,j);
             }
         }
+    } else if (type == CLUSTERMSG_TYPE_YOURJOBS) {
+        uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
+        uint32_t datasize = ntohl(hdr->data.jobs.serialized.datasize);
+
+        if (!sender || numjobs == 0) return 1;
+        receiveYourJobs(sender,numjobs,hdr->data.jobs.serialized.jobs_data,datasize);
     } else if (type == CLUSTERMSG_TYPE_GOTJOB) {
         if (!sender) return 1;
 
@@ -1906,6 +1913,43 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     hdr->totlen = htonl(totlen);
     clusterBroadcastMessage(nodes,hdr,totlen);
     zfree(hdr);
+}
+
+/* Send a YOURJOBS message to the specified node, with a serialized copy of
+ * the jobs referneced by the 'jobs' array and containing 'count' jobs. */
+void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
+    unsigned char buf[sizeof(clusterMsg)], *payload;
+    clusterMsg *hdr = (clusterMsg*) buf;
+    uint32_t totlen, j;
+
+    if (!node->link) return;
+
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataJob) -
+              sizeof(hdr->data.jobs.serialized.jobs_data);
+
+    sds serialized = sdsempty();
+    for (j = 0; j < count; j++) {
+        serialized = serializeJob(serialized,jobs[j]);
+        totlen += sdslen(serialized);
+    }
+
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_ADDJOB);
+    hdr->data.jobs.serialized.numjobs = htonl(count);
+    hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
+    hdr->totlen = htonl(totlen);
+
+    if (totlen < sizeof(buf)) {
+        payload = buf;
+    } else {
+        payload = zmalloc(totlen);
+        memcpy(payload,hdr,sizeof(*hdr));
+        hdr = (clusterMsg*) payload;
+    }
+    memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
+    sdsfree(serialized);
+    clusterSendMessage(node->link,payload,totlen);
+    if (payload != buf) zfree(payload);
 }
 
 /* -----------------------------------------------------------------------------

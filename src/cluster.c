@@ -1546,14 +1546,18 @@ void clusterSendMessage(clusterLink *link, unsigned char *msg, size_t msglen) {
  *
  * It is guaranteed that this function will never have as a side effect
  * some node->link to be invalidated, so it is safe to call this function
- * from event handlers that will do stuff with node links later. */
+ * from event handlers that will do stuff with node links later.
+ *
+ * Note that this function expects 'nodes' to be stored as keys, so the
+ * value can be anything. This is possible since node->name is both the
+ * node key, and the pointer to the start of the structure. */
 void clusterBroadcastMessage(dict *nodes, void *buf, size_t len) {
     dictIterator *di;
     dictEntry *de;
 
     di = dictGetSafeIterator(nodes);
     while((de = dictNext(di)) != NULL) {
-        clusterNode *node = dictGetVal(de);
+        clusterNode *node = dictGetKey(de);
 
         if (!node->link) continue;
         if (node->flags & (DISQUE_NODE_MYSELF|DISQUE_NODE_HANDSHAKE))

@@ -53,8 +53,8 @@ typedef struct clusterNodeFailReport {
 } clusterNodeFailReport;
 
 typedef struct clusterNode {
-    mstime_t ctime; /* Node object creation time. */
     char name[DISQUE_CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
+    mstime_t ctime; /* Node object creation time. */
     int flags;      /* DISQUE_NODE_... */
     mstime_t ping_sent;      /* Unix time we sent latest ping */
     mstime_t pong_received;  /* Unix time we received the pong */

@@ -519,16 +519,20 @@ char *serializeSdsString(char *p, sds s) {
  * little endian with the count of N node names followig. Then N
  * fixed lenght node names of CLUSTER_NODE_NAMELEN characters each.
  *
+ * The message is concatenated to the existing sds string 'jobs'.
+ * Just use sdsempty() as first argument to get a single job serialized.
+ *
  * ----------------------------------------------------------------------
  *
  * Since each job has a prefixed length it is possible to glue multiple
  * jobs one after the other in a single string. */
-sds serializeJob(sds msg, job *j) {
+sds serializeJob(sds jobs, job *j) {
     size_t len;
     struct job *sj;
-    char *p;
+    char *p, *msg;
     uint32_t count;
 
+    /* Compute the total length of the serialized job. */
     len = 4;                    /* Prefixed length of the serialized bytes. */
     len += JOB_STRUCT_SER_LEN;  /* Structure header directly serializable. */
     len += 4;                   /* Queue name length field. */
@@ -538,9 +542,12 @@ sds serializeJob(sds msg, job *j) {
     len += 4;                   /* Node IDs (that may have a copy) count. */
     len += dictSize(j->nodes_delivered) * DISQUE_CLUSTER_NAMELEN;
 
+    /* Make room at the end of the SDS buffer to hold our message. */
+    jobs = sdsMakeRoomFor(jobs,len);
+    msg = jobs + sdslen(jobs); /* Concatenate to the end of buffer. */
+    sdsIncrLen(jobs,len); /* Adjust SDS string final length. */
+
     /* Total serialized length prefix, not including the length itself. */
-    msg = sdsMakeRoomFor(msg,len);
-    sdsIncrLen(msg,len);
     count = intrev32ifbe(len-4);
     memcpy(msg,&count,sizeof(count));
 
@@ -585,7 +592,7 @@ sds serializeJob(sds msg, job *j) {
 
     /* Make sure we wrote exactly the intented number of bytes. */
     serverAssert(len == (size_t)(p-msg));
-    return msg;
+    return jobs;
 }
 
 /* Deserialize a job serialized with serializeJob. Note that this only

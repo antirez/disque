@@ -463,27 +463,34 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
 
     for (j = 0; j < numjobs; j++) {
         uint32_t remlen = serializedlen - (nextjob-serializedjobs);
-        job *j, *sj = deserializeJob(nextjob,remlen,&nextjob);
+        job *job, *sj = deserializeJob(nextjob,remlen,&nextjob);
+
+        if (sj == NULL) {
+            serverLog(DISQUE_WARNING,
+                "The %d-th job received via YOURJOBS from %.40s is corrupted.",
+                (int)j+1, node->name);
+            return;
+        }
         
         /* If the job does not exist, we need to add it to our jobs.
          * Otherwise just get a reference to the job we already have
          * in memory and free the deserialized one. */
-        j = lookupJob(sj->id);
-        if (j) {
+        job = lookupJob(sj->id);
+        if (job) {
             freeJob(sj);
         } else {
-            j = sj;
-            j->state = JOB_STATE_ACTIVE;
-            registerJob(j);
+            job = sj;
+            job->state = JOB_STATE_ACTIVE;
+            registerJob(job);
         }
         /* Don't need to send QUEUED when adding this job into the queue,
          * we are just moving from the queue of one node to another. */
-        j->flags &= ~JOB_FLAG_BCAST_QUEUED;
-        if (queueJob(j) == DISQUE_ERR) continue;
+        job->flags &= ~JOB_FLAG_BCAST_QUEUED;
+        if (queueJob(job) == DISQUE_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */
-        q = lookupQueue(j->queue);
-        if (!q) q = createQueue(j->queue);
+        q = lookupQueue(job->queue);
+        if (!q) q = createQueue(job->queue);
         if (q->needjobs_responders == NULL)
             q->needjobs_responders = dictCreate(&clusterNodesDictType,NULL);
 

@@ -1792,7 +1792,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
             payload = buf;
         } else {
             payload = zmalloc(totlen);
-            memcpy(payload,hdr,sizeof(*hdr));
+            memcpy(payload,buf,sizeof(clusterMsg));
             hdr = (clusterMsg*) payload;
         }
         memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
@@ -1935,10 +1935,9 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
               sizeof(hdr->data.jobs.serialized.jobs_data);
 
     sds serialized = sdsempty();
-    for (j = 0; j < count; j++) {
+    for (j = 0; j < count; j++)
         serialized = serializeJob(serialized,jobs[j]);
-        totlen += sdslen(serialized);
-    }
+    totlen += sdslen(serialized);
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_YOURJOBS);
     hdr->data.jobs.serialized.numjobs = htonl(count);
@@ -1949,7 +1948,7 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
         payload = buf;
     } else {
         payload = zmalloc(totlen);
-        memcpy(payload,hdr,sizeof(*hdr));
+        memcpy(payload,buf,sizeof(clusterMsg));
         hdr = (clusterMsg*) payload;
     }
     memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));

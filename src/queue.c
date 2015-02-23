@@ -70,6 +70,7 @@ queue *createQueue(robj *name) {
     q->needjobs_bcast_time = 0;
     q->needjobs_bcast_attempt = 0;
     q->needjobs_adhoc_time = 0;
+    q->needjobs_adhoc_attempt = 0;
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
     q->clients = NULL; /* Created on demand to save memory. */
 
@@ -389,15 +390,16 @@ unsigned long getQueueValidResponders(queue *q) {
 /* Min and max amount of jobs we request to other nodes. */
 #define NEEDJOBS_MIN_REQUEST 5
 #define NEEDJOBS_MAX_REQUEST 100
-#define NEEDJOBS_BCAST_ALL_INITIAL_DELAY 2000 /* 2 seconds. */
+#define NEEDJOBS_BCAST_ALL_MIN_DELAY 2000     /* 2 seconds. */
 #define NEEDJOBS_BCAST_ALL_MAX_DELAY 30000    /* 30 seconds. */
-#define NEEDJOBS_BCAST_SRC_DELAY 500
+#define NEEDJOBS_BCAST_ADHOC_MIN_DELAY 25     /* 25 milliseconds. */
+#define NEEDJOBS_BCAST_ADHOC_MAX_DELAY 2000   /* 2 seconds. */
 
 void needJobsForQueue(queue *q, int type) {
     uint32_t import_per_sec; /* Jobs import rate in the latest secs. */
     uint32_t to_fetch;       /* Number of jobs we should try to obtain. */
     unsigned long num_responders = 0;
-    mstime_t bcast_delay;
+    mstime_t bcast_delay, adhoc_delay;
     mstime_t now = mstime();
 
     import_per_sec = getQueueImportRate(q);
@@ -420,12 +422,19 @@ void needJobsForQueue(queue *q, int type) {
     if (to_fetch < NEEDJOBS_MIN_REQUEST) to_fetch = NEEDJOBS_MIN_REQUEST;
     else if (to_fetch > NEEDJOBS_MAX_REQUEST) to_fetch = NEEDJOBS_MAX_REQUEST;
 
-    /* Check if we can do a cluster-wide broadcast of NEEDJOBS.
-     * We can do it only at exponential intervals (with a max time limit) */
-    bcast_delay = NEEDJOBS_BCAST_ALL_INITIAL_DELAY *
+    /* Check if we can do a cluster-wide broadcast of NEEDJOBS, or send
+     * the message just to recent responders for this queue.
+     *
+     * We use exponential intervals (with a max time limit) */
+    bcast_delay = NEEDJOBS_BCAST_ALL_MIN_DELAY *
                   (1 << q->needjobs_bcast_attempt);
     if (bcast_delay > NEEDJOBS_BCAST_ALL_MAX_DELAY)
         bcast_delay = NEEDJOBS_BCAST_ALL_MAX_DELAY;
+
+    adhoc_delay = NEEDJOBS_BCAST_ADHOC_MIN_DELAY *
+                  (1 << q->needjobs_adhoc_attempt);
+    if (adhoc_delay > NEEDJOBS_BCAST_ADHOC_MAX_DELAY)
+        adhoc_delay = NEEDJOBS_BCAST_ADHOC_MAX_DELAY;
 
     /* Broadcast the message cluster wide if possible, otherwise if we
      * did so too recently, just send an ad-hoc message to the list of
@@ -435,10 +444,11 @@ void needJobsForQueue(queue *q, int type) {
         q->needjobs_bcast_attempt++;
         clusterSendNeedJobs(q->name,to_fetch,server.cluster->nodes);
     } else if ((type == NEEDJOBS_REACHED_ZERO ||
-                now - q->needjobs_adhoc_time > NEEDJOBS_BCAST_SRC_DELAY) &&
+                now - q->needjobs_adhoc_time > adhoc_delay) &&
                 num_responders > 0)
     {
         q->needjobs_adhoc_time = now;
+        q->needjobs_adhoc_attempt++;
         clusterSendNeedJobs(q->name,to_fetch,q->needjobs_responders);
     }
 }
@@ -510,6 +520,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
             q->current_import_jobs_time = server.unixtime;
         }
         q->current_import_jobs_count++;
+        q->needjobs_adhoc_attempt = 0;
     }
 }
 

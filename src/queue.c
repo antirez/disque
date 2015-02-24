@@ -428,42 +428,46 @@ void needJobsForQueue(queue *q, int type) {
 
     /* Guess how many replies we need from each node. If we already have
      * a list of sources, assume that each source is capable of providing
-     * some message, otherwise just use the MIN_REQUEST, since when we
-     * broadcast cluster-wide, we are just discovering nodes: we are not
-     * aware of the number of potential sources, and we don't want to receive
-     * a huge number of jobs without a good reason. */
+     * some message. */
     num_responders = getQueueValidResponders(q);
+    to_fetch = NEEDJOBS_MIN_REQUEST;
     if (num_responders > 0)
         to_fetch = import_per_sec / num_responders;
-    else
-        to_fetch = NEEDJOBS_MIN_REQUEST;
+
+    /* Trim number of jobs to request to min/max values. */
     if (to_fetch < NEEDJOBS_MIN_REQUEST) to_fetch = NEEDJOBS_MIN_REQUEST;
     else if (to_fetch > NEEDJOBS_MAX_REQUEST) to_fetch = NEEDJOBS_MAX_REQUEST;
 
-    /* Check if we can do a cluster-wide broadcast of NEEDJOBS, or send
-     * the message just to recent responders for this queue.
-     *
+    /* Broadcast the message cluster from time to time.
      * We use exponential intervals (with a max time limit) */
     bcast_delay = NEEDJOBS_BCAST_ALL_MIN_DELAY *
                   (1 << q->needjobs_bcast_attempt);
     if (bcast_delay > NEEDJOBS_BCAST_ALL_MAX_DELAY)
         bcast_delay = NEEDJOBS_BCAST_ALL_MAX_DELAY;
 
+    if (now - q->needjobs_bcast_time > bcast_delay) {
+        q->needjobs_bcast_time = now;
+        q->needjobs_bcast_attempt++;
+        /* Cluster-wide broadcasts are just to discover nodes,
+         * ask for a single job in this case. */
+        clusterSendNeedJobs(q->name,1,server.cluster->nodes);
+    }
+
+    /* If the queue reached zero, or if the delay elapsed and we
+     * have at least a source node, send an ad-hoc message to
+     * nodes known to be sources for this queue.
+     *
+     * We use exponential delays here as well (but don't care about
+     * the delay if the queue just dropped to zero), however with
+     * much shorter times compared to the cluster-wide broadcast. */
     adhoc_delay = NEEDJOBS_BCAST_ADHOC_MIN_DELAY *
                   (1 << q->needjobs_adhoc_attempt);
     if (adhoc_delay > NEEDJOBS_BCAST_ADHOC_MAX_DELAY)
         adhoc_delay = NEEDJOBS_BCAST_ADHOC_MAX_DELAY;
 
-    /* Broadcast the message cluster wide if possible, otherwise if we
-     * did so too recently, just send an ad-hoc message to the list of
-     * recent responders for this queue. */
-    if (now - q->needjobs_bcast_time > bcast_delay) {
-        q->needjobs_bcast_time = now;
-        q->needjobs_bcast_attempt++;
-        clusterSendNeedJobs(q->name,to_fetch,server.cluster->nodes);
-    } else if ((type == NEEDJOBS_REACHED_ZERO ||
-                now - q->needjobs_adhoc_time > adhoc_delay) &&
-                num_responders > 0)
+    if ((type == NEEDJOBS_REACHED_ZERO ||
+         now - q->needjobs_adhoc_time > adhoc_delay) &&
+         num_responders > 0)
     {
         q->needjobs_adhoc_time = now;
         q->needjobs_adhoc_attempt++;

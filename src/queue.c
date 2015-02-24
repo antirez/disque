@@ -428,13 +428,15 @@ void needJobsForQueue(queue *q, int type) {
 
     /* Guess how many replies we need from each node. If we already have
      * a list of sources, assume that each source is capable of providing
-     * some message, otherwise just use import_per_sec as a first guess,
-     * however we adjust with min and max figures. */
+     * some message, otherwise just use the MIN_REQUEST, since when we
+     * broadcast cluster-wide, we are just discovering nodes: we are not
+     * aware of the number of potential sources, and we don't want to receive
+     * a huge number of jobs without a good reason. */
     num_responders = getQueueValidResponders(q);
     if (num_responders > 0)
         to_fetch = import_per_sec / num_responders;
     else
-        to_fetch = import_per_sec;
+        to_fetch = NEEDJOBS_MIN_REQUEST;
     if (to_fetch < NEEDJOBS_MIN_REQUEST) to_fetch = NEEDJOBS_MIN_REQUEST;
     else if (to_fetch > NEEDJOBS_MAX_REQUEST) to_fetch = NEEDJOBS_MAX_REQUEST;
 

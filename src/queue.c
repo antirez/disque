@@ -74,9 +74,9 @@ queue *createQueue(robj *name) {
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
     q->clients = NULL; /* Created on demand to save memory. */
 
-    q->current_import_jobs_time = server.unixtime;
+    q->current_import_jobs_time = server.mstime;
     q->current_import_jobs_count = 0;
-    q->prev_import_jobs_time = server.unixtime;
+    q->prev_import_jobs_time = server.mstime;
     q->prev_import_jobs_count = 0;
 
     incrRefCount(name); /* Another refernce in the hash table key. */
@@ -330,21 +330,37 @@ int clientsCronSendNeedJobs(client *c) {
 
 /* Return a very rough estimate of the current import message rate.
  * Imported messages are messaged received as NEEDJOBS replies. */
-#define IMPORT_RATE_WINDOW 5 /* 5 seconds max window. */
+#define IMPORT_RATE_WINDOW 5000 /* 5 seconds max window. */
 uint32_t getQueueImportRate(queue *q) {
-    uint32_t elapsed = server.unixtime - q->prev_import_jobs_time;
-    uint32_t messages = q->prev_import_jobs_count +
-                        q->current_import_jobs_count;
+    double elapsed = server.mstime - q->prev_import_jobs_time;
+    double messages = (double)q->prev_import_jobs_count +
+                              q->current_import_jobs_count;
 
     /* If we did not received any message in the latest few seconds,
      * consider the import rate zero. */
-    if ((server.unixtime - q->current_import_jobs_time) > IMPORT_RATE_WINDOW)
+    if ((server.mstime - q->current_import_jobs_time) > IMPORT_RATE_WINDOW)
         return 0;
 
-    /* Min interval is 2 seconds in order to never overestimate. */
-    if (elapsed < 2) elapsed = 2;
+    /* Min interval is 50 ms in order to never overestimate. */
+    if (elapsed < 50) elapsed = 50;
 
-    return ceil((double)messages/elapsed);
+    return ceil((double)messages*1000/elapsed);
+}
+
+/* Called every time we import a job, this will update our counters
+ * and state in order to update the import/sec estimate. */
+void updateQueueImportRate(queue *q) {
+    /* If the current second no longer matches the current counter
+     * timestamp, copy the old timestamp/counter into 'prev', and
+     * start a new counter with an updated time. */
+    if (server.mstime - q->current_import_jobs_time > 1000) {
+        q->prev_import_jobs_time = q->current_import_jobs_time;
+        q->prev_import_jobs_count = q->current_import_jobs_count;
+        q->current_import_jobs_time = server.mstime;
+        q->current_import_jobs_count = 0;
+    }
+    /* Anyway, update the current counter. */
+    q->current_import_jobs_count++;
 }
 
 /* Check the queue source nodes list (nodes that replied with jobs to our
@@ -513,13 +529,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
 
         de = dictFind(q->needjobs_responders, node);
         dictSetSignedIntegerVal(de,server.unixtime);
-
-        if (server.unixtime > q->current_import_jobs_time) {
-            q->prev_import_jobs_time = q->current_import_jobs_time;
-            q->prev_import_jobs_count = q->current_import_jobs_count;
-            q->current_import_jobs_time = server.unixtime;
-        }
-        q->current_import_jobs_count++;
+        updateQueueImportRate(q);
         q->needjobs_adhoc_attempt = 0;
     }
 }

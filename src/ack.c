@@ -87,7 +87,8 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
      * send us ACKJOB about a job we were not aware. */
     int dummy_ack = dictSize(job->nodes_delivered) == 0;
 
-    serverLog(DISQUE_NOTICE,"RECEIVED GOTACK FOR JOB %.48s", job->id);
+    serverLog(DISQUE_NOTICE,"RECEIVED GOTACK FROM %.40s FOR JOB %.48s",
+        sender->name, job->id);
 
     /* If this is a dummy ACK, and we reached a node that knows about this job,
      * it's up to it to perform the garbage collection, so we can forget about
@@ -100,11 +101,15 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
         return;
     }
 
-    /* If the sender knows about the job, we do two things:
+    /* If the sender knows about the job, or if we have the sender in the list
+     * of nodes that may have the job (even if it no longer remembers about
+     * the job), we do two things:
+     *
      * 1) Add the node to the list of nodes_delivered. It is likely already
-     *    there... so this should be useless.
+     *    there... so this should be useless, but is a good invariant
+     *    to enforce.
      * 2) Add the node to the list of nodes that acknowledged the ACK. */
-    if (known) {
+    if (known || dictFind(job->nodes_delivered,sender->name) != NULL) {
         dictAdd(job->nodes_delivered,sender->name,sender);
         dictAdd(job->nodes_confirmed,sender->name,sender);
     }

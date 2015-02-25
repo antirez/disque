@@ -1325,6 +1325,10 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         uint32_t mayhave = ntohl(hdr->data.jobid.job.aux);
 
+        serverLog(DISQUE_NOTICE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.48s",
+            (int) mayhave,
+            sender->name, hdr->data.jobid.job.id);
+
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) acknowledgeJob(j);
         if (j == NULL || dictSize(j->nodes_delivered) <= mayhave) {

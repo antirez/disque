@@ -275,6 +275,70 @@ Cluster messages related to nodes federation
 
 * YOURJOBS(array of messages): The reply to NEEDJOBS. An array of serialized jobs, usually all about the same queue (but future optimization may allow to send different jobs from different queues). Jobs into YOURJOBS replies are extracted from the local queue, and queued at the receiver node's queue with the same name. So even messages with a retry set to 0 (at most once delivery) still guarantee the safety rule since a given message may be in the source node, in the wire, or already received in the destination node. If a YOURJOBS message is lost, at least once delivery jobs will be re-queued later when the retry time is reached.
 
+ACKs garbage collection state machine
+---
+
+This section shows the state machine used in order to collect acknowledged jobs
+in terms of procedures, timers, and actions performed when a given type of
+cluster message or client command is received.
+
+Note that: job is a job object with the following fields:
+
+1. job.delivered: A list of nodes that may have this message. This list does not need to be complete, is used for best-effort algorithms.
+2. job.confirmed: A list of nodes that confirmed reception of ACK by replying with a GOTJOB message.
+
+Both fields support methods like `.size` to get the number of elements.
+
+ON client command `ACKJOB(id job-id)`:
+
+1. If no job with such id, return ASAP, otherwise retrieve job by id.
+2. Call ACK-JOB(`job`).
+3. Call START-GC(`job`).
+
+ON cluster message `SETACK(id job-id, integer may-have)`:
+
+1. Lookup job by id, if possible, otherwise set job to `NULL`.
+2. Call ACK-JOB(job) if job is not `NULL`.
+3. Reply with GOTACK if job is `NULL` OR if job.delivered.size is `<=` of `may-have` in the message argument.
+4. If job is not `NULL` and `jobs.delivered.size` > `may-have` call `START_GC(job)`.
+5. If `may_have` is 0 and job is not `NULL`, reply with `GOTACK(1)` and call `START_GC(job)`. 
+
+Note that steps 3 and 4: this makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy. Step 5 instead is used in order to start a GC attempt if we received a SETACK message from a node just hacking a dummy ACK (an acknowledge about a job it was not aware of).
+
+ON cluster message `GOTACK(id job-id, bool known)`:
+
+1. If no job, return ASAP.
+2. Call `ACK_JOB(job)`.
+3. If known is true, AND job.delivered.size > 0, add sender to job.delivered.
+4. If known is true, OR (known is false AND job.delivered.size > 0) OR (known is false AND sender is among job.delivered) THEN add the sender to jobs.confirmed.
+5. If job.delivered.size > 0 AND job.delivered.size == job.confirmed.size, THEN send DELJOB(job.id) to every node in the list and remove the job from memory.
+6. If job.delivered is 0 (dummy hack, check note belove), AND known is true, THEN delete the job from memory.
+7. if job.delivered is 0 AND job.confirmed.size is equal to total amount of nodes in the cluster, delete the ACK.
+
+Note about step 3: If job.delivered.size is zero, it means that the node just holds a *dummy ack* for the job. It means the node has an acknowledged job it created on the fly because a client acknowledged (via ACKJOB command) a job it was not aware of.
+
+Note about step 6: we don't have to hold a dummy hack if there are nodes that have the job already acknowledged.
+
+Note about step 7: this happens when nobody knows about a job, like when a client acknowledged a wrong job ID.
+
+ON cluster message: `DELJOB(job.id)`:
+
+1. Delete the job if exists, otherwise ignore.
+
+PROCEDURE `ACK_JOB(job)`:
+
+1. If job is already acknowledged, do nothing and return ASAP.
+2. Change job state to acknowledged, dequeue the job if queued, schedule first call to TIMER.
+
+PROCEDURE `START_GC(job)`:
+
+1. Send SETACK(job.delivered.size) to each node that are listed in job.delivered but are not listed in job.confirmed.
+2. If job.delivered.size is 0, this is an ACK about a job we don’t know. In that case, send SETACK(0) to every node in the cluster.
+
+TIMER, every N seconds (starting with 3 minutes), for every acknowledged job in memory:
+
+If job state is acknowledged, call `START_GC(job)`. Reschedule timer with an exponential delay.
+
 FAQ
 ===
 

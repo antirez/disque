@@ -307,7 +307,7 @@ PROCEDURE `ACK_JOB(job)`:
 PROCEDURE `START_GC(job)`:
 
 1. Send `SETACK(job.delivered.size)` to each node that is listed in `job.delivered` but is not listed in `job.confirmed`.
-2. IF `job.delivered.size == 0`, THEN sned `SETACK(0)` to every node in the cluster.
+2. IF `job.delivered.size == 0`, THEN send `SETACK(0)` to every node in the cluster.
 
 Step 2: this is an ACK about a job we don’t know. In that case, we can just broadcast the acknowledged hoping somebody knows about the job and replies.
 

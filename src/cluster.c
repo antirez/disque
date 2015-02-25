@@ -1333,7 +1333,7 @@ int clusterProcessPacket(clusterLink *link) {
             int known = j ? 1 : 0;
             clusterSendGotAck(sender,hdr->data.jobid.job.id,known);
         } else {
-            /* We have the jbo but we know more nodes that may have it
+            /* We have the job but we know more nodes that may have it
              * than the sender if we are here. Don't reply to GOTACK unless
              * mayhave is 0 (the sender just received an ACK from client about
              * a job it does not know), in order to let the sender delete it. */

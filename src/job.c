@@ -313,6 +313,9 @@ void updateJobAwakeTime(job *j, mstime_t at) {
         if (j->state == JOB_STATE_ACKED) {
             /* Try to garbage collect this ACKed job again in the future. */
             mstime_t retry_gc_again = server.mstime + JOB_GC_RETRY_PERIOD*1000;
+            /* Desync a bit the GC process, it is a waste of resources for
+             * multiple nodes to try to GC at the same time. */
+            retry_gc_again += randomTimeError(500);
             if (retry_gc_again < at) at = retry_gc_again;
         } else if ((j->state == JOB_STATE_ACTIVE ||
                     j->state == JOB_STATE_QUEUED) && j->qtime) {

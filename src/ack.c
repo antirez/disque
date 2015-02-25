@@ -49,6 +49,7 @@ void acknowledgeJob(job *job) {
         dictRelease(job->nodes_confirmed);
         job->nodes_confirmed = NULL;
     }
+    updateJobAwakeTime(job,0); /* Make sure we'll schedule a job GC. */
 }
 
 /* ------------------------- Garbage collection ----------------------------- */

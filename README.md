@@ -286,58 +286,74 @@ Note that: job is a job object with the following fields:
 
 1. job.delivered: A list of nodes that may have this message. This list does not need to be complete, is used for best-effort algorithms.
 2. job.confirmed: A list of nodes that confirmed reception of ACK by replying with a GOTJOB message.
+3. job.id: The job 48 chars ID.
 
 Both fields support methods like `.size` to get the number of elements.
 
-ON client command `ACKJOB(id job-id)`:
+PROCEDURE `LOOKUP-JOB(job-id)`:
 
-1. If no job with such id, return ASAP, otherwise retrieve job by id.
-2. Call ACK-JOB(`job`).
-3. Call START-GC(`job`).
+1. If job with the specified id is found, returns the corresponding job object.
+2. Otherwise returns NULL.
 
-ON cluster message `SETACK(id job-id, integer may-have)`:
+PROCEDURE `UNREGISTER(job)`:
 
-1. Lookup job by id, if possible, otherwise set job to `NULL`.
-2. Call ACK-JOB(job) if job is not `NULL`.
-3. Reply with GOTACK if job is `NULL` OR if job.delivered.size is `<=` of `may-have` in the message argument.
-4. If job is not `NULL` and `jobs.delivered.size` > `may-have` call `START_GC(job)`.
-5. If `may_have` is 0 and job is not `NULL`, reply with `GOTACK(1)` and call `START_GC(job)`. 
-
-Note that steps 3 and 4: this makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy. Step 5 instead is used in order to start a GC attempt if we received a SETACK message from a node just hacking a dummy ACK (an acknowledge about a job it was not aware of).
-
-ON cluster message `GOTACK(id job-id, bool known)`:
-
-1. If no job, return ASAP.
-2. Call `ACK_JOB(job)`.
-3. If known is true, AND job.delivered.size > 0, add sender to job.delivered.
-4. If known is true, OR (known is false AND job.delivered.size > 0) OR (known is false AND sender is among job.delivered) THEN add the sender to jobs.confirmed.
-5. If job.delivered.size > 0 AND job.delivered.size == job.confirmed.size, THEN send DELJOB(job.id) to every node in the list and remove the job from memory.
-6. If job.delivered is 0 (dummy hack, check note belove), AND known is true, THEN delete the job from memory.
-7. if job.delivered is 0 AND job.confirmed.size is equal to total amount of nodes in the cluster, delete the ACK.
-
-Note about step 3: If job.delivered.size is zero, it means that the node just holds a *dummy ack* for the job. It means the node has an acknowledged job it created on the fly because a client acknowledged (via ACKJOB command) a job it was not aware of.
-
-Note about step 6: we don't have to hold a dummy hack if there are nodes that have the job already acknowledged.
-
-Note about step 7: this happens when nobody knows about a job, like when a client acknowledged a wrong job ID.
-
-ON cluster message: `DELJOB(job.id)`:
-
-1. Delete the job if exists, otherwise ignore.
+1. Delete the job from memory, and if queued, from the queue.
 
 PROCEDURE `ACK_JOB(job)`:
 
-1. If job is already acknowledged, do nothing and return ASAP.
-2. Change job state to acknowledged, dequeue the job if queued, schedule first call to TIMER.
+1. If job state is already `acknowledged`, do nothing and return ASAP.
+2. Change job state to `acknowledged`, dequeue the job if queued, schedule first call to TIMER.
 
 PROCEDURE `START_GC(job)`:
 
-1. Send SETACK(job.delivered.size) to each node that are listed in job.delivered but are not listed in job.confirmed.
-2. If job.delivered.size is 0, this is an ACK about a job we don’t know. In that case, send SETACK(0) to every node in the cluster.
+1. Send `SETACK(job.delivered.size)` to each node that is listed in `job.delivered` but is not listed in `job.confirmed`.
+2. IF `job.delivered.size == 0`, THEN sned `SETACK(0)` to every node in the cluster.
+
+Step 2: this is an ACK about a job we don’t know. In that case, we can just broadcast the acknowledged hoping somebody knows about the job and replies.
+
+ON RECV client command `ACKJOB(string job-id)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`.
+1. if job is `NULL`, ignore the message and return.
+2. Call `ACK-JOB(job)`.
+3. Call `START-GC(job)`.
+
+ON RECV cluster message `SETACK(string job-id, integer may-have)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`.
+2. Call ACK-JOB(job) IF job is not `NULL`.
+3. Reply with GOTACK IF `job == NULL OR job.delivered.size <= may-have`.
+4. IF `job != NULL` and `jobs.delivered.size > may-have` THEN call `START_GC(job)`.
+5. IF `may_have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START_GC(job)`. 
+
+Steps 3 and 4 makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
+
+Step 5 instead is used in order to start a GC attempt if we received a SETACK message from a node just hacking a dummy ACK (an acknowledge about a job it was not aware of).
+
+ON RECV cluster message `GOTACK(string job-id, bool known)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`. Return ASAP IF `job == NULL`.
+2. Call `ACK_JOB(job)`.
+3. IF `known == true AND job.delivered.size > 0` THEN add the sender node to `job.delivered`.
+4. IF `(known == true) OR (known == false AND job.delivered.size > 0) OR (known == false AND sender is an element of job.delivered)` THEN add the sender node to `jobs.confirmed`.
+5. IF `job.delivered.size > 0 AND job.delivered.size == job.confirmed.size`, THEN send `DELJOB(job.id)` to every node in the `job.delivered` list and call `UNREGISTER(job)`.
+6. IF `job.delivered == 0 AND known == true`, THEN call `UNREGISTER(job)`.
+7. IF `job.delivered == 0 AND job.confirmed.size == cluster.size` THEN call `UNREGISTER(job)`.
+
+Step 3: If `job.delivered.size` is zero, it means that the node just holds a *dummy ack* for the job. It means the node has an acknowledged job it created on the fly because a client acknowledged (via ACKJOB command) a job it was not aware of.
+
+Step 6: we don't have to hold a dummy acknowledged jobs if there are nodes that have the job already acknowledged.
+
+Step 7: this happens when nobody knows about a job, like when a client acknowledged a wrong job ID.
+
+ON RECV cluster message: `DELJOB(job.id)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`.
+2. IF `job != NULL` THEN call `UNREGISTER(job)`.
 
 TIMER, every N seconds (starting with 3 minutes), for every acknowledged job in memory:
 
-If job state is acknowledged, call `START_GC(job)`. Reschedule timer with an exponential delay.
+1. If job state is `acknowledged`, call `START_GC(job)`. Reschedule TIMER call with an exponential delay.
 
 FAQ
 ===

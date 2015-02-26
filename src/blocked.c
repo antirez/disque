@@ -120,9 +120,7 @@ void processUnblockedClients(void) {
 
         /* Process remaining data in the input buffer. */
         if (c->querybuf && sdslen(c->querybuf) > 0) {
-            server.current_client = c;
             processInputBuffer(c);
-            server.current_client = NULL;
         }
     }
 }

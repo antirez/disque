@@ -126,7 +126,7 @@ typedef struct job {
                                did. When qtime is set to zero for a job, it
                                never gets re-queued again. */
     mstime_t awakeme;       /* Time at which we need to take actions about this
-                               job in this node. All the registerd jobs are
+                               job in this node. All the registered jobs are
                                ordered by awakeme time in the server.awakeme
                                skip list, unless awakeme is set to zero. */
 } job;

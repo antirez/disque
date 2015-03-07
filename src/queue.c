@@ -74,9 +74,9 @@ queue *createQueue(robj *name) {
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
     q->clients = NULL; /* Created on demand to save memory. */
 
-    q->current_import_jobs_time = server.unixtime;
+    q->current_import_jobs_time = server.mstime;
     q->current_import_jobs_count = 0;
-    q->prev_import_jobs_time = server.unixtime;
+    q->prev_import_jobs_time = server.mstime;
     q->prev_import_jobs_count = 0;
 
     incrRefCount(name); /* Another refernce in the hash table key. */
@@ -330,21 +330,37 @@ int clientsCronSendNeedJobs(client *c) {
 
 /* Return a very rough estimate of the current import message rate.
  * Imported messages are messaged received as NEEDJOBS replies. */
-#define IMPORT_RATE_WINDOW 5 /* 5 seconds max window. */
+#define IMPORT_RATE_WINDOW 5000 /* 5 seconds max window. */
 uint32_t getQueueImportRate(queue *q) {
-    uint32_t elapsed = server.unixtime - q->prev_import_jobs_time;
-    uint32_t messages = q->prev_import_jobs_count +
-                        q->current_import_jobs_count;
+    double elapsed = server.mstime - q->prev_import_jobs_time;
+    double messages = (double)q->prev_import_jobs_count +
+                              q->current_import_jobs_count;
 
     /* If we did not received any message in the latest few seconds,
      * consider the import rate zero. */
-    if ((server.unixtime - q->current_import_jobs_time) > IMPORT_RATE_WINDOW)
+    if ((server.mstime - q->current_import_jobs_time) > IMPORT_RATE_WINDOW)
         return 0;
 
-    /* Min interval is 2 seconds in order to never overestimate. */
-    if (elapsed < 2) elapsed = 2;
+    /* Min interval is 50 ms in order to never overestimate. */
+    if (elapsed < 50) elapsed = 50;
 
-    return ceil((double)messages/elapsed);
+    return ceil((double)messages*1000/elapsed);
+}
+
+/* Called every time we import a job, this will update our counters
+ * and state in order to update the import/sec estimate. */
+void updateQueueImportRate(queue *q) {
+    /* If the current second no longer matches the current counter
+     * timestamp, copy the old timestamp/counter into 'prev', and
+     * start a new counter with an updated time. */
+    if (server.mstime - q->current_import_jobs_time > 1000) {
+        q->prev_import_jobs_time = q->current_import_jobs_time;
+        q->prev_import_jobs_count = q->current_import_jobs_count;
+        q->current_import_jobs_time = server.mstime;
+        q->current_import_jobs_count = 0;
+    }
+    /* Anyway, update the current counter. */
+    q->current_import_jobs_count++;
 }
 
 /* Check the queue source nodes list (nodes that replied with jobs to our
@@ -412,40 +428,46 @@ void needJobsForQueue(queue *q, int type) {
 
     /* Guess how many replies we need from each node. If we already have
      * a list of sources, assume that each source is capable of providing
-     * some message, otherwise just use import_per_sec as a first guess,
-     * however we adjust with min and max figures. */
+     * some message. */
     num_responders = getQueueValidResponders(q);
+    to_fetch = NEEDJOBS_MIN_REQUEST;
     if (num_responders > 0)
         to_fetch = import_per_sec / num_responders;
-    else
-        to_fetch = import_per_sec;
+
+    /* Trim number of jobs to request to min/max values. */
     if (to_fetch < NEEDJOBS_MIN_REQUEST) to_fetch = NEEDJOBS_MIN_REQUEST;
     else if (to_fetch > NEEDJOBS_MAX_REQUEST) to_fetch = NEEDJOBS_MAX_REQUEST;
 
-    /* Check if we can do a cluster-wide broadcast of NEEDJOBS, or send
-     * the message just to recent responders for this queue.
-     *
+    /* Broadcast the message cluster from time to time.
      * We use exponential intervals (with a max time limit) */
     bcast_delay = NEEDJOBS_BCAST_ALL_MIN_DELAY *
                   (1 << q->needjobs_bcast_attempt);
     if (bcast_delay > NEEDJOBS_BCAST_ALL_MAX_DELAY)
         bcast_delay = NEEDJOBS_BCAST_ALL_MAX_DELAY;
 
+    if (now - q->needjobs_bcast_time > bcast_delay) {
+        q->needjobs_bcast_time = now;
+        q->needjobs_bcast_attempt++;
+        /* Cluster-wide broadcasts are just to discover nodes,
+         * ask for a single job in this case. */
+        clusterSendNeedJobs(q->name,1,server.cluster->nodes);
+    }
+
+    /* If the queue reached zero, or if the delay elapsed and we
+     * have at least a source node, send an ad-hoc message to
+     * nodes known to be sources for this queue.
+     *
+     * We use exponential delays here as well (but don't care about
+     * the delay if the queue just dropped to zero), however with
+     * much shorter times compared to the cluster-wide broadcast. */
     adhoc_delay = NEEDJOBS_BCAST_ADHOC_MIN_DELAY *
                   (1 << q->needjobs_adhoc_attempt);
     if (adhoc_delay > NEEDJOBS_BCAST_ADHOC_MAX_DELAY)
         adhoc_delay = NEEDJOBS_BCAST_ADHOC_MAX_DELAY;
 
-    /* Broadcast the message cluster wide if possible, otherwise if we
-     * did so too recently, just send an ad-hoc message to the list of
-     * recent responders for this queue. */
-    if (now - q->needjobs_bcast_time > bcast_delay) {
-        q->needjobs_bcast_time = now;
-        q->needjobs_bcast_attempt++;
-        clusterSendNeedJobs(q->name,to_fetch,server.cluster->nodes);
-    } else if ((type == NEEDJOBS_REACHED_ZERO ||
-                now - q->needjobs_adhoc_time > adhoc_delay) &&
-                num_responders > 0)
+    if ((type == NEEDJOBS_REACHED_ZERO ||
+         now - q->needjobs_adhoc_time > adhoc_delay) &&
+         num_responders > 0)
     {
         q->needjobs_adhoc_time = now;
         q->needjobs_adhoc_attempt++;
@@ -513,13 +535,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
 
         de = dictFind(q->needjobs_responders, node);
         dictSetSignedIntegerVal(de,server.unixtime);
-
-        if (server.unixtime > q->current_import_jobs_time) {
-            q->prev_import_jobs_time = q->current_import_jobs_time;
-            q->prev_import_jobs_count = q->current_import_jobs_count;
-            q->current_import_jobs_time = server.unixtime;
-        }
-        q->current_import_jobs_count++;
+        updateQueueImportRate(q);
         q->needjobs_adhoc_attempt = 0;
     }
 }

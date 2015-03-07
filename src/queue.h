@@ -63,10 +63,10 @@ typedef struct queue {
      *
      * Instantaneous receives jobs/sec is just:
      *
-     *     jobs_sec = (current_count+prev_count) / (now-prev_time)
+     *     jobs_sec = (current_count+prev_count) * 1000 / (now-prev_time)
      */
-    uint32_t current_import_jobs_time;
-    uint32_t prev_import_jobs_time;
+    mstime_t current_import_jobs_time;
+    mstime_t prev_import_jobs_time;
     uint32_t current_import_jobs_count;
     uint32_t prev_import_jobs_count;
     uint32_t needjobs_bcast_attempt; /* Num of tries without new nodes. */

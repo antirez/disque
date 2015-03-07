@@ -500,6 +500,22 @@ void updateDictResizePolicy(void) {
         dictDisableResize();
 }
 
+/* Remove all the server state: jobs, queues, and everything else to start
+ * like a fresh instance just rebooted. */
+void flushServerData(void) {
+    dictSafeForeach(server.jobs,de)
+        job *job = dictGetKey(de);
+        unregisterJob(job);
+        freeJob(job);
+    dictEndForeach
+
+    dictSafeForeach(server.queues,de)
+        queue *q = dictGetVal(de);
+        serverAssert(queueLength(q) == 0);
+        destroyQueue(q->name);
+    dictEndForeach
+}
+
 /* ======================= Cron: called every 100 ms ======================== */
 
 unsigned int getLRUClock(void) {

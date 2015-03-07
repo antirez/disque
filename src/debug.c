@@ -59,8 +59,11 @@ void debugCommand(client *c) {
     } else if (!strcasecmp(c->argv[1]->ptr,"assert")) {
         if (c->argc >= 3) c->argv[2] = tryObjectEncoding(c->argv[2]);
         serverAssertWithInfo(c,c->argv[0],1 == 2);
+    } else if (!strcasecmp(c->argv[1]->ptr,"flushall")) {
+        flushServerData();
+        addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"loadaof")) {
-        /* TODO: Reset all the server data: flushServerData() ? */
+        flushServerData();
         if (loadAppendOnlyFile(server.aof_filename) != DISQUE_OK) {
             addReply(c,shared.err);
             return;

@@ -827,6 +827,7 @@ void aofRewriteBufferReset(void);
 unsigned long aofRewriteBufferSize(void);
 
 /* Core functions */
+void flushServerData(void);
 int getMemoryWarningLevel(void);
 int freeMemoryIfNeeded(void);
 int processCommand(client *c);

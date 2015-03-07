@@ -419,7 +419,7 @@ void clusterReset(int hard) {
         clusterAddNode(myself);
     }
 
-    /* TODO: flush away all the jobs and queues data. */
+    flushServerData();
 
     /* TODO: flush the deleted nodes hash table and the deleted nodes
      * entries. There are no longer jobs or queues that may reference

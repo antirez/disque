@@ -420,6 +420,19 @@ void loadServerConfig(char *filename, char *options) {
  * CONFIG SET implementation
  *----------------------------------------------------------------------------*/
 
+#define config_set_bool_field(_name,_var) \
+    } else if (!strcasecmp(c->argv[2]->ptr,_name)) { \
+        int yn = yesnotoi(o->ptr); \
+        if (yn == -1) goto badfmt; \
+        _var = yn; \
+
+#define config_set_numerical_field(_name,_var,min,max) \
+    } else if (!strcasecmp(c->argv[2]->ptr,_name)) { \
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt; \
+        if (min != LLONG_MIN && ll < min) goto badfmt; \
+        if (max != LLONG_MAX && ll > max) goto badfmt; \
+        _var = ll; \
+
 void configSetCommand(client *c) {
     robj *o;
     long long ll;
@@ -464,11 +477,6 @@ void configSetCommand(client *c) {
                 }
             }
         }
-    } else if (!strcasecmp(c->argv[2]->ptr,"hz")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
-        server.hz = ll;
-        if (server.hz < CONFIG_MIN_HZ) server.hz = CONFIG_MIN_HZ;
-        if (server.hz > CONFIG_MAX_HZ) server.hz = CONFIG_MAX_HZ;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-policy")) {
         if (!strcasecmp(o->ptr,"acks")) {
             server.maxmemory_policy = MAXMEMORY_ACKS;
@@ -477,18 +485,6 @@ void configSetCommand(client *c) {
         } else {
             goto badfmt;
         }
-    } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-samples")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR ||
-            ll <= 0) goto badfmt;
-        server.maxmemory_samples = ll;
-    } else if (!strcasecmp(c->argv[2]->ptr,"timeout")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR ||
-            ll < 0 || ll > LONG_MAX) goto badfmt;
-        server.maxidletime = ll;
-    } else if (!strcasecmp(c->argv[2]->ptr,"tcp-keepalive")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR ||
-            ll < 0 || ll > INT_MAX) goto badfmt;
-        server.tcpkeepalive = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"appendfsync")) {
         if (!strcasecmp(o->ptr,"no")) {
             server.aof_fsync = AOF_FSYNC_NO;
@@ -499,11 +495,6 @@ void configSetCommand(client *c) {
         } else {
             goto badfmt;
         }
-    } else if (!strcasecmp(c->argv[2]->ptr,"no-appendfsync-on-rewrite")) {
-        int yn = yesnotoi(o->ptr);
-
-        if (yn == -1) goto badfmt;
-        server.aof_no_fsync_on_rewrite = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"appendonly")) {
         int enable = yesnotoi(o->ptr);
 
@@ -517,46 +508,14 @@ void configSetCommand(client *c) {
                 return;
             }
         }
-    } else if (!strcasecmp(c->argv[2]->ptr,"auto-aof-rewrite-percentage")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
-        server.aof_rewrite_perc = ll;
-    } else if (!strcasecmp(c->argv[2]->ptr,"auto-aof-rewrite-min-size")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
-        server.aof_rewrite_min_size = ll;
-    } else if (!strcasecmp(c->argv[2]->ptr,"aof-rewrite-incremental-fsync")) {
-        int yn = yesnotoi(o->ptr);
-
-        if (yn == -1) goto badfmt;
-        server.aof_rewrite_incremental_fsync = yn;
-    } else if (!strcasecmp(c->argv[2]->ptr,"aof-load-truncated")) {
-        int yn = yesnotoi(o->ptr);
-
-        if (yn == -1) goto badfmt;
-        server.aof_load_truncated = yn;
-    } else if (!strcasecmp(c->argv[2]->ptr,"aof-enqueue-jobs-once")) {
-        int yn = yesnotoi(o->ptr);
-
-        if (yn == -1) goto badfmt;
-        server.aof_enqueue_jobs_once = yn;
-    } else if (!strcasecmp(c->argv[2]->ptr,"activerehashing")) {
-        int yn = yesnotoi(o->ptr);
-
-        if (yn == -1) goto badfmt;
-        server.activerehashing = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"dir")) {
         if (chdir((char*)o->ptr) == -1) {
             addReplyErrorFormat(c,"Changing directory: %s", strerror(errno));
             return;
         }
-    } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-log-slower-than")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR) goto badfmt;
-        server.slowlog_log_slower_than = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-max-len")) {
         if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.slowlog_max_len = (unsigned)ll;
-    } else if (!strcasecmp(c->argv[2]->ptr,"latency-monitor-threshold")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
-        server.latency_monitor_threshold = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"loglevel")) {
         if (!strcasecmp(o->ptr,"warning")) {
             server.verbosity = LL_WARNING;
@@ -621,10 +580,43 @@ void configSetCommand(client *c) {
             enableWatchdog(ll);
         else
             disableWatchdog();
-    } else if (!strcasecmp(c->argv[2]->ptr,"cluster-node-timeout")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR ||
-            ll <= 0) goto badfmt;
-        server.cluster_node_timeout = ll;
+
+    /* Boolean fields.
+     * config_set_bool_field(name,var). */
+    config_set_bool_field(
+      "aof-rewrite-incremental-fsync",server.aof_rewrite_incremental_fsync) {
+    } config_set_bool_field(
+      "aof-load-truncated",server.aof_load_truncated) {
+    } config_set_bool_field(
+      "activerehashing",server.activerehashing) {
+    } config_set_bool_field(
+      "tcp-keepalive",server.tcpkeepalive) {
+
+    /* Numerical fields.
+     * config_set_numerical_field(name,var,min,max) */
+    } config_set_numerical_field(
+      "maxmemory-samples",server.maxmemory_samples,1,LLONG_MAX) {
+    } config_set_numerical_field(
+      "timeout",server.maxidletime,0,LONG_MAX) {
+    } config_set_numerical_field(
+      "auto-aof-rewrite-percentage",server.aof_rewrite_perc,0,LLONG_MAX){
+    } config_set_numerical_field(
+      "auto-aof-rewrite-min-size",server.aof_rewrite_min_size,0,LLONG_MAX) {
+    } config_set_numerical_field(
+      "slowlog-log-slower-than",server.slowlog_log_slower_than,0,LLONG_MAX) {
+    } config_set_numerical_field(
+      "latency-monitor-threshold",server.latency_monitor_threshold,0,LLONG_MAX){
+    } config_set_numerical_field(
+      "cluster-node-timeout",server.cluster_node_timeout,0,LLONG_MAX) {
+    } config_set_numerical_field(
+      "hz",server.hz,0,LLONG_MAX) {
+        /* Hz is more an hint from the user, so we accept values out of range
+         * but cap them to reasonable values. */
+        if (server.hz < CONFIG_MIN_HZ) server.hz = CONFIG_MIN_HZ;
+        if (server.hz > CONFIG_MAX_HZ) server.hz = CONFIG_MAX_HZ;
+    }
+
+    /* Everyhing else is an error... */
     } else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
             (char*)c->argv[2]->ptr);
@@ -686,7 +678,6 @@ void configGetCommand(client *c) {
     config_get_numerical_field("maxmemory",server.maxmemory);
     config_get_numerical_field("maxmemory-samples",server.maxmemory_samples);
     config_get_numerical_field("timeout",server.maxidletime);
-    config_get_numerical_field("tcp-keepalive",server.tcpkeepalive);
     config_get_numerical_field("auto-aof-rewrite-percentage",
             server.aof_rewrite_perc);
     config_get_numerical_field("auto-aof-rewrite-min-size",
@@ -706,6 +697,7 @@ void configGetCommand(client *c) {
     config_get_numerical_field("cluster-node-timeout",server.cluster_node_timeout);
 
     /* Bool (yes/no) values */
+    config_get_bool_field("tcp-keepalive",server.tcpkeepalive);
     config_get_bool_field("no-appendfsync-on-rewrite",
             server.aof_no_fsync_on_rewrite);
     config_get_bool_field("daemonize", server.daemonize);

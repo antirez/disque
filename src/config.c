@@ -513,9 +513,6 @@ void configSetCommand(client *c) {
             addReplyErrorFormat(c,"Changing directory: %s", strerror(errno));
             return;
         }
-    } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-max-len")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
-        server.slowlog_max_len = (unsigned)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"loglevel")) {
         if (!strcasecmp(o->ptr,"warning")) {
             server.verbosity = LL_WARNING;
@@ -574,12 +571,6 @@ void configSetCommand(client *c) {
             server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
         }
         sdsfreesplitres(v,vlen);
-    } else if (!strcasecmp(c->argv[2]->ptr,"watchdog-period")) {
-        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
-        if (ll)
-            enableWatchdog(ll);
-        else
-            disableWatchdog();
 
     /* Boolean fields.
      * config_set_bool_field(name,var). */
@@ -605,6 +596,10 @@ void configSetCommand(client *c) {
     } config_set_numerical_field(
       "slowlog-log-slower-than",server.slowlog_log_slower_than,0,LLONG_MAX) {
     } config_set_numerical_field(
+      "slowlog-max-len",ll,0,LLONG_MAX) {
+      /* Cast to unsigned. */
+        server.slowlog_max_len = (unsigned)ll;
+    } config_set_numerical_field(
       "latency-monitor-threshold",server.latency_monitor_threshold,0,LLONG_MAX){
     } config_set_numerical_field(
       "cluster-node-timeout",server.cluster_node_timeout,0,LLONG_MAX) {
@@ -614,6 +609,12 @@ void configSetCommand(client *c) {
          * but cap them to reasonable values. */
         if (server.hz < CONFIG_MIN_HZ) server.hz = CONFIG_MIN_HZ;
         if (server.hz > CONFIG_MAX_HZ) server.hz = CONFIG_MAX_HZ;
+    } config_set_numerical_field(
+      "watchdog-period",ll,0,LLONG_MAX) {
+        if (ll)
+            enableWatchdog(ll);
+        else
+            disableWatchdog();
     }
 
     /* Everyhing else is an error... */

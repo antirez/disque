@@ -1266,7 +1266,7 @@ void initServer(void) {
         server.sofd = anetUnixServer(server.neterr,server.unixsocket,
             server.unixsocketperm, server.tcp_backlog);
         if (server.sofd == ANET_ERR) {
-            serverLog(LL_WARNING, "Opening socket: %s", server.neterr);
+            serverLog(LL_WARNING, "Opening Unix socket: %s", server.neterr);
             exit(1);
         }
         anetNonBlock(NULL,server.sofd);

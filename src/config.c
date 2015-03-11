@@ -62,6 +62,21 @@ configEnum syslog_facility_enum[] = {
     {NULL, 0}
 };
 
+configEnum loglevel_enum[] = {
+    {"debug", LL_DEBUG},
+    {"verbose", LL_VERBOSE},
+    {"notice", LL_NOTICE},
+    {"warning", LL_WARNING},
+    {NULL,0}
+};
+
+configEnum aof_fsync_enum[] = {
+    {"everysec", AOF_FSYNC_EVERYSEC},
+    {"always", AOF_FSYNC_ALWAYS},
+    {"no", AOF_FSYNC_NO},
+    {NULL, 0}
+};
+
 /* Output buffer limits presets. */
 clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_COUNT] = {
     {0, 0, 0} /* normal */
@@ -187,12 +202,10 @@ void loadServerConfigFromString(char *config) {
                 exit(1);
             }
         } else if (!strcasecmp(argv[0],"loglevel") && argc == 2) {
-            if (!strcasecmp(argv[1],"debug")) server.verbosity = LL_DEBUG;
-            else if (!strcasecmp(argv[1],"verbose")) server.verbosity = LL_VERBOSE;
-            else if (!strcasecmp(argv[1],"notice")) server.verbosity = LL_NOTICE;
-            else if (!strcasecmp(argv[1],"warning")) server.verbosity = LL_WARNING;
-            else {
-                err = "Invalid log level. Must be one of debug, notice, warning";
+            server.verbosity = configEnumGetValue(loglevel_enum,argv[1]);
+            if (server.verbosity == INT_MIN) {
+                err = "Invalid log level. "
+                      "Must be one of debug, notice, warning";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"logfile") && argc == 2) {
@@ -287,13 +300,8 @@ void loadServerConfigFromString(char *config) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"appendfsync") && argc == 2) {
-            if (!strcasecmp(argv[1],"no")) {
-                server.aof_fsync = AOF_FSYNC_NO;
-            } else if (!strcasecmp(argv[1],"always")) {
-                server.aof_fsync = AOF_FSYNC_ALWAYS;
-            } else if (!strcasecmp(argv[1],"everysec")) {
-                server.aof_fsync = AOF_FSYNC_EVERYSEC;
-            } else {
+            server.aof_fsync = configEnumGetValue(aof_fsync_enum,argv[1]);
+            if (server.aof_fsync == INT_MIN) {
                 err = "argument must be 'no', 'always' or 'everysec'";
                 goto loaderr;
             }
@@ -486,6 +494,8 @@ void loadServerConfig(char *filename, char *options) {
 #define config_set_special_field(_name) \
     } else if (!strcasecmp(c->argv[2]->ptr,_name)) {
 
+#define config_set_else } else
+
 void configSetCommand(client *c) {
     robj *o;
     long long ll;
@@ -527,18 +537,6 @@ void configSetCommand(client *c) {
                 }
             }
         }
-    } config_set_enum_field(
-      "maxmemory-policy",server.maxmemory_policy,maxmemory_policy_enum) {
-    } config_set_special_field("appendfsync") {
-        if (!strcasecmp(o->ptr,"no")) {
-            server.aof_fsync = AOF_FSYNC_NO;
-        } else if (!strcasecmp(o->ptr,"everysec")) {
-            server.aof_fsync = AOF_FSYNC_EVERYSEC;
-        } else if (!strcasecmp(o->ptr,"always")) {
-            server.aof_fsync = AOF_FSYNC_ALWAYS;
-        } else {
-            goto badfmt;
-        }
     } config_set_special_field("appendonly") {
         int enable = yesnotoi(o->ptr);
 
@@ -556,18 +554,6 @@ void configSetCommand(client *c) {
         if (chdir((char*)o->ptr) == -1) {
             addReplyErrorFormat(c,"Changing directory: %s", strerror(errno));
             return;
-        }
-    } config_set_special_field("loglevel") {
-        if (!strcasecmp(o->ptr,"warning")) {
-            server.verbosity = LL_WARNING;
-        } else if (!strcasecmp(o->ptr,"notice")) {
-            server.verbosity = LL_NOTICE;
-        } else if (!strcasecmp(o->ptr,"verbose")) {
-            server.verbosity = LL_VERBOSE;
-        } else if (!strcasecmp(o->ptr,"debug")) {
-            server.verbosity = LL_DEBUG;
-        } else {
-            goto badfmt;
         }
     } config_set_special_field("client-output-buffer-limit") {
         int vlen, j;
@@ -669,14 +655,24 @@ void configSetCommand(client *c) {
             }
             freeMemoryIfNeeded();
         }
-    }
+
+    /* Enumeration fields.
+     * config_set_enum_field(name,var,enum_var) */
+    } config_set_enum_field(
+      "loglevel",server.verbosity,loglevel_enum) {
+    } config_set_enum_field(
+      "maxmemory-policy",server.maxmemory_policy,maxmemory_policy_enum) {
+    } config_set_enum_field(
+      "appendfsync",server.aof_fsync,aof_fsync_enum) {
 
     /* Everyhing else is an error... */
-    } else {
+    } config_set_else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
             (char*)c->argv[2]->ptr);
         return;
     }
+
+    /* On success we just return a generic OK for all the options. */
     addReply(c,shared.ok);
     return;
 
@@ -775,6 +771,10 @@ void configGetCommand(client *c) {
     /* Enum values */
     config_get_enum_field("maxmemory-policy",
             server.maxmemory_policy,maxmemory_policy_enum);
+    config_get_enum_field("loglevel",
+            server.verbosity,loglevel_enum);
+    config_get_enum_field("appendfsync",
+            server.aof_fsync,aof_fsync_enum);
 
     /* Everything we can't handle with macros follows. */
 
@@ -791,33 +791,6 @@ void configGetCommand(client *c) {
 
         addReplyBulkCString(c,"dir");
         addReplyBulkCString(c,buf);
-        matches++;
-    }
-    if (stringmatch(pattern,"appendfsync",0)) {
-        char *policy;
-
-        switch(server.aof_fsync) {
-        case AOF_FSYNC_NO: policy = "no"; break;
-        case AOF_FSYNC_EVERYSEC: policy = "everysec"; break;
-        case AOF_FSYNC_ALWAYS: policy = "always"; break;
-        default: policy = "unknown"; break; /* too harmless to panic */
-        }
-        addReplyBulkCString(c,"appendfsync");
-        addReplyBulkCString(c,policy);
-        matches++;
-    }
-    if (stringmatch(pattern,"loglevel",0)) {
-        char *s;
-
-        switch(server.verbosity) {
-        case LL_WARNING: s = "warning"; break;
-        case LL_VERBOSE: s = "verbose"; break;
-        case LL_NOTICE: s = "notice"; break;
-        case LL_DEBUG: s = "debug"; break;
-        default: s = "unknown"; break; /* too harmless to panic */
-        }
-        addReplyBulkCString(c,"loglevel");
-        addReplyBulkCString(c,s);
         matches++;
     }
     if (stringmatch(pattern,"client-output-buffer-limit",0)) {
@@ -1114,29 +1087,15 @@ void rewriteConfigOctalOption(struct rewriteConfigState *state, char *option, in
     rewriteConfigRewriteLine(state,option,line,force);
 }
 
-/* Rewrite an enumeration option, after the "value" every enum/value pair
- * is specified, terminated by NULL. After NULL the default value is
- * specified. See how the function is used for more information. */
-void rewriteConfigEnumOption(struct rewriteConfigState *state, char *option, int value, ...) {
-    va_list ap;
-    char *enum_name, *matching_name = NULL;
-    int enum_val, def_val, force;
+/* Rewrite an enumeration option. It takes as usually state and option name,
+ * and in addition the enumeration array and the default value for the
+ * option. */
+void rewriteConfigEnumOption(struct rewriteConfigState *state, char *option, int value, configEnum *ce, int defval) {
     sds line;
+    const char *name = configEnumGetNameOrUnknown(ce,value);
+    int force = value != defval;
 
-    va_start(ap, value);
-    while(1) {
-        enum_name = va_arg(ap,char*);
-        enum_val = va_arg(ap,int);
-        if (enum_name == NULL) {
-            def_val = enum_val;
-            break;
-        }
-        if (value == enum_val) matching_name = enum_name;
-    }
-    va_end(ap);
-
-    force = value != def_val;
-    line = sdscatprintf(sdsempty(),"%s %s",option,matching_name);
+    line = sdscatprintf(sdsempty(),"%s %s",option,name);
     rewriteConfigRewriteLine(state,option,line,force);
 }
 
@@ -1360,12 +1319,7 @@ int rewriteConfig(char *path) {
     rewriteConfigOctalOption(state,"unixsocketperm",server.unixsocketperm,CONFIG_DEFAULT_UNIX_SOCKET_PERM);
     rewriteConfigNumericalOption(state,"timeout",server.maxidletime,CONFIG_DEFAULT_CLIENT_TIMEOUT);
     rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,CONFIG_DEFAULT_TCP_KEEPALIVE);
-    rewriteConfigEnumOption(state,"loglevel",server.verbosity,
-        "debug", LL_DEBUG,
-        "verbose", LL_VERBOSE,
-        "notice", LL_NOTICE,
-        "warning", LL_WARNING,
-        NULL, CONFIG_DEFAULT_VERBOSITY);
+    rewriteConfigEnumOption(state,"loglevel",server.verbosity,loglevel_enum,CONFIG_DEFAULT_VERBOSITY);
     rewriteConfigStringOption(state,"logfile",server.logfile,CONFIG_DEFAULT_LOGFILE);
     rewriteConfigYesNoOption(state,"syslog-enabled",server.syslog_enabled,CONFIG_DEFAULT_SYSLOG_ENABLED);
     rewriteConfigStringOption(state,"syslog-ident",server.syslog_ident,CONFIG_DEFAULT_SYSLOG_IDENT);
@@ -1374,18 +1328,11 @@ int rewriteConfig(char *path) {
     rewriteConfigStringOption(state,"requirepass",server.requirepass,NULL);
     rewriteConfigNumericalOption(state,"maxclients",server.maxclients,CONFIG_DEFAULT_MAX_CLIENTS);
     rewriteConfigBytesOption(state,"maxmemory",server.maxmemory,CONFIG_DEFAULT_MAXMEMORY);
-    rewriteConfigEnumOption(state,"maxmemory-policy",server.maxmemory_policy,
-        "acks", MAXMEMORY_ACKS,
-        "noeviction", MAXMEMORY_NO_EVICTION,
-        NULL, CONFIG_DEFAULT_MAXMEMORY_POLICY);
+    rewriteConfigEnumOption(state,"maxmemory-policy",server.maxmemory_policy,maxmemory_policy_enum,CONFIG_DEFAULT_MAXMEMORY_POLICY);
     rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,CONFIG_DEFAULT_MAXMEMORY_SAMPLES);
     rewriteConfigYesNoOption(state,"appendonly",server.aof_state != AOF_OFF,0);
     rewriteConfigStringOption(state,"appendfilename",server.aof_filename,CONFIG_DEFAULT_AOF_FILENAME);
-    rewriteConfigEnumOption(state,"appendfsync",server.aof_fsync,
-        "everysec", AOF_FSYNC_EVERYSEC,
-        "always", AOF_FSYNC_ALWAYS,
-        "no", AOF_FSYNC_NO,
-        NULL, CONFIG_DEFAULT_AOF_FSYNC);
+    rewriteConfigEnumOption(state,"appendfsync",server.aof_fsync,aof_fsync_enum,CONFIG_DEFAULT_AOF_FSYNC);
     rewriteConfigYesNoOption(state,"no-appendfsync-on-rewrite",server.aof_no_fsync_on_rewrite,CONFIG_DEFAULT_AOF_NO_FSYNC_ON_REWRITE);
     rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",server.aof_rewrite_perc,AOF_REWRITE_PERC);
     rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",server.aof_rewrite_min_size,AOF_REWRITE_MIN_SIZE);

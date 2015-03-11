@@ -156,7 +156,7 @@ robj *dupLastObjectIfNeeded(list *reply) {
  * Low level functions to add more data to output buffers.
  * -------------------------------------------------------------------------- */
 
-int _addReplyToBuffer(client *c, char *s, size_t len) {
+int _addReplyToBuffer(client *c, const char *s, size_t len) {
     size_t available = sizeof(c->buf)-c->bufpos;
 
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return C_OK;
@@ -236,7 +236,7 @@ void _addReplySdsToList(client *c, sds s) {
     asyncCloseClientOnOutputBufferLimitReached(c);
 }
 
-void _addReplyStringToList(client *c, char *s, size_t len) {
+void _addReplyStringToList(client *c, const char *s, size_t len) {
     robj *tail;
 
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return;
@@ -322,19 +322,19 @@ void addReplySds(client *c, sds s) {
     }
 }
 
-void addReplyString(client *c, char *s, size_t len) {
+void addReplyString(client *c, const char *s, size_t len) {
     if (prepareClientToWrite(c) != C_OK) return;
     if (_addReplyToBuffer(c,s,len) != C_OK)
         _addReplyStringToList(c,s,len);
 }
 
-void addReplyErrorLength(client *c, char *s, size_t len) {
+void addReplyErrorLength(client *c, const char *s, size_t len) {
     addReplyString(c,"-ERR ",5);
     addReplyString(c,s,len);
     addReplyString(c,"\r\n",2);
 }
 
-void addReplyError(client *c, char *err) {
+void addReplyError(client *c, const char *err) {
     addReplyErrorLength(c,err,strlen(err));
 }
 
@@ -354,13 +354,13 @@ void addReplyErrorFormat(client *c, const char *fmt, ...) {
     sdsfree(s);
 }
 
-void addReplyStatusLength(client *c, char *s, size_t len) {
+void addReplyStatusLength(client *c, const char *s, size_t len) {
     addReplyString(c,"+",1);
     addReplyString(c,s,len);
     addReplyString(c,"\r\n",2);
 }
 
-void addReplyStatus(client *c, char *status) {
+void addReplyStatus(client *c, const char *status) {
     addReplyStatusLength(c,status,strlen(status));
 }
 
@@ -500,7 +500,7 @@ void addReplyBulk(client *c, robj *obj) {
 }
 
 /* Add a C buffer as bulk reply */
-void addReplyBulkCBuffer(client *c, void *p, size_t len) {
+void addReplyBulkCBuffer(client *c, const void *p, size_t len) {
     addReplyLongLongWithPrefix(c,len,'$');
     addReplyString(c,p,len);
     addReply(c,shared.crlf);
@@ -515,7 +515,7 @@ void addReplyBulkSds(client *c, sds s)  {
 }
 
 /* Add a C nul term string as bulk reply */
-void addReplyBulkCString(client *c, char *s) {
+void addReplyBulkCString(client *c, const char *s) {
     if (s == NULL) {
         addReply(c,shared.nullbulk);
     } else {

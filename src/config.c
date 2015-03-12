@@ -775,6 +775,8 @@ void configGetCommand(client *c) {
             server.verbosity,loglevel_enum);
     config_get_enum_field("appendfsync",
             server.aof_fsync,aof_fsync_enum);
+    config_get_enum_field("syslog-facility",
+            server.syslog_facility,syslog_facility_enum);
 
     /* Everything we can't handle with macros follows. */
 

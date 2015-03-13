@@ -275,20 +275,54 @@ Cluster messages related to nodes federation
 
 * YOURJOBS(array of messages): The reply to NEEDJOBS. An array of serialized jobs, usually all about the same queue (but future optimization may allow to send different jobs from different queues). Jobs into YOURJOBS replies are extracted from the local queue, and queued at the receiver node's queue with the same name. So even messages with a retry set to 0 (at most once delivery) still guarantee the safety rule since a given message may be in the source node, in the wire, or already received in the destination node. If a YOURJOBS message is lost, at least once delivery jobs will be re-queued later when the retry time is reached.
 
-ACKs garbage collection state machine
+Disque partial state machine
 ---
 
-This section shows the state machine used in order to collect acknowledged jobs
-in terms of procedures, timers, and actions performed when a given type of
-cluster message or client command is received.
+This section shows the most interesting parts of the state machine each Disque
+node implements. While conceptually is a single state machine, it is split
+in sections. It uses a convention that is not standard but should look
+familiar, made of actions performed upon message receptions in the form of
+commands received from clients or messages received from other cluster
+nodes, timers, and procedure calls.
 
-Note that: job is a job object with the following fields:
+Note that: `job` is a job object with the following fields:
 
-1. job.delivered: A list of nodes that may have this message. This list does not need to be complete, is used for best-effort algorithms.
-2. job.confirmed: A list of nodes that confirmed reception of ACK by replying with a GOTJOB message.
-3. job.id: The job 48 chars ID.
+1. `job.delivered`: A list of nodes that may have this message. This list does not need to be complete, is used for best-effort algorithms.
+2. `job.confirmed`: A list of nodes that confirmed reception of ACK by replying with a GOTJOB message.
+3. `job.id`: The job 48 chars ID.
+4. `job.state`: The job state among: `wait-repl`, `active`, `queued`, `acknowledged`.
 
-Both fields support methods like `.size` to get the number of elements.
+List fields such as `.delivered` and `.confirmed` support methods like `.size` to get the number of elements.
+
+States are as follows:
+
+1. `wait-repl`: the job is waiting to be synchronously replicated.
+2. `active`: the job is active, either it reached the replication factor in the originating node, or it was created because the node received an `ADDJOB` message from another node.
+3. `queued`: the job is active and also is pending into a queue in this node.
+4. `acknowledged`: the job is no longer actived since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
+
+Job replication state machine
+---
+
+This part of the state machine documents how clients add jobs to the cluster
+and how the cluster replicates jobs across different Disque nodes.
+
+Job re-queueing state machine
+---
+
+This part of the state machine documents how Disque nodes put a given job
+back into the queue after the specified retry time elapsed without the
+job being acknowledged.
+
+TIMER, firing 500 milliseconds before the retry time elapses:
+
+1. Send `WILLQUEUE(job.id)` to every node in `jobs.delivered`.
+
+Acknowledged jobs garbage collection state machine
+---
+
+This part of the state machine is used in order to garbage collect
+acknowledged jobs, when a job finally gets acknowledged by a client.
 
 PROCEDURE `LOOKUP-JOB(job-id)`:
 
@@ -358,15 +392,18 @@ TIMER, every N seconds (starting with 3 minutes), for every acknowledged job in 
 FAQ
 ===
 
-Is Disque based on Redis?
+Is Disque part of Redis?
 ---
 
 No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However given that this was a side project coded mostly at night, I went for the simplest route. Sorry, I'm a pragmatic kind of person and it was very important to maximize the probability of me actually being able to release the project soon or later.
 
+However conceptually Disque is related to Redis, since it tries to solve a
+Redis use case in a vertical, ad-hoc way.
+
 Who created Disque?
 ---
 
-Disque is a project of Salvatore Sanfilippo, aka @antirez.
+Disque is a side project of Salvatore Sanfilippo, aka @antirez.
 
 There are chances for this project to be actively developed?
 ---

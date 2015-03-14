@@ -1415,6 +1415,11 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) {
+            if (j->state == JOB_STATE_ACTIVE ||
+                j->state == JOB_STATE_QUEUED)
+            {
+                dictAdd(j->nodes_delivered,sender->name,sender);
+            }
             if (j->state == JOB_STATE_QUEUED) clusterBroadcastQueued(j);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }

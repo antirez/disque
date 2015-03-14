@@ -67,6 +67,20 @@ void tryJobGC(job *job) {
         dictAdd(job->nodes_confirmed,myself->name,myself);
     }
 
+    /* Check ASAP if we already reached all the nodes. This special case
+     * here is mainly useful when the job replication factor is 1, so
+     * there is no SETACK to send, nor GOTCAK to receive. */
+    if (dictSize(job->nodes_delivered) != 0 &&
+        dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed))
+    {
+        serverLog(DISQUE_NOTICE,
+            "Deleting %.48s: all nodes reached in tryJobGC()",
+            job->id);
+        unregisterJob(job);
+        freeJob(job);
+        return;
+    }
+
     /* Send a SETACK message to all the nodes that may have a message but are
      * still not listed in the nodes_confirmed hash table. However if this
      * is a dumb ACK (created by ACKJOB command acknowledging a job we don't

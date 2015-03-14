@@ -400,7 +400,7 @@ void processJob(job *j) {
 
     /* Requeue job if needed. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
-        queueJob(j);
+        enqueueJob(j);
     }
 
     /* Update job re-queue time if job is already queued. */
@@ -797,7 +797,7 @@ void jobReplicationAchieved(job *j) {
         dictEntry *de = dictGetRandomKey(j->nodes_confirmed);
         if (de) {
             clusterNode *n = dictGetVal(de);
-            clusterSendQueueJob(n,j,j->delay);
+            clusterSendEnqueue(n,j,j->delay);
         }
         unregisterJob(j);
         freeJob(j);
@@ -806,7 +806,7 @@ void jobReplicationAchieved(job *j) {
 
     /* Queue the job locally. */
     if (j->delay == 0)
-        queueJob(j); /* Will change the job state. */
+        enqueueJob(j); /* Will change the job state. */
     else
         updateJobAwakeTime(j,0); /* Queue with delay. */
 }
@@ -975,12 +975,12 @@ void addjobCommand(client *c) {
     job->body = sdsdup(c->argv[2]->ptr);
 
     /* Set the next time the job will be queued. Note that once we call
-     * queueJob() the first time, this will be set to 0 (never queue
+     * enqueueJob() the first time, this will be set to 0 (never queue
      * again) for jobs that have a zero retry value (at most once jobs). */
     if (delay) {
         job->qtime = server.mstime + delay*1000;
     } else {
-        /* This will be updated anyway by queueJob(). */
+        /* This will be updated anyway by enqueueJob(). */
         job->qtime = server.mstime + retry*1000;
     }
 
@@ -1018,7 +1018,7 @@ void addjobCommand(client *c) {
         if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
         if (job->delay == 0) {
-            if (!extrepl) queueJob(job); /* Will change the job state. */
+            if (!extrepl) enqueueJob(job); /* Will change the job state. */
         } else {
             /* Delayed jobs that don't wait for replications can move
              * forward to ACTIVE state ASAP, and get scheduled for
@@ -1041,7 +1041,7 @@ void addjobCommand(client *c) {
         dictEntry *de = dictGetRandomKey(job->nodes_delivered);
         if (de) {
             clusterNode *n = dictGetVal(de);
-            clusterSendQueueJob(n,job,job->delay);
+            clusterSendEnqueue(n,job,job->delay);
         }
         /* We don't have to unregister the job since we did not registered
          * it if it's async + extrepl. */

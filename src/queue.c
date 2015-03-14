@@ -121,7 +121,7 @@ void addReplyJob(client *c, job *j) {
 /* Queue the job and change its state accordingly. If the job is already
  * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
  * and the operation succeeds. */
-int queueJob(job *job) {
+int enqueueJob(job *job) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
         return DISQUE_ERR;
 
@@ -518,7 +518,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
         /* Don't need to send QUEUED when adding this job into the queue,
          * we are just moving from the queue of one node to another. */
         job->flags &= ~JOB_FLAG_BCAST_QUEUED;
-        if (queueJob(job) == DISQUE_ERR) continue;
+        if (enqueueJob(job) == DISQUE_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */
         q = lookupQueue(job->queue);

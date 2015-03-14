@@ -275,15 +275,10 @@ Cluster messages related to nodes federation
 
 * YOURJOBS(array of messages): The reply to NEEDJOBS. An array of serialized jobs, usually all about the same queue (but future optimization may allow to send different jobs from different queues). Jobs into YOURJOBS replies are extracted from the local queue, and queued at the receiver node's queue with the same name. So even messages with a retry set to 0 (at most once delivery) still guarantee the safety rule since a given message may be in the source node, in the wire, or already received in the destination node. If a YOURJOBS message is lost, at least once delivery jobs will be re-queued later when the retry time is reached.
 
-Disque partial state machine
+Disque state machine
 ---
 
-This section shows the most interesting parts of the state machine each Disque
-node implements. While conceptually is a single state machine, it is split
-in sections. It uses a convention that is not standard but should look
-familiar, made of actions performed upon message receptions in the form of
-commands received from clients or messages received from other cluster
-nodes, timers, and procedure calls.
+This section shows the most interesting (as in less obvious) parts of the state machine each Disque node implements. While practically it is a single state machine, it is split in sections. The state machine description uses a convention that is not standard but should look familiar, since it is event driven, made of actions performed upon: message receptions in the form of commands received from clients, messages received from other cluster nodes, timers, and procedure calls.
 
 Note that: `job` is a job object with the following fields:
 
@@ -291,6 +286,8 @@ Note that: `job` is a job object with the following fields:
 2. `job.confirmed`: A list of nodes that confirmed reception of ACK by replying with a GOTJOB message.
 3. `job.id`: The job 48 chars ID.
 4. `job.state`: The job state among: `wait-repl`, `active`, `queued`, `acknowledged`.
+5. `job.replicate`: Replication factor for this job.
+5. `job.qtime`: Time at which we need to re-enqueue the job.
 
 List fields such as `.delivered` and `.confirmed` support methods like `.size` to get the number of elements.
 
@@ -301,11 +298,77 @@ States are as follows:
 3. `queued`: the job is active and also is pending into a queue in this node.
 4. `acknowledged`: the job is no longer actived since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
 
+Generic functions
+---
+
+PROCEDURE `LOOKUP-JOB(string job-id)`:
+
+1. If job with the specified id is found, returns the corresponding job object.
+2. Otherwise returns NULL.
+
+PROCEDURE `UNREGISTER(object job)`:
+
+1. Delete the job from memory, and if queued, from the queue.
+
+PROCEDURE `ENQUEUE(job)`:
+
+1. If `job.state == queued` return ASAP.
+2. Add `job` into `job.queue`.
+3. Change `job.state` to `queued`.
+
+PROCEDURE `DEQUEUE(job)`:
+
+1. If `job.state != queued` return ASAP.
+2. Remove `job` from `job.queue`.
+3. Change `job.state` to `active`.
+
+ON RECV cluster message: `DELJOB(string job.id)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`.
+2. IF `job != NULL` THEN call `UNREGISTER(job)`.
+
 Job replication state machine
 ---
 
 This part of the state machine documents how clients add jobs to the cluster
 and how the cluster replicates jobs across different Disque nodes.
+
+ON RECV client command `ADDJOB(string queue-name, string body, integer replicate, integer retry, integer ttl, ...):
+
+1. Create a job object in `wait-repl` state, having as body, ttl, retry, queue name, the specified values.
+2. Send ADDJOB(job.serialized) cluster message to `replicate-1` nodes.
+3. Block the client without replying.
+
+Step 3: We'll reply to the client in step 4 of `GOTJOB` message processing.
+
+ON RECV cluster message `ADDJOB(object serialized-job)`:
+
+1. job = Call `LOOKUP-JOB(serialized-job.id)`.
+2. IF `job != NULL` THEN: job.delivered = UNION(job.delivered,serialized-job.delivered). Return ASAP, since we have the job.
+3. Create a job from serialized-job information.
+4. job.state = `active`.
+5. Reply to the sender with `GOTJOB(job.id)`.
+
+Step 1: We may already have the job, since ADDJOB may be duplicated.
+
+Step 2: If we already have the same job, we update the list of jobs that may have a copy of this job, performing the union of the list of nodes we have with the list of nodes in the serialized job.
+
+ON RECV cluster message `GOTJOB(object serialized-job)`:
+
+1. job = Call `LOOKUP-JOB(serialized-job.id)`.
+2. IF `job == NULL` OR `job.state != wait-repl` Return ASAP.
+3. Add sender node to `job.confirmed`.
+4. IF `job.confirmed.size == job.replicate` THEN change `job.state` to `active`, call ENQUEUE(job), and reply to the blocked client with `job.id`.
+
+Step 4: As we receive enough confirmations via `GOTJOB` messages, we finally reach the replication factor required by the user and consider the message active.
+
+TIMER, firing every next 50 milliseconds while a job still did not reached the expected replication factor.
+
+1. Select an additional node not already listed in `job.delivered`, call it `node`.
+2. Add `node` to `job.delivered`.
+3. Send ADDJOB(job.serialized) cluster message to each node in `job.delivered`.
+
+Step 3: We send the message to every node again, so that each node will have a chance to update `job.delivered` with the new nodes. It is not required for each node to know the full list of nodes that may have a copy, but doing so improves our approximation of single delivery whenever possible.
 
 Job re-queueing state machine
 ---
@@ -318,27 +381,52 @@ TIMER, firing 500 milliseconds before the retry time elapses:
 
 1. Send `WILLQUEUE(job.id)` to every node in `jobs.delivered`.
 
+TIMER, firing when `job.qtime` time is reached.
+
+1. If `job.retry == 0` THEN return ASAP.
+2. Call ENQUEUE(job).
+3. Update `job.qtime` to NOW + job.retry.
+4. Send `QUEUED(job.id)` message to each node in `job.delivered`.
+
+Step 1: At most once jobs never get enqueued again.
+
+Step 3: We'll retry again after the retry period.
+
+ON RECV cluster message `WILLQUEUE(string job-id)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`.
+2. IF `job == NULL` THEN return ASAP.
+3. IF `job.state == queued` SEND `QUEUED(job.id)` to `job.delivered`.
+4. IF `job.state == acked` SEND `SETACK(job.id)` to the sender.
+
+Step 3: We broadcast the message since likely the other nodes are going to retry as well.
+
+Step 4: SETACK processing is documented below in the acknowledges section of the state machine description.
+
+ON RECV cluster message `QUEUED(string job-id)`:
+
+1. job = Call `LOOKUP-JOB(job-id)`.
+2. IF `job == NULL` THEN return ASAP.
+3. IF `job.state == acknowledged` THEN return ASAP.
+4. IF `job.state == queued` THEN if sender node ID is greater than my node ID call DEQUEUE(job).
+5. Update `job.qtime` setting it to NOW + job.retry.
+
+Step 4: If multiple nodes re-enqueue the job about at the same time because of race conditions or network partitions that make `WILLQUEUE` not effective, then `QUEUED` forces receiving nodes to dequeue the message if the sender has a greater node ID, lowering the probability of unwanted multiple delivery.
+
+Step 5: Now the message is already queued somewhere else, but the node will retry again after the retry time.
+
 Acknowledged jobs garbage collection state machine
 ---
 
 This part of the state machine is used in order to garbage collect
 acknowledged jobs, when a job finally gets acknowledged by a client.
 
-PROCEDURE `LOOKUP-JOB(job-id)`:
-
-1. If job with the specified id is found, returns the corresponding job object.
-2. Otherwise returns NULL.
-
-PROCEDURE `UNREGISTER(job)`:
-
-1. Delete the job from memory, and if queued, from the queue.
-
-PROCEDURE `ACK_JOB(job)`:
+PROCEDURE `ACK-JOB(job)`:
 
 1. If job state is already `acknowledged`, do nothing and return ASAP.
 2. Change job state to `acknowledged`, dequeue the job if queued, schedule first call to TIMER.
 
-PROCEDURE `START_GC(job)`:
+PROCEDURE `START-GC(job)`:
 
 1. Send `SETACK(job.delivered.size)` to each node that is listed in `job.delivered` but is not listed in `job.confirmed`.
 2. IF `job.delivered.size == 0`, THEN send `SETACK(0)` to every node in the cluster.
@@ -357,8 +445,8 @@ ON RECV cluster message `SETACK(string job-id, integer may-have)`:
 1. job = Call `LOOKUP-JOB(job-id)`.
 2. Call ACK-JOB(job) IF job is not `NULL`.
 3. Reply with GOTACK IF `job == NULL OR job.delivered.size <= may-have`.
-4. IF `job != NULL` and `jobs.delivered.size > may-have` THEN call `START_GC(job)`.
-5. IF `may_have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START_GC(job)`. 
+4. IF `job != NULL` and `jobs.delivered.size > may-have` THEN call `START-GC(job)`.
+5. IF `may-have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START-GC(job)`. 
 
 Steps 3 and 4 makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
 
@@ -367,7 +455,7 @@ Step 5 instead is used in order to start a GC attempt if we received a SETACK me
 ON RECV cluster message `GOTACK(string job-id, bool known)`:
 
 1. job = Call `LOOKUP-JOB(job-id)`. Return ASAP IF `job == NULL`.
-2. Call `ACK_JOB(job)`.
+2. Call `ACK-JOB(job)`.
 3. IF `known == true AND job.delivered.size > 0` THEN add the sender node to `job.delivered`.
 4. IF `(known == true) OR (known == false AND job.delivered.size > 0) OR (known == false AND sender is an element of job.delivered)` THEN add the sender node to `jobs.confirmed`.
 5. IF `job.delivered.size > 0 AND job.delivered.size == job.confirmed.size`, THEN send `DELJOB(job.id)` to every node in the `job.delivered` list and call `UNREGISTER(job)`.
@@ -380,14 +468,9 @@ Step 6: we don't have to hold a dummy acknowledged jobs if there are nodes that 
 
 Step 7: this happens when nobody knows about a job, like when a client acknowledged a wrong job ID.
 
-ON RECV cluster message: `DELJOB(job.id)`:
-
-1. job = Call `LOOKUP-JOB(job-id)`.
-2. IF `job != NULL` THEN call `UNREGISTER(job)`.
-
 TIMER, every N seconds (starting with 3 minutes), for every acknowledged job in memory:
 
-1. If job state is `acknowledged`, call `START_GC(job)`. Reschedule TIMER call with an exponential delay.
+1. If job state is `acknowledged`, call `START-GC(job)`. Reschedule TIMER call with an exponential delay.
 
 FAQ
 ===

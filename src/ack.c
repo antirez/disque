@@ -54,10 +54,24 @@ void acknowledgeJob(job *job) {
 
 /* ------------------------- Garbage collection ----------------------------- */
 
+/* Return the next milliseconds unix time where the next GC attept for this
+ * job should be performed. */
+mstime_t getNextGCRetryTime(job *job) {
+    mstime_t period = JOB_GC_RETRY_MIN_PERIOD * (1 << job->gc_retry);
+    if (period > JOB_GC_RETRY_MAX_PERIOD) period = JOB_GC_RETRY_MAX_PERIOD;
+    /* Desync a bit the GC process, it is a waste of resources for
+     * multiple nodes to try to GC at the same time. */
+    return server.mstime + period + randomTimeError(500);
+}
+
 /* Try to garbage collect the job. */
 void tryJobGC(job *job) {
     if (job->state != JOB_STATE_ACKED) return;
     serverLog(DISQUE_NOTICE,"GC %.48s", job->id);
+
+    /* Don't overflow the count, it's only useful for the exponential delay.
+     * Actually we'll keep trying forever. */
+    if (job->gc_retry != JOB_GC_RETRY_COUNT_MAX) job->gc_retry++;
 
     /* nodes_confirmed is used in order to store all the nodes that have the
      * job in ACKed state, so that the job can be evicted when we are

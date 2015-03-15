@@ -312,10 +312,7 @@ void updateJobAwakeTime(job *j, mstime_t at) {
 
         if (j->state == JOB_STATE_ACKED) {
             /* Try to garbage collect this ACKed job again in the future. */
-            mstime_t retry_gc_again = server.mstime + JOB_GC_RETRY_PERIOD*1000;
-            /* Desync a bit the GC process, it is a waste of resources for
-             * multiple nodes to try to GC at the same time. */
-            retry_gc_again += randomTimeError(500);
+            mstime_t retry_gc_again = getNextGCRetryTime(j);
             if (retry_gc_again < at) at = retry_gc_again;
         } else if ((j->state == JOB_STATE_ACTIVE ||
                     j->state == JOB_STATE_QUEUED) && j->qtime) {
@@ -638,6 +635,11 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     memrev32ifbe(j->retry);
     p += JOB_STRUCT_SER_LEN;
     len -= JOB_STRUCT_SER_LEN;
+
+    /* GC attempts are always reset, while the state will be likely set to
+     * the caller, but otherwise, we assume the job is active. */
+    j->state = JOB_STATE_ACTIVE;
+    j->gc_retry = 0;
 
     /* Compute next queue time from known parameters. */
     if (j->retry) {

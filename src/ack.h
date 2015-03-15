@@ -34,5 +34,6 @@
 void acknowledgeJob(job *j);
 void tryJobGC(job *j);
 void gotAckReceived(clusterNode *sender, job *job, int known);
+mstime_t getNextGCRetryTime(job *job);
 
 #endif

@@ -86,12 +86,22 @@
 #define JOB_FLAG_BCAST_WILLQUEUE (1<<1) /* Broadcast msg before re-quequeing. */
 
 #define JOB_WILLQUEUE_ADVANCE 500   /* Milliseconds of WILLQUEUE advance. */
-#define JOB_GC_RETRY_PERIOD (60*3)  /* Try to GC again every 3 minutes. */
+#define JOB_GC_RETRY_MIN_PERIOD 1000 /* Initial GC retry time is 1 seconds. */
+#define JOB_GC_RETRY_MAX_PERIOD (60000*3) /* Exponentially up to 3 minutes... */
+
+/* In the job structure we have a counter for the GC attempt. The only use
+ * for this is to calcualte an exponential time for the retry, starting from
+ * JOB_GC_RETRY_MIN_PERIOD but without exceeding JOB_GC_RETRY_MAX_PERIOD.
+ * However we don't want the counter to overflow, so after reaching
+ * JOB_GC_RETRY_COUNT_MAX we don't count more, since we already reached
+ * the maximum retry period for sue (2^10 multipled for the MIN value). */
+#define JOB_GC_RETRY_COUNT_MAX 10
 
 /* Job representation in memory. */
 typedef struct job {
     char id[JOB_ID_LEN];    /* Job ID. */
-    uint8_t state;          /* Job state: one of JOB_STATE_* states. */
+    uint8_t state:2;        /* Job state: one of JOB_STATE_* states. */
+    uint8_t gc_retry:6;     /* GC attempts counter, for exponential delay. */
     uint8_t flags;          /* Job flags. */
     uint16_t repl;          /* Replication factor. */
     uint32_t etime;         /* Job expire time. */

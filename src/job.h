@@ -100,8 +100,8 @@
 /* Job representation in memory. */
 typedef struct job {
     char id[JOB_ID_LEN];    /* Job ID. */
-    uint8_t state:2;        /* Job state: one of JOB_STATE_* states. */
-    uint8_t gc_retry:6;     /* GC attempts counter, for exponential delay. */
+    uint8_t state:4;        /* Job state: one of JOB_STATE_* states. */
+    uint8_t gc_retry:4;     /* GC attempts counter, for exponential delay. */
     uint8_t flags;          /* Job flags. */
     uint16_t repl;          /* Replication factor. */
     uint32_t etime;         /* Job expire time. */

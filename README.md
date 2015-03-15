@@ -472,9 +472,9 @@ Step 6: we don't have to hold a dummy acknowledged jobs if there are nodes that 
 
 Step 7: this happens when nobody knows about a job, like when a client acknowledged a wrong job ID.
 
-TIMER, every N seconds (starting with 3 minutes), for every acknowledged job in memory:
+TIMER, from time to time (exponential backoff with random error), for every acknowledged job in memory:
 
-1. If job state is `acknowledged`, call `START-GC(job)`. Reschedule TIMER call with an exponential delay.
+1. call `START-GC(job)`.
 
 FAQ
 ===

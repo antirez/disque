@@ -101,7 +101,7 @@ DI0f0c644fd3ccb51c2cedbd47fcb6f312646c993c05a0SQ
 Job IDs always start with "DI" and end with "SQ" and are always composed of
 exactly 48 characters.
 
-We can split a job into multiple parts:
+We can split an ID into multiple parts:
 
 DI | 0f0c644f | d3ccb51c2cedbd47fcb6f312646c993c | 05a0 | SQ
 

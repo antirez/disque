@@ -98,7 +98,7 @@ Disque jobs are uniquely identified by an ID like the following:
 
 DI0f0c644fd3ccb51c2cedbd47fcb6f312646c993c05a0SQ
 
-Job IDs always start with "DI" and end with "QS" and are always composed of
+Job IDs always start with "DI" and end with "SQ" and are always composed of
 exactly 48 characters.
 
 We can split a job into multiple parts:
@@ -108,7 +108,7 @@ DI | 0f0c644f | d3ccb51c2cedbd47fcb6f312646c993c | 05a0 | SQ
 1. DI is the prefix
 2. 0f0c644f is the first 8 bytes of the node ID where the message was generated.
 3. d3ccb51c2cedbd47fcb6f312646c993c is the 128 bit ID pesudo random part in hex.
-4. 05a0 is the Job TTL in minutes. Because of it, message IDs can be expired safety even without having the job representation.
+4. 05a0 is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
 5. SQ is the suffix.
 
 IDs are returned by ADDJOB when a job is successfully created, are part of

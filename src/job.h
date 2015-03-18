@@ -156,5 +156,7 @@ void setJobTtlFromId(job *job);
 int validateJobIdOrReply(client *c, char *id, size_t len);
 void setJobAssociatedValue(job *j, void *val);
 void *jobGetAssociatedValue(job *j);
+char *jobStateToString(int state);
+int validateJobIDs(client *c, robj **ids, int count);
 
 #endif

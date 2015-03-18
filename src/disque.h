@@ -861,7 +861,9 @@ void addjobCommand(client *c);
 void qlenCommand(client *c);
 void getjobsCommand(client *c);
 void showCommand(client *c);
-void ackjobCommand(client *c);
+void ackjobsCommand(client *c);
+void enqueueCommand(client *c);
+void dequeueCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

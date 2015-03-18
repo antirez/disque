@@ -153,11 +153,11 @@ int validateJobId(char *id, size_t len) {
 }
 
 /* Like validateJobId() but if the ID is invalid an error message is sent
- * to the client 'c'. */
+ * to the client 'c' if not NULL. */
 int validateJobIdOrReply(client *c, char *id, size_t len) {
     int retval = validateJobId(id,len);
-    if (retval == DISQUE_ERR) addReplySds(c,
-            sdsnew("-BADID Invalid Job ID format.\r\n"));
+    if (retval == DISQUE_ERR && c)
+        addReplySds(c,sdsnew("-BADID Invalid Job ID format.\r\n"));
     return retval;
 }
 
@@ -737,6 +737,25 @@ void deleteJobFromCluster(job *j) {
     clusterBroadcastDelJob(j);
     unregisterJob(j);
     freeJob(j);
+}
+
+/* ----------------------------  Utility functions -------------------------- */
+
+/* Validate a set of job IDs. Return DISQUE_OK if all the IDs are valid,
+ * otherwise DISQUE_ERR is returned.
+ *
+ * When DISQUE_ERR is returned, an error is send to the client 'c' if not
+ * NULL. */
+int validateJobIDs(client *c, robj **ids, int count) {
+    int j;
+
+    /* Mass-validate the Job IDs, so if we have to stop with an error, nothing
+     * at all is processed. */
+    for (j = 0; j < count; j++) {
+        if (validateJobIdOrReply(c,ids[j]->ptr,sdslen(ids[j]->ptr))
+            == DISQUE_ERR) return DISQUE_ERR;
+    }
+    return DISQUE_OK;
 }
 
 /* --------------------------  Jobs related commands ------------------------ */

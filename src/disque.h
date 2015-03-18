@@ -199,10 +199,8 @@ typedef long long mstime_t; /* millisecond time type. */
                                      server.unblocked_clients */
 #define DISQUE_CLOSE_ASAP (1<<4)  /* Close this client ASAP */
 #define DISQUE_UNIX_SOCKET (1<<5) /* Client connected via Unix domain socket */
-#define DISQUE_FORCE_AOF (1<<6)   /* Force AOF propagation of current cmd. */
-#define DISQUE_FORCE_REPL (1<<7)  /* Force replication of current cmd. */
-#define DISQUE_READONLY (1<<8)    /* Cluster client is in read-only state. */
-#define DISQUE_AOF_CLIENT (1<<9)  /* AOF loading client. */
+#define DISQUE_READONLY (1<<6)    /* Cluster client is in read-only state. */
+#define DISQUE_AOF_CLIENT (1<<7)  /* AOF loading client. */
 
 /* Client block type (btype field in client structure)
  * if DISQUE_BLOCKED flag is set. */
@@ -320,19 +318,6 @@ typedef struct disqueObject {
     _var.ptr = _ptr; \
 } while(0);
 
-/* To improve the quality of the LRU approximation we take a set of keys
- * that are good candidate for eviction across freeMemoryIfNeeded() calls.
- *
- * Entries inside the eviciton pool are taken ordered by idle time, putting
- * greater idle times to the right (ascending order).
- *
- * Empty entries have the key pointer set to NULL. */
-#define DISQUE_EVICTION_POOL_SIZE 16
-struct evictionPoolEntry {
-    unsigned long long idle;    /* Object idle time. */
-    sds key;                    /* Key name. */
-};
-
 struct job;
 
 /* This structure holds the blocking operation state for a client.
@@ -425,30 +410,6 @@ typedef struct clientBufferLimitsConfig {
 } clientBufferLimitsConfig;
 
 extern clientBufferLimitsConfig clientBufferLimitsDefaults[DISQUE_CLIENT_TYPE_COUNT];
-
-/* The disqueOp structure defines a Disque Operation, that is an instance of
- * a command with an argument vector, database ID, propagation target
- * (DISQUE_PROPAGATE_*), and command pointer.
- *
- * Currently only used to additionally propagate more commands to AOF/Replication
- * after the propagation of the executed command. */
-typedef struct disqueOp {
-    robj **argv;
-    int argc, dbid, target;
-    struct serverCommand *cmd;
-} disqueOp;
-
-/* Defines an array of Disque operations. There is an API to add to this
- * structure in a easy way.
- *
- * disqueOpArrayInit();
- * disqueOpArrayAppend();
- * disqueOpArrayFree();
- */
-typedef struct disqueOpArray {
-    disqueOp *ops;
-    int numops;
-} disqueOpArray;
 
 /*-----------------------------------------------------------------------------
  * Global server state
@@ -580,8 +541,6 @@ struct disqueServer {
     int aof_stop_sending_diff;     /* If true stop sending accumulated diffs
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */
-    /* Propagation of commands in AOF / replication */
-    disqueOpArray also_propagate;    /* Additional command to propagate. */
     /* Logging */
     char *logfile;                  /* Path of log file */
     int syslog_enabled;             /* Is syslog enabled? */
@@ -816,7 +775,7 @@ void stopLoading(void);
 
 /* AOF persistence */
 void flushAppendOnlyFile(int force);
-void feedAppendOnlyFile(struct serverCommand *cmd, robj **argv, int argc);
+void feedAppendOnlyFile(robj **argv, int argc);
 void aofRemoveTempFile(pid_t childpid);
 int rewriteAppendOnlyFileBackground(void);
 int loadAppendOnlyFile(char *filename);
@@ -837,8 +796,6 @@ struct serverCommand *lookupCommandByCString(char *s);
 struct serverCommand *lookupCommandOrOriginal(sds name);
 void call(client *c, int flags);
 void propagate(struct serverCommand *cmd, robj **argv, int argc, int flags);
-void alsoPropagate(struct serverCommand *cmd, robj **argv, int argc, int target);
-void forceCommandPropagation(client *c, int flags);
 int prepareForShutdown(void);
 #ifdef __GNUC__
 void serverLog(int level, const char *fmt, ...)

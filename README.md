@@ -129,6 +129,16 @@ identical 64 bit ID prefixes is given by the birthday paradox:
 
 In case of collisions, the workers may just do a non-efficient choice.
 
+Collisions in the 128 bits random part are believed to be impossible,
+since it ss computed as follows.
+
+    128 bit ID = SHA1(seed || counter)
+
+Where:
+
+* **seed** is a seed generated via `/dev/urandom` at startup.
+* **counter** is a 64 bit counter incremented at every ID generation.
+
 API
 ===
 

@@ -121,11 +121,11 @@ are created, and move directly to these nodes to increase efficiency instead
 of listeing for messages in a node that will require to fetch messages from
 other nodes.
 
-Only 64 bits of the original node ID is included in the message, however
-in a cluster with 1000 Disque nodes, the probability of two nodes to have
+Only 32 bits of the original node ID is included in the message, however
+in a cluster with 100 Disque nodes, the probability of two nodes to have
 identical 64 bit ID prefixes is given by the birthday paradox:
 
-    P(100,2^64) = .000000000000027
+    P(100,2^32) = .000001164
 
 In case of collisions, the workers may just do a non-efficient choice.
 

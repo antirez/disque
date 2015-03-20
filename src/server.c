@@ -850,6 +850,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 void beforeSleep(struct aeEventLoop *eventLoop) {
     UNUSED(eventLoop);
 
+    /* Call the Cluster before sleep function. Note that this function
+     * may change the state of Cluster, so it's a good idea to call it
+     * before serving the unblocked clients later in this function. */
+    clusterBeforeSleep();
+
     /* Unblock clients waiting to receive messages into queues.
      * We do this both on processCommand() and here, since we need to
      * unblock clients when queues are populated asynchronously. */
@@ -861,9 +866,6 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
     /* Write the AOF buffer on disk */
     flushAppendOnlyFile(0);
-
-    /* Call the Disque Cluster before sleep function. */
-    clusterBeforeSleep();
 }
 
 /* =========================== Server initialization ======================== */

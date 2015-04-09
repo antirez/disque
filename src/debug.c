@@ -93,7 +93,12 @@ void debugCommand(client *c) {
         sizes = sdscatprintf(sizes,"bits:%d ", (sizeof(void*) == 8)?64:32);
         sizes = sdscatprintf(sizes,"job:%d ", (int)sizeof(job));
         sizes = sdscatprintf(sizes,"queue:%d ", (int)sizeof(queue));
-        sizes = sdscatprintf(sizes,"sdshdr:%d", (int)sizeof(struct sdshdr));
+        sizes = sdscatprintf(sizes,"robj:%d ", (int)sizeof(robj));
+        sizes = sdscatprintf(sizes,"dictentry:%d ", (int)sizeof(dictEntry));
+        sizes = sdscatprintf(sizes,"sdshdr8:%d", (int)sizeof(struct sdshdr8));
+        sizes = sdscatprintf(sizes,"sdshdr16:%d", (int)sizeof(struct sdshdr16));
+        sizes = sdscatprintf(sizes,"sdshdr32:%d", (int)sizeof(struct sdshdr32));
+        sizes = sdscatprintf(sizes,"sdshdr64:%d", (int)sizeof(struct sdshdr64));
         addReplyBulkSds(c,sizes);
     } else {
         addReplyErrorFormat(c, "Unknown DEBUG subcommand or wrong number of arguments for '%s'",

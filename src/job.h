@@ -111,9 +111,14 @@ typedef struct job {
                                node gets prev job ctime + 1. */
     uint32_t delay;         /* Delay before to queue this job for 1st time. */
     uint32_t retry;         /* Job re-queue time: re-queue period in seconds. */
-    /* Up to this point we use the structure for on-wire serialization,
+
+    /* --------------------------------------------------------------------
+     * Up to this point we use the structure for on-wire serialization,
      * before here all the fields should be naturally aligned, and pointers
-     * should only be present after. */
+     * should only be present after. Integer values are stored in the host
+     * native endianess, and only normalized during serialization.
+     * -------------------------------------------------------------------- */
+
     robj *queue;            /* Job queue name. */
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
@@ -131,7 +136,7 @@ typedef struct job {
                                did. When qtime is set to zero for a job, it
                                never gets re-queued again. */
     mstime_t awakeme;       /* Time at which we need to take actions about this
-                               job in this node. All the registerd jobs are
+                               job in this node. All the registered jobs are
                                ordered by awakeme time in the server.awakeme
                                skip list, unless awakeme is set to zero. */
 } job;

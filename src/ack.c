@@ -97,7 +97,7 @@ void tryJobGC(job *job) {
 
     /* Send a SETACK message to all the nodes that may have a message but are
      * still not listed in the nodes_confirmed hash table. However if this
-     * is a dumb ACK (created by ACKJOBS command acknowledging a job we don't
+     * is a dumb ACK (created by ACKJOB command acknowledging a job we don't
      * know) we have to broadcast the SETACK to everybody in search of the
      * owner. */
     dict *targets = dictSize(job->nodes_delivered) == 0 ?
@@ -177,7 +177,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
 
 /* --------------------------  Acks related commands ------------------------ */
 
-/* ACKJOBS jobid_1 jobid_2 ... jobid_N
+/* ACKJOB jobid_1 jobid_2 ... jobid_N
  *
  * Set job state as acknowledged, if the job does not exist creates a
  * fake job just to hold the acknowledge.
@@ -193,7 +193,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
  * The command returns the number of jobs already known and that were
  * already not in the ACKED state.
  */
-void ackjobsCommand(client *c) {
+void ackjobCommand(client *c) {
     int j, known = 0;
 
     if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;

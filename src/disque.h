@@ -859,9 +859,9 @@ void commandCommand(client *c);
 void latencyCommand(client *c);
 void addjobCommand(client *c);
 void qlenCommand(client *c);
-void getjobsCommand(client *c);
+void getjobCommand(client *c);
 void showCommand(client *c);
-void ackjobsCommand(client *c);
+void ackjobCommand(client *c);
 void enqueueCommand(client *c);
 void dequeueCommand(client *c);
 

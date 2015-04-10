@@ -574,8 +574,8 @@ void qlenCommand(client *c) {
     addReplyLongLong(c,queueNameLength(c->argv[1]));
 }
 
-/* GETJOBS [NOHANG] [TIMEOUT <ms>] [COUNT <count>] FROM <qname1>
- *          <qname2> ... <qnameN>.
+/* GETJOB [NOHANG] [TIMEOUT <ms>] [COUNT <count>] FROM <qname1>
+ *        <qname2> ... <qnameN>.
  *
  * Get jobs from the specified queues. By default COUNT is 1, so just one
  * job will be returned. If there are no jobs in any of the specified queues
@@ -585,7 +585,7 @@ void qlenCommand(client *c) {
  * to return jobs in the order the queues are specified. If COUNT allows
  * more jobs to be returned, queues are scanned again and again in the same
  * order popping more elements. */
-void getjobsCommand(client *c) {
+void getjobCommand(client *c) {
     mstime_t timeout = 0; /* Block forever by default. */
     long long count = 1, emitted_jobs = 0;
     int nohang = 0; /* Don't block even if all the queues are empty. */

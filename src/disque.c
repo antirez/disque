@@ -122,14 +122,16 @@ struct serverCommand serverCommandTable[] = {
     {"command",commandCommand,0,"rl",0,NULL,0,0,0,0,0},
     {"latency",latencyCommand,-2,"arl",0,NULL,0,0,0,0,0},
 
-    /* Jobs and queues. */
+    /* Jobs */
     {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
-    {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"getjobs",getjobsCommand,-2,"wF",0,NULL,0,0,0,0,0},
+    {"getjob",getjobCommand,-2,"wF",0,NULL,0,0,0,0,0},
+    {"ackjob",ackjobCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"ackjobs",ackjobsCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
-    {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0}
+    {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
+
+    /* Queues */
+    {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

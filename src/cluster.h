@@ -100,7 +100,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing. */
 #define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver. */
 #define CLUSTERMSG_TYPE_GOTJOB 5        /* Job received acknowledge. */
-#define CLUSTERMSG_TYPE_QUEUEJOB 6      /* Queue the specified job. */
+#define CLUSTERMSG_TYPE_ENQUEUE 6      /* Enaueue the specified job. */
 #define CLUSTERMSG_TYPE_QUEUED 7        /* Update your job qtime. */
 #define CLUSTERMSG_TYPE_SETACK 8        /* Move job state as ACKed. */
 #define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */
@@ -220,7 +220,7 @@ extern clusterNode *myself;
 clusterNode *clusterLookupNode(char *name);
 void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
-void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay);
+void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay);
 void clusterBroadcastQueued(job *j);
 void clusterBroadcastDelJob(job *j);
 void clusterSendWillQueue(job *j);

@@ -153,11 +153,11 @@ int validateJobId(char *id, size_t len) {
 }
 
 /* Like validateJobId() but if the ID is invalid an error message is sent
- * to the client 'c'. */
+ * to the client 'c' if not NULL. */
 int validateJobIdOrReply(client *c, char *id, size_t len) {
     int retval = validateJobId(id,len);
-    if (retval == DISQUE_ERR) addReplySds(c,
-            sdsnew("-BADID Invalid Job ID format.\r\n"));
+    if (retval == DISQUE_ERR && c)
+        addReplySds(c,sdsnew("-BADID Invalid Job ID format.\r\n"));
     return retval;
 }
 
@@ -312,10 +312,7 @@ void updateJobAwakeTime(job *j, mstime_t at) {
 
         if (j->state == JOB_STATE_ACKED) {
             /* Try to garbage collect this ACKed job again in the future. */
-            mstime_t retry_gc_again = server.mstime + JOB_GC_RETRY_PERIOD*1000;
-            /* Desync a bit the GC process, it is a waste of resources for
-             * multiple nodes to try to GC at the same time. */
-            retry_gc_again += randomTimeError(500);
+            mstime_t retry_gc_again = getNextGCRetryTime(j);
             if (retry_gc_again < at) at = retry_gc_again;
         } else if ((j->state == JOB_STATE_ACTIVE ||
                     j->state == JOB_STATE_QUEUED) && j->qtime) {
@@ -400,7 +397,7 @@ void processJob(job *j) {
 
     /* Requeue job if needed. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
-        queueJob(j);
+        enqueueJob(j);
     }
 
     /* Update job re-queue time if job is already queued. */
@@ -639,6 +636,11 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     p += JOB_STRUCT_SER_LEN;
     len -= JOB_STRUCT_SER_LEN;
 
+    /* GC attempts are always reset, while the state will be likely set to
+     * the caller, but otherwise, we assume the job is active. */
+    j->state = JOB_STATE_ACTIVE;
+    j->gc_retry = 0;
+
     /* Compute next queue time from known parameters. */
     if (j->retry) {
         j->flags |= JOB_FLAG_BCAST_WILLQUEUE;
@@ -737,6 +739,25 @@ void deleteJobFromCluster(job *j) {
     freeJob(j);
 }
 
+/* ----------------------------  Utility functions -------------------------- */
+
+/* Validate a set of job IDs. Return DISQUE_OK if all the IDs are valid,
+ * otherwise DISQUE_ERR is returned.
+ *
+ * When DISQUE_ERR is returned, an error is send to the client 'c' if not
+ * NULL. */
+int validateJobIDs(client *c, robj **ids, int count) {
+    int j;
+
+    /* Mass-validate the Job IDs, so if we have to stop with an error, nothing
+     * at all is processed. */
+    for (j = 0; j < count; j++) {
+        if (validateJobIdOrReply(c,ids[j]->ptr,sdslen(ids[j]->ptr))
+            == DISQUE_ERR) return DISQUE_ERR;
+    }
+    return DISQUE_OK;
+}
+
 /* --------------------------  Jobs related commands ------------------------ */
 
 /* This is called by unblockClient() to perform the cleanup of a client
@@ -797,7 +818,7 @@ void jobReplicationAchieved(job *j) {
         dictEntry *de = dictGetRandomKey(j->nodes_confirmed);
         if (de) {
             clusterNode *n = dictGetVal(de);
-            clusterSendQueueJob(n,j,j->delay);
+            clusterSendEnqueue(n,j,j->delay);
         }
         unregisterJob(j);
         freeJob(j);
@@ -806,7 +827,7 @@ void jobReplicationAchieved(job *j) {
 
     /* Queue the job locally. */
     if (j->delay == 0)
-        queueJob(j); /* Will change the job state. */
+        enqueueJob(j); /* Will change the job state. */
     else
         updateJobAwakeTime(j,0); /* Queue with delay. */
 }
@@ -975,12 +996,12 @@ void addjobCommand(client *c) {
     job->body = sdsdup(c->argv[2]->ptr);
 
     /* Set the next time the job will be queued. Note that once we call
-     * queueJob() the first time, this will be set to 0 (never queue
+     * enqueueJob() the first time, this will be set to 0 (never queue
      * again) for jobs that have a zero retry value (at most once jobs). */
     if (delay) {
         job->qtime = server.mstime + delay*1000;
     } else {
-        /* This will be updated anyway by queueJob(). */
+        /* This will be updated anyway by enqueueJob(). */
         job->qtime = server.mstime + retry*1000;
     }
 
@@ -1018,7 +1039,7 @@ void addjobCommand(client *c) {
         if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
         if (job->delay == 0) {
-            if (!extrepl) queueJob(job); /* Will change the job state. */
+            if (!extrepl) enqueueJob(job); /* Will change the job state. */
         } else {
             /* Delayed jobs that don't wait for replications can move
              * forward to ACTIVE state ASAP, and get scheduled for
@@ -1041,7 +1062,7 @@ void addjobCommand(client *c) {
         dictEntry *de = dictGetRandomKey(job->nodes_delivered);
         if (de) {
             clusterNode *n = dictGetVal(de);
-            clusterSendQueueJob(n,job,job->delay);
+            clusterSendEnqueue(n,job,job->delay);
         }
         /* We don't have to unregister the job since we did not registered
          * it if it's async + extrepl. */

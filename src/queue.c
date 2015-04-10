@@ -121,7 +121,7 @@ void addReplyJob(client *c, job *j) {
 /* Queue the job and change its state accordingly. If the job is already
  * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
  * and the operation succeeds. */
-int queueJob(job *job) {
+int enqueueJob(job *job) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
         return DISQUE_ERR;
 
@@ -503,7 +503,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
                 (int)j+1, node->name);
             return;
         }
-        
+
         /* If the job does not exist, we need to add it to our jobs.
          * Otherwise just get a reference to the job we already have
          * in memory and free the deserialized one. */
@@ -518,7 +518,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
         /* Don't need to send QUEUED when adding this job into the queue,
          * we are just moving from the queue of one node to another. */
         job->flags &= ~JOB_FLAG_BCAST_QUEUED;
-        if (queueJob(job) == DISQUE_ERR) continue;
+        if (enqueueJob(job) == DISQUE_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */
         q = lookupQueue(job->queue);
@@ -672,4 +672,51 @@ void getjobsCommand(client *c) {
     blockForJobs(c,queues,numqueues,timeout);
 }
 
+/* ENQUEUE job-id-1 job-id-2 ... job-id-N
+ *
+ * If the job is active, queue it if job retry != 0.
+ * If the job is in any other state, do nothing.
+ * If the job is not knonw, do nothing.
+ *
+ * NOTE: Even jobs with retry set to 0 are enqueued! Be aware that
+ * using this command may violate the at-most-once contract.
+ *
+ * Return the number of jobs actually move from active to queued state. */
+void enqueueCommand(client *c) {
+    int j, enqueued = 0;
 
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+
+    /* Enqueue all the jobs in active state. */
+    for (j = 1; j < c->argc; j++) {
+        job *job = lookupJob(c->argv[j]->ptr);
+        if (job == NULL) continue;
+
+        if (job->state == JOB_STATE_ACTIVE && enqueueJob(job) == DISQUE_OK)
+            enqueued++;
+    }
+    addReplyLongLong(c,enqueued);
+}
+
+/* DEQUEUE job-id-1 job-id-2 ... job-id-N
+ *
+ * If the job is queued, remove it from queue and change state to active.
+ * If the job is in any other state, do nothing.
+ * If the job is not knonw, do nothing.
+ *
+ * Return the number of jobs actually moved from queue to active state. */
+void dequeueCommand(client *c) {
+    int j, dequeued = 0;
+
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+
+    /* Enqueue all the jobs in active state. */
+    for (j = 1; j < c->argc; j++) {
+        job *job = lookupJob(c->argv[j]->ptr);
+        if (job == NULL) continue;
+
+        if (job->state == JOB_STATE_QUEUED && dequeueJob(job) == DISQUE_OK)
+            dequeued++;
+    }
+    addReplyLongLong(c,dequeued);
+}

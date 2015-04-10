@@ -95,8 +95,8 @@ struct disqueServer server; /* server global state */
  *
  * This is the meaning of the flags:
  *
- * w: write command (may modify jobs state).
- * r: read command  (will never modify jobs state).
+ * w: write command (may modify jobs or queues state).
+ * r: read command  (will never modify jobs or queues state).
  * m: may increase memory usage once called. Don't allow if out of memory.
  * a: admin command, like SAVE or SHUTDOWN.
  * l: Allow command while loading the database.
@@ -127,7 +127,9 @@ struct serverCommand serverCommandTable[] = {
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"getjobs",getjobsCommand,-2,"wF",0,NULL,0,0,0,0,0},
     {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"ackjob",ackjobCommand,-1,"wF",0,NULL,0,0,0,0,0}
+    {"ackjobs",ackjobsCommand,-1,"wF",0,NULL,0,0,0,0,0},
+    {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
+    {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */
@@ -498,6 +500,22 @@ void updateDictResizePolicy(void) {
         dictEnableResize();
     else
         dictDisableResize();
+}
+
+/* Remove all the server state: jobs, queues, and everything else to start
+ * like a fresh instance just rebooted. */
+void flushServerData(void) {
+    dictSafeForeach(server.jobs,de)
+        job *job = dictGetKey(de);
+        unregisterJob(job);
+        freeJob(job);
+    dictEndForeach
+
+    dictSafeForeach(server.queues,de)
+        queue *q = dictGetVal(de);
+        serverAssert(queueLength(q) == 0);
+        destroyQueue(q->name);
+    dictEndForeach
 }
 
 /* ======================= Cron: called every 100 ms ======================== */
@@ -1347,42 +1365,6 @@ void resetCommandTableStats(void) {
     }
 }
 
-/* ========================== Disque OP Array API =========================== */
-
-void disqueOpArrayInit(disqueOpArray *oa) {
-    oa->ops = NULL;
-    oa->numops = 0;
-}
-
-int disqueOpArrayAppend(disqueOpArray *oa, struct serverCommand *cmd,
-                       robj **argv, int argc, int target)
-{
-    disqueOp *op;
-
-    oa->ops = zrealloc(oa->ops,sizeof(disqueOp)*(oa->numops+1));
-    op = oa->ops+oa->numops;
-    op->cmd = cmd;
-    op->argv = argv;
-    op->argc = argc;
-    op->target = target;
-    oa->numops++;
-    return oa->numops;
-}
-
-void disqueOpArrayFree(disqueOpArray *oa) {
-    while(oa->numops) {
-        int j;
-        disqueOp *op;
-
-        oa->numops--;
-        op = oa->ops+oa->numops;
-        for (j = 0; j < op->argc; j++)
-            decrRefCount(op->argv[j]);
-        zfree(op->argv);
-    }
-    zfree(oa->ops);
-}
-
 /* ====================== Commands lookup and execution ===================== */
 
 struct serverCommand *lookupCommand(sds name) {
@@ -1410,30 +1392,6 @@ struct serverCommand *lookupCommandOrOriginal(sds name) {
 
     if (!cmd) cmd = dictFetchValue(server.orig_commands,name);
     return cmd;
-}
-
-/* Propagate the specified command (in the context of the specified database id)
- * to AOF and Slaves.
- *
- * flags are an xor between DISQUE_PROPAGATE_* defiles. */
-void propagate(struct serverCommand *cmd, robj **argv, int argc, int flags) {
-    if (server.aof_state != DISQUE_AOF_OFF && flags & DISQUE_PROPAGATE_AOF)
-        feedAppendOnlyFile(cmd,argv,argc);
-}
-
-/* Used inside commands to schedule the propagation of additional commands
- * after the current command is propagated to AOF / Replication. */
-void alsoPropagate(struct serverCommand *cmd, robj **argv, int argc,
-                   int target)
-{
-    disqueOpArrayAppend(&server.also_propagate,cmd,argv,argc,target);
-}
-
-/* It is possible to call the function forceCommandPropagation() inside a
- * Disque command implementation in order to to force the propagation of a
- * specific command execution into AOF. */
-void forceCommandPropagation(client *c, int flags) {
-    if (flags & DISQUE_PROPAGATE_AOF) c->flags |= DISQUE_FORCE_AOF;
 }
 
 /* Send commands to the list of clients in monitor state. */
@@ -1477,7 +1435,6 @@ void replicationFeedMonitors(client *c, list *monitors, robj **argv, int argc) {
 /* Call() is the core of Disque execution of a command */
 void call(client *c, int flags) {
     long long start, duration;
-    int client_old_flags = c->flags;
 
     /* Sent the command to clients in MONITOR mode, only if the commands are
      * not generated from reading an AOF. */
@@ -1489,8 +1446,6 @@ void call(client *c, int flags) {
     }
 
     /* Call the command. */
-    c->flags &= ~(DISQUE_FORCE_AOF|DISQUE_FORCE_REPL);
-    disqueOpArrayInit(&server.also_propagate);
     start = ustime();
     c->cmd->proc(c);
     duration = ustime()-start;
@@ -1506,33 +1461,6 @@ void call(client *c, int flags) {
     if (flags & DISQUE_CALL_STATS) {
         c->cmd->microseconds += duration;
         c->cmd->calls++;
-    }
-
-    /* Propagate the command into the AOF */
-    if (flags & DISQUE_CALL_PROPAGATE) {
-        int flags = DISQUE_PROPAGATE_NONE;
-
-        if (c->flags & DISQUE_FORCE_AOF) flags |= DISQUE_PROPAGATE_AOF;
-        if (flags != DISQUE_PROPAGATE_NONE)
-            propagate(c->cmd,c->argv,c->argc,flags);
-    }
-
-    /* Restore the old FORCE_AOF flags, since call may be executed
-     * recursively. */
-    c->flags &= ~(DISQUE_FORCE_AOF);
-    c->flags |= client_old_flags & DISQUE_FORCE_AOF;
-
-    /* Handle the alsoPropagate() API to handle commands that want to propagate
-     * multiple separated commands. */
-    if (server.also_propagate.numops) {
-        int j;
-        disqueOp *rop;
-
-        for (j = 0; j < server.also_propagate.numops; j++) {
-            rop = &server.also_propagate.ops[j];
-            propagate(rop->cmd, rop->argv, rop->argc, rop->target);
-        }
-        disqueOpArrayFree(&server.also_propagate);
     }
     server.stat_numcommands++;
 }

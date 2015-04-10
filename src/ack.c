@@ -54,10 +54,24 @@ void acknowledgeJob(job *job) {
 
 /* ------------------------- Garbage collection ----------------------------- */
 
+/* Return the next milliseconds unix time where the next GC attept for this
+ * job should be performed. */
+mstime_t getNextGCRetryTime(job *job) {
+    mstime_t period = JOB_GC_RETRY_MIN_PERIOD * (1 << job->gc_retry);
+    if (period > JOB_GC_RETRY_MAX_PERIOD) period = JOB_GC_RETRY_MAX_PERIOD;
+    /* Desync a bit the GC process, it is a waste of resources for
+     * multiple nodes to try to GC at the same time. */
+    return server.mstime + period + randomTimeError(500);
+}
+
 /* Try to garbage collect the job. */
 void tryJobGC(job *job) {
     if (job->state != JOB_STATE_ACKED) return;
     serverLog(DISQUE_NOTICE,"GC %.48s", job->id);
+
+    /* Don't overflow the count, it's only useful for the exponential delay.
+     * Actually we'll keep trying forever. */
+    if (job->gc_retry != JOB_GC_RETRY_COUNT_MAX) job->gc_retry++;
 
     /* nodes_confirmed is used in order to store all the nodes that have the
      * job in ACKed state, so that the job can be evicted when we are
@@ -67,9 +81,23 @@ void tryJobGC(job *job) {
         dictAdd(job->nodes_confirmed,myself->name,myself);
     }
 
+    /* Check ASAP if we already reached all the nodes. This special case
+     * here is mainly useful when the job replication factor is 1, so
+     * there is no SETACK to send, nor GOTCAK to receive. */
+    if (dictSize(job->nodes_delivered) != 0 &&
+        dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed))
+    {
+        serverLog(DISQUE_NOTICE,
+            "Deleting %.48s: all nodes reached in tryJobGC()",
+            job->id);
+        unregisterJob(job);
+        freeJob(job);
+        return;
+    }
+
     /* Send a SETACK message to all the nodes that may have a message but are
      * still not listed in the nodes_confirmed hash table. However if this
-     * is a dumb ACK (created by ACKJOB command acknowledging a job we don't
+     * is a dumb ACK (created by ACKJOBS command acknowledging a job we don't
      * know) we have to broadcast the SETACK to everybody in search of the
      * owner. */
     dict *targets = dictSize(job->nodes_delivered) == 0 ?
@@ -149,7 +177,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
 
 /* --------------------------  Acks related commands ------------------------ */
 
-/* ACKJOB jobid_1 jobid_2 ... jobid_N
+/* ACKJOBS jobid_1 jobid_2 ... jobid_N
  *
  * Set job state as acknowledged, if the job does not exist creates a
  * fake job just to hold the acknowledge.
@@ -165,15 +193,10 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
  * The command returns the number of jobs already known and that were
  * already not in the ACKED state.
  */
-void ackjobCommand(client *c) {
+void ackjobsCommand(client *c) {
     int j, known = 0;
 
-    /* Mass-validate the Job IDs, so if we have to stop with an error, nothing
-     * at all is processed. */
-    for (j = 1; j < c->argc; j++) {
-        if (validateJobIdOrReply(c,c->argv[j]->ptr,sdslen(c->argv[j]->ptr))
-            == DISQUE_ERR) return;
-    }
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
 
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {

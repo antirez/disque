@@ -483,9 +483,8 @@ sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
     return dst;
 }
 
-void feedAppendOnlyFile(struct serverCommand *cmd, robj **argv, int argc) {
+void feedAppendOnlyFile(robj **argv, int argc) {
     sds buf = sdsempty();
-    DISQUE_NOTUSED(cmd);
 
     buf = catAppendOnlyGenericCommand(buf,argc,argv);
 

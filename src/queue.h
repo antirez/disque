@@ -75,7 +75,8 @@ typedef struct queue {
 
 struct clusterNode;
 
-int queueJob(job *job);
+int destroyQueue(robj *name);
+int enqueueJob(job *job);
 int dequeueJob(job *job);
 job *queueFetchJob(queue *q, unsigned long *qlen);
 job *queueNameFetchJob(robj *qname, unsigned long *qlen);

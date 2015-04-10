@@ -419,7 +419,7 @@ void clusterReset(int hard) {
         clusterAddNode(myself);
     }
 
-    /* TODO: flush away all the jobs and queues data. */
+    flushServerData();
 
     /* TODO: flush the deleted nodes hash table and the deleted nodes
      * entries. There are no longer jobs or queues that may reference
@@ -1105,7 +1105,7 @@ int clusterProcessPacket(clusterLink *link) {
                   ntohl(hdr->data.jobs.serialized.datasize);
         if (totlen != explen) return 1;
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
-               type == CLUSTERMSG_TYPE_QUEUEJOB ||
+               type == CLUSTERMSG_TYPE_ENQUEUE ||
                type == CLUSTERMSG_TYPE_QUEUED ||
                type == CLUSTERMSG_TYPE_SETACK ||
                type == CLUSTERMSG_TYPE_GOTACK ||
@@ -1366,7 +1366,7 @@ int clusterProcessPacket(clusterLink *link) {
             unregisterJob(j);
             freeJob(j);
         }
-    } else if (type == CLUSTERMSG_TYPE_QUEUEJOB) {
+    } else if (type == CLUSTERMSG_TYPE_ENQUEUE) {
         if (!sender) return 1;
         uint32_t delay = ntohl(hdr->data.jobid.job.aux);
 
@@ -1377,9 +1377,9 @@ int clusterProcessPacket(clusterLink *link) {
         j->flags &= ~JOB_FLAG_BCAST_QUEUED;
 
         if (j && j->state < JOB_STATE_QUEUED) {
-            serverLog(DISQUE_NOTICE,"RECEIVED QUEUEJOB FOR JOB %.48s", j->id);
+            serverLog(DISQUE_NOTICE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
             if (delay == 0) {
-                queueJob(j);
+                enqueueJob(j);
             } else {
                 updateJobRequeueTime(j,server.mstime+delay*1000);
             }
@@ -1415,6 +1415,11 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) {
+            if (j->state == JOB_STATE_ACTIVE ||
+                j->state == JOB_STATE_QUEUED)
+            {
+                dictAdd(j->nodes_delivered,sender->name,sender);
+            }
             if (j->state == JOB_STATE_QUEUED) clusterBroadcastQueued(j);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }
@@ -1593,7 +1598,7 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataFail);
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
-               type == CLUSTERMSG_TYPE_QUEUEJOB ||
+               type == CLUSTERMSG_TYPE_ENQUEUE ||
                type == CLUSTERMSG_TYPE_QUEUED ||
                type == CLUSTERMSG_TYPE_SETACK ||
                type == CLUSTERMSG_TYPE_GOTACK ||
@@ -1857,8 +1862,8 @@ void clusterSendGotJob(clusterNode *node, job *j) {
 
 /* Force the receiver to queue a job, if it has that job in an active
  * state. */
-void clusterSendQueueJob(clusterNode *node, job *j, uint32_t delay) {
-    clusterSendJobIDMessage(CLUSTERMSG_TYPE_QUEUEJOB,node,j->id,delay);
+void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay) {
+    clusterSendJobIDMessage(CLUSTERMSG_TYPE_ENQUEUE,node,j->id,delay);
 }
 
 /* Tell the receiver that the specified job was just re-queued by the

@@ -23,7 +23,7 @@ test "If the job is consumed, but not acknowledged, it gets requeued" {
     set id [D 0 addjob $qname myjob 5000 replicate 3 retry 1]
     set job [D 0 show $id]
     assert {$id ne {}}
-    set myjob [lindex [D 0 getjobs from $qname] 0]
+    set myjob [lindex [D 0 getjob from $qname] 0]
     assert {[lindex $myjob 0] eq $qname}
     assert {[lindex $myjob 1] eq $id}
     assert {[lindex $myjob 2] eq "myjob"}
@@ -40,7 +40,7 @@ test "If retry is set to 0, no requeue happens after a job is consumed" {
     set id [D 0 addjob $qname myjob 5000 replicate 1 retry 0]
     set job [D 0 show $id]
     assert {$id ne {}}
-    set myjob [lindex [D 0 getjobs from $qname] 0]
+    set myjob [lindex [D 0 getjob from $qname] 0]
     assert {[lindex $myjob 0] eq $qname}
     assert {[lindex $myjob 1] eq $id}
     assert {[lindex $myjob 2] eq "myjob"}
@@ -94,7 +94,7 @@ for {set j 0} {$j < 10} {incr j} {
         # Verify it's actually our dear job
         set queueing_id [lindex [get_job_instances $job queued] 0]
         assert {$queueing_id ne {}}
-        set myjob [lindex [D $queueing_id getjobs from $qname] 0]
+        set myjob [lindex [D $queueing_id getjob from $qname] 0]
         assert {[lindex $myjob 0] eq $qname}
         assert {[lindex $myjob 1] eq $id}
         assert {[lindex $myjob 2] eq $body}
@@ -112,7 +112,7 @@ test "Single node jobs are correctly ordered in a FIFO fashion" {
         D 0 addjob $qname $j 5000 replicate 1 retry 0
     }
     for {set j 0} {$j < 100} {incr j} {
-        set job [D 0 getjobs from $qname TIMEOUT 5000]
+        set job [D 0 getjob from $qname TIMEOUT 5000]
         set body [lindex $job 0 2]
         assert {$body == $j}
     }

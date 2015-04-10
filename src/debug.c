@@ -30,6 +30,8 @@
 #include "disque.h"
 #include "sha1.h"   /* SHA1 is used for DEBUG DIGEST */
 #include "crc64.h"
+#include "job.h"
+#include "queue.h"
 
 #include <arpa/inet.h>
 #include <signal.h>
@@ -86,6 +88,13 @@ void debugCommand(client *c) {
         errstr = sdsmapchars(errstr,"\n\r","  ",2); /* no newlines in errors. */
         errstr = sdscatlen(errstr,"\r\n",2);
         addReplySds(c,errstr);
+    } else if (!strcasecmp(c->argv[1]->ptr,"structsize") && c->argc == 2) {
+        sds sizes = sdsempty();
+        sizes = sdscatprintf(sizes,"bits:%d ", (sizeof(void*) == 8)?64:32);
+        sizes = sdscatprintf(sizes,"job:%d ", (int)sizeof(job));
+        sizes = sdscatprintf(sizes,"queue:%d ", (int)sizeof(queue));
+        sizes = sdscatprintf(sizes,"sdshdr:%d", (int)sizeof(struct sdshdr));
+        addReplyBulkSds(c,sizes);
     } else {
         addReplyErrorFormat(c, "Unknown DEBUG subcommand or wrong number of arguments for '%s'",
             (char*)c->argv[1]->ptr);

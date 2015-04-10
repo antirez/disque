@@ -223,6 +223,9 @@ int unregisterJob(job *j) {
     j = lookupJob(j->id);
     if (!j) return DISQUE_ERR;
 
+    /* Emit a DELJOB command for all the job states but WAITREPL. */
+    if (j->state >= JOB_STATE_ACTIVE) AOFDelJob(j);
+
     /* Remove from awake skip list. */
     if (j->awakeme) serverAssert(skiplistDelete(server.awakeme,j));
 
@@ -758,6 +761,16 @@ int validateJobIDs(client *c, robj **ids, int count) {
     return DISQUE_OK;
 }
 
+/* ----------------------------------  AOF ---------------------------------- */
+void AOFAddJob(job *j) {
+}
+
+void AOFDelJob(job *j) {
+}
+
+void AOFAckJob(job *j) {
+}
+
 /* --------------------------  Jobs related commands ------------------------ */
 
 /* This is called by unblockClient() to perform the cleanup of a client
@@ -830,6 +843,8 @@ void jobReplicationAchieved(job *j) {
         enqueueJob(j); /* Will change the job state. */
     else
         updateJobAwakeTime(j,0); /* Queue with delay. */
+
+    AOFAddJob(j);
 }
 
 /* This function is called periodically by clientsCron(). Its goal is to
@@ -1041,13 +1056,14 @@ void addjobCommand(client *c) {
         if (job->delay == 0) {
             if (!extrepl) enqueueJob(job); /* Will change the job state. */
         } else {
-            /* Delayed jobs that don't wait for replications can move
+            /* Delayed jobs that don't wait for replication can move
              * forward to ACTIVE state ASAP, and get scheduled for
              * queueing. */
             job->state = JOB_STATE_ACTIVE;
             updateJobAwakeTime(job,0);
         }
         addReplyJobID(c,job);
+        AOFAddJob(job);
     }
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1

@@ -50,6 +50,7 @@ void acknowledgeJob(job *job) {
         job->nodes_confirmed = NULL;
     }
     updateJobAwakeTime(job,0); /* Make sure we'll schedule a job GC. */
+    AOFAckJob(job); /* Change job state in AOF. */
 }
 
 /* ------------------------- Garbage collection ----------------------------- */

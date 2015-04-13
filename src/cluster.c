@@ -1287,7 +1287,7 @@ int clusterProcessPacket(clusterLink *link) {
         /* Don't replicate jobs if we got already memory issues. */
         if (getMemoryWarningLevel() > 0) return 1;
 
-        j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL);
+        j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL,SER_MESSAGE);
         if (j == NULL) {
             serverLog(DISQUE_WARNING,
                 "Received corrupted job description from node %.40s",
@@ -1785,7 +1785,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         clusterMsg *hdr = (clusterMsg*) buf;
         uint32_t totlen;
 
-        sds serialized = serializeJob(sdsempty(),j);
+        sds serialized = serializeJob(sdsempty(),j,SER_MESSAGE);
 
         totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         totlen += sizeof(clusterMsgDataJob) -
@@ -1946,7 +1946,7 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
 
     sds serialized = sdsempty();
     for (j = 0; j < count; j++)
-        serialized = serializeJob(serialized,jobs[j]);
+        serialized = serializeJob(serialized,jobs[j],SER_MESSAGE);
     totlen += sdslen(serialized);
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_YOURJOBS);

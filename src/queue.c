@@ -495,7 +495,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
 
     for (j = 0; j < numjobs; j++) {
         uint32_t remlen = serializedlen - (nextjob-serializedjobs);
-        job *job, *sj = deserializeJob(nextjob,remlen,&nextjob);
+        job *job, *sj = deserializeJob(nextjob,remlen,&nextjob,SER_MESSAGE);
 
         if (sj == NULL) {
             serverLog(DISQUE_WARNING,

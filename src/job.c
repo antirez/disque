@@ -502,7 +502,26 @@ char *serializeSdsString(char *p, sds s) {
     return p + sizeof(count) + len;
 }
 
-/* Serialize a job:
+/* Serialize the job pointed by 'j' appending the serialized version of
+ * the job into the passed SDS string 'jobs'.
+ *
+ * The serialization may be performed in two slightly different ways
+ * depending on the 'type' argument:
+ *
+ * If type is SER_MESSAGE the expire time field is serialized using
+ * the relative TTL still remaining for the job. This serialization format
+ * is suitable for sending messages to other nodes that may have non
+ * synchronized clocks. If instead SER_STORAGE is used as type, the expire
+ * time filed is serialized using an absolute unix time (as it is normally
+ * in the job structure representation). This makes the job suitable to be
+ * loaded at a latter time from disk, and is used in order to emit
+ * LOADJOB commands in the AOF file.
+ *
+ * When the job is deserialized with deserializeJob() function call, the
+ * appropriate type must be passed, depending on how the job was serialized.
+ *
+ * Serialization format
+ * ---------------------
  *
  * len | struct | queuename | job | nodes
  *
@@ -529,7 +548,7 @@ char *serializeSdsString(char *p, sds s) {
  *
  * Since each job has a prefixed length it is possible to glue multiple
  * jobs one after the other in a single string. */
-sds serializeJob(sds jobs, job *j) {
+sds serializeJob(sds jobs, job *j, int sertype) {
     size_t len;
     struct job *sj;
     char *p, *msg;
@@ -560,11 +579,15 @@ sds serializeJob(sds jobs, job *j) {
     memcpy(sj,j,JOB_STRUCT_SER_LEN);
     memrev16ifbe(&sj->repl);
     memrev64ifbe(&sj->ctime);
-    /* Use a relative expire time for serialization. */
-    if (sj->etime >= server.unixtime)
-        sj->etime = sj->etime - server.unixtime + 1;
-    else
-        sj->etime = 1;
+    /* Use a relative expire time for serialization, but only for the
+     * type SER_MESSAGE. When we want to target storage, it's better to use
+     * absolute times in every field. */
+    if (sertype == SER_MESSAGE) {
+        if (sj->etime >= server.unixtime)
+            sj->etime = sj->etime - server.unixtime + 1;
+        else
+            sj->etime = 1;
+    }
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->delay);
     memrev32ifbe(&sj->retry);
@@ -611,8 +634,17 @@ sds serializeJob(sds jobs, job *j) {
  * Arguments: 'p' is the pointer to the start of the job (the 4 bytes
  * where the job serialized length is stored). While 'len' is the total
  * number of bytes the buffer contains (that may be larger than the
- * serialized job 'p' is pointing to). */
-job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
+ * serialized job 'p' is pointing to).
+ *
+ * The 'sertype' field specifies the serialization type the job was
+ * serialized with, by serializeJob() call.
+ *
+ * When the serialization type is SER_STORAGE, the job state is loaded
+ * as it is, otherwise when SER_MESSAGE is used, the job state is set
+ * to JOB_STATE_ACTIVE.
+ *
+ * In both cases the gc retry field is reset to 0. */
+job *deserializeJob(unsigned char *p, size_t len, unsigned char **next, int sertype) {
     job *j = zcalloc(sizeof(*j));
     unsigned char *start = p; /* To check total processed bytes later. */
     uint32_t joblen, aux;
@@ -633,15 +665,20 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next) {
     memrev16ifbe(j->repl);
     memrev64ifbe(j->ctime);
     memrev32ifbe(j->etime);
-    j->etime = server.unixtime + j->etime; /* Convert back to absolute time. */
+    if (sertype == SER_MESSAGE) {
+        /* Convert back to absolute time if needed. */
+        j->etime = server.unixtime + j->etime;
+    }
     memrev32ifbe(j->delay);
     memrev32ifbe(j->retry);
     p += JOB_STRUCT_SER_LEN;
     len -= JOB_STRUCT_SER_LEN;
 
     /* GC attempts are always reset, while the state will be likely set to
-     * the caller, but otherwise, we assume the job is active. */
-    j->state = JOB_STATE_ACTIVE;
+     * the caller, but otherwise, we assume the job is active if this message
+     * is received from another node. When loading a message from disk instead
+     * (SER_STORAGE serializaiton type), the state is left untouched. */
+    if (sertype == SER_MESSAGE) j->state = JOB_STATE_ACTIVE;
     j->gc_retry = 0;
 
     /* Compute next queue time from known parameters. */

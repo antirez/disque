@@ -57,4 +57,79 @@ test "Acks are evicted only if all the job owners can be reached" {
 }
 
 test "It is possible to acknowledge jobs to nodes not knowing it" {
+    # Add job to 5 nodes
+    set id [D 0 addjob myqueue myjob 0 replicate 5]
+    set job [D 0 show $id]
+    set no_copy_instance [lindex [get_job_instances $job {}] 0]
+
+    # Make sure the instance actually does not know about the job
+    assert {[D $no_copy_instance show $id] eq {}}
+
+    # Acknowledge the job to an instance not having a copy.
+    D $no_copy_instance ackjob $id
+
+    # Make sure the ack is collected at this point
+    wait_for_condition {
+        [count_job_copies $job {acked}] == 0
+    } else {
+        fail "Ack not GCed after some time"
+    }
+}
+
+test "Acknowledge to non owner, while some owner is down" {
+    # Add job to 5 nodes
+    set id [D 0 addjob myqueue myjob 0 replicate 5]
+    set job [D 0 show $id]
+    set owners [lindex [get_job_instances $job {active queued}] 0]
+    set no_copy_instance [lindex [get_job_instances $job {}] 0]
+
+    # Make sure the instance actually does not know about the job
+    assert {[D $no_copy_instance show $id] eq {}}
+
+    # Crash the first of the owners
+    kill_instance disque [lindex $owners 0]
+
+    # Acknowledge the job to an instance not having a copy.
+    D $no_copy_instance ackjob $id
+
+    # Restart the first of the owners
+    restart_instance disque [lindex $owners 0]
+
+    # Make sure the ack is collected at this point
+    wait_for_condition {
+        [count_job_copies $job {acked}] == 0
+    } else {
+        fail "Ack not GCed after some time"
+    }
+}
+
+test "Acknowledge to non owner, while all the owners are down" {
+    # Add job to 5 nodes
+    set id [D 0 addjob myqueue myjob 0 replicate 5]
+    set job [D 0 show $id]
+    set owners [lindex [get_job_instances $job {active queued}] 0]
+    set no_copy_instance [lindex [get_job_instances $job {}] 0]
+
+    # Make sure the instance actually does not know about the job
+    assert {[D $no_copy_instance show $id] eq {}}
+
+    # Crash all the owners
+    foreach ownerid $owners {
+        kill_instance disque $ownerid
+    }
+
+    # Acknowledge the job to an instance not having a copy.
+    D $no_copy_instance ackjob $id
+
+    # Restart all the owners
+    foreach ownerid $owners {
+        restart_instance disque $ownerid
+    }
+
+    # Make sure the ack is collected at this point
+    wait_for_condition {
+        [count_job_copies $job {acked}] == 0
+    } else {
+        fail "Ack not GCed after some time"
+    }
 }

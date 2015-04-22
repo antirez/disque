@@ -130,6 +130,9 @@ struct serverCommand serverCommandTable[] = {
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
 
+    /* AOF specific. */
+    {"loadjob",loadjobCommand,2,"w",0,NULL,0,0,0,0,0},
+
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0}
 };
@@ -857,7 +860,6 @@ void createSharedObjects(void) {
     shared.emptymultibulk = createObject(DISQUE_STRING,sdsnew("*0\r\n"));
     shared.pong = createObject(DISQUE_STRING,sdsnew("+PONG\r\n"));
     shared.queued = createObject(DISQUE_STRING,sdsnew("+QUEUED\r\n"));
-    shared.emptyscan = createObject(DISQUE_STRING,sdsnew("*2\r\n$1\r\n0\r\n*0\r\n"));
     shared.wrongtypeerr = createObject(DISQUE_STRING,sdsnew(
         "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"));
     shared.nokeyerr = createObject(DISQUE_STRING,sdsnew(
@@ -899,10 +901,7 @@ void createSharedObjects(void) {
     shared.unsubscribebulk = createStringObject("$11\r\nunsubscribe\r\n",18);
     shared.psubscribebulk = createStringObject("$10\r\npsubscribe\r\n",17);
     shared.punsubscribebulk = createStringObject("$12\r\npunsubscribe\r\n",19);
-    shared.del = createStringObject("DEL",3);
-    shared.rpop = createStringObject("RPOP",4);
-    shared.lpop = createStringObject("LPOP",4);
-    shared.lpush = createStringObject("LPUSH",5);
+    shared.loadjob = createStringObject("LOADJOB",7);
     for (j = 0; j < DISQUE_SHARED_INTEGERS; j++) {
         shared.integers[j] = createObject(DISQUE_STRING,(void*)(long)j);
         shared.integers[j]->encoding = DISQUE_ENCODING_INT;
@@ -966,6 +965,7 @@ void initServerConfig(void) {
     server.aof_flush_postponed_start = 0;
     server.aof_rewrite_incremental_fsync = DISQUE_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC;
     server.aof_load_truncated = DISQUE_DEFAULT_AOF_LOAD_TRUNCATED;
+    server.aof_enqueue_jobs_once = DISQUE_DEFAULT_AOF_ENQUEUE_JOBS_ONCE;
     server.pidfile = zstrdup(DISQUE_DEFAULT_PID_FILE);
     server.aof_filename = zstrdup(DISQUE_DEFAULT_AOF_FILENAME);
     server.requirepass = NULL;

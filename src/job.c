@@ -207,7 +207,7 @@ int registerJob(job *j) {
     if (retval == DICT_ERR) return DISQUE_ERR;
 
     updateJobAwakeTime(j,0);
-    return DICT_OK;
+    return DISQUE_OK;
 }
 
 /* Lookup a job by ID. */
@@ -799,13 +799,61 @@ int validateJobIDs(client *c, robj **ids, int count) {
 }
 
 /* ----------------------------------  AOF ---------------------------------- */
-void AOFAddJob(job *j) {
+
+/* Emit a LOADJOB command which is used explicitly to load serialized jobs
+ * form disk: LOADJOB <serialize-job-string>. */
+void AOFLoadJob(job *job) {
+    if (server.aof_state == DISQUE_AOF_OFF) return;
+
+    sds serialized = serializeJob(sdsempty(),job,SER_STORAGE);
+    robj *serobj = createObject(DISQUE_STRING,serialized);
+    robj *argv[2] = {shared.loadjob, serobj};
+    feedAppendOnlyFile(argv,2);
+    decrRefCount(serobj);
 }
 
-void AOFDelJob(job *j) {
+void AOFDelJob(job *job) {
+    if (server.aof_state == DISQUE_AOF_OFF) return;
 }
 
-void AOFAckJob(job *j) {
+void AOFAckJob(job *job) {
+    if (server.aof_state == DISQUE_AOF_OFF) return;
+}
+
+/* The LOADJOB command is emitted in the AOF to load serialized jobs at
+ * restart, and is only processed while loading AOFs. Clients calling this
+ * command get an error. */
+void loadjobCommand(client *c) {
+    if (!(c->flags & DISQUE_AOF_CLIENT)) {
+        addReplyError(c,"LOADJOB is a special command only processed from AOF");
+        return;
+    }
+    job *job = deserializeJob(c->argv[1]->ptr,sdslen(c->argv[1]->ptr),NULL,SER_STORAGE);
+
+    /* We expect to be able to read back what we serialized. */
+    if (job == NULL) {
+        serverLog(DISQUE_WARNING,
+            "Unrecoverable error loading AOF: corrupted LOADJOB data.");
+        exit(1);
+    }
+
+    int enqueue_job = 0;
+    if (job->state == JOB_STATE_QUEUED) {
+        if (server.aof_enqueue_jobs_once) enqueue_job = 1;
+        job->state = JOB_STATE_ACTIVE;
+    }
+
+    /* Check if the job expired before registering it. */
+    if (job->etime <= server.unixtime) {
+        freeJob(job);
+        return;
+    }
+
+    /* Register the job, and if needed enqueue it: we put jobs back into
+     * queues only if enqueue-jobs-at-next-restart option is set, that is,
+     * when a controlled restart happens. */
+    if (registerJob(job) == DISQUE_OK && enqueue_job)
+        enqueueJob(job);
 }
 
 /* --------------------------  Jobs related commands ------------------------ */
@@ -881,7 +929,7 @@ void jobReplicationAchieved(job *j) {
     else
         updateJobAwakeTime(j,0); /* Queue with delay. */
 
-    AOFAddJob(j);
+    AOFLoadJob(j);
 }
 
 /* This function is called periodically by clientsCron(). Its goal is to
@@ -1100,7 +1148,7 @@ void addjobCommand(client *c) {
             updateJobAwakeTime(job,0);
         }
         addReplyJobID(c,job);
-        AOFAddJob(job);
+        AOFLoadJob(job);
     }
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1

@@ -167,7 +167,7 @@ void setJobAssociatedValue(job *j, void *val);
 void *jobGetAssociatedValue(job *j);
 char *jobStateToString(int state);
 int validateJobIDs(client *c, robj **ids, int count);
-void AOFAddJob(job *j);
+void AOFLoadJob(job *j);
 void AOFDelJob(job *j);
 void AOFAckJob(job *j);
 

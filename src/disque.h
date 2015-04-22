@@ -122,6 +122,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_DEFAULT_AOF_FILENAME "disque.aof"
 #define DISQUE_DEFAULT_AOF_NO_FSYNC_ON_REWRITE 0
 #define DISQUE_DEFAULT_AOF_LOAD_TRUNCATED 1
+#define DISQUE_DEFAULT_AOF_ENQUEUE_JOBS_ONCE 0
 #define DISQUE_DEFAULT_ACTIVE_REHASHING 1
 #define DISQUE_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC 1
 #define DISQUE_DEFAULT_MIN_SLAVES_TO_WRITE 0
@@ -374,8 +375,8 @@ struct sharedObjectsStruct {
     *outofrangeerr, *noscripterr, *loadingerr, *slowscripterr, *bgsaveerr,
     *masterdownerr, *roslaveerr, *execaborterr, *noautherr, *noreplicaserr,
     *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk, *subscribebulk,
-    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *rpop, *lpop,
-    *lpush, *emptyscan, *minstring, *maxstring,
+    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *loadjob,
+    *minstring, *maxstring,
     *integers[DISQUE_SHARED_INTEGERS],
     *mbulkhdr[DISQUE_SHARED_BULKHDR_LEN], /* "*<value>\r\n" */
     *bulkhdr[DISQUE_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */
@@ -531,6 +532,7 @@ struct disqueServer {
     int aof_last_write_status;      /* DISQUE_OK or DISQUE_ERR */
     int aof_last_write_errno;       /* Valid if aof_last_write_status is ERR */
     int aof_load_truncated;         /* Don't stop on unexpected AOF EOF. */
+    int aof_enqueue_jobs_once;      /* Enqueue jobs loading AOF, once. */
     /* AOF pipes used to communicate between parent and child during rewrite. */
     int aof_pipe_write_data_to_child;
     int aof_pipe_read_data_from_parent;
@@ -865,6 +867,7 @@ void showCommand(client *c);
 void ackjobCommand(client *c);
 void enqueueCommand(client *c);
 void dequeueCommand(client *c);
+void loadjobCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

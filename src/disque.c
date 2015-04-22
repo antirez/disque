@@ -133,6 +133,7 @@ struct serverCommand serverCommandTable[] = {
 
     /* AOF specific. */
     {"loadjob",loadjobCommand,2,"w",0,NULL,0,0,0,0,0},
+    {"bgrewriteaof",bgrewriteaofCommand,1,"ar",0,NULL,0,0,0,0,0},
 
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0}

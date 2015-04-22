@@ -30,6 +30,7 @@
 #include "disque.h"
 #include "bio.h"
 #include "rio.h"
+#include "job.h"
 
 #include <signal.h>
 #include <fcntl.h>
@@ -751,8 +752,24 @@ int rewriteAppendOnlyFile(char *filename) {
     if (server.aof_rewrite_incremental_fsync)
         rioSetAutoSync(&aof,DISQUE_AOF_AUTOSYNC_BYTES);
 
-    /* TODO: Rerwite jobs state here. */
-    di = NULL; /* Technically we used an iterator in the TODO step. */
+    /* Rerwite jobs that are in interesting states: active or queued.
+     * ad LOADJOB commands. */
+    di = dictGetIterator(server.jobs);
+    struct dictEntry *de;
+    while((de = dictNext(di)) != NULL) {
+        job *job = dictGetKey(de);
+        if (job->state != JOB_STATE_ACTIVE &&
+            job->state != JOB_STATE_QUEUED) continue;
+
+        char cmd[] = "*2\r\n$7\r\nLOADJOB\r\n";
+        sds serialized = serializeJob(sdsempty(),job,SER_STORAGE);
+        if (rioWrite(&aof,cmd,sizeof(cmd)-1) == 0) goto werr;
+        if (rioWriteBulkString(&aof,serialized,sdslen(serialized)) == 0)
+            goto werr;
+        sdsfree(serialized);
+    }
+    dictReleaseIterator(di);
+    di = NULL; /* Don't free it at end. */
 
     /* Do an initial slow fsync here while the parent is still sending
      * data, in order to make the next final fsync faster. */

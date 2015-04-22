@@ -375,7 +375,7 @@ struct sharedObjectsStruct {
     *outofrangeerr, *noscripterr, *loadingerr, *slowscripterr, *bgsaveerr,
     *masterdownerr, *roslaveerr, *execaborterr, *noautherr, *noreplicaserr,
     *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk, *subscribebulk,
-    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *loadjob,
+    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *loadjob, *deljob,
     *minstring, *maxstring,
     *integers[DISQUE_SHARED_INTEGERS],
     *mbulkhdr[DISQUE_SHARED_BULKHDR_LEN], /* "*<value>\r\n" */
@@ -868,6 +868,7 @@ void ackjobCommand(client *c);
 void enqueueCommand(client *c);
 void dequeueCommand(client *c);
 void loadjobCommand(client *c);
+void deljobCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

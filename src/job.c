@@ -223,8 +223,10 @@ int unregisterJob(job *j) {
     j = lookupJob(j->id);
     if (!j) return DISQUE_ERR;
 
-    /* Emit a DELJOB command for all the job states but WAITREPL. */
-    if (j->state >= JOB_STATE_ACTIVE) AOFDelJob(j);
+    /* Emit a DELJOB command for all the job states but WAITREPL (no
+     * ADDJOB emitted yer), and ACKED (DELJOB already emitted). */
+    if (j->state >= JOB_STATE_ACTIVE && j->state != JOB_STATE_ACKED)
+        AOFDelJob(j);
 
     /* Remove from awake skip list. */
     if (j->awakeme) serverAssert(skiplistDelete(server.awakeme,j));
@@ -800,8 +802,8 @@ int validateJobIDs(client *c, robj **ids, int count) {
 
 /* ----------------------------------  AOF ---------------------------------- */
 
-/* Emit a LOADJOB command which is used explicitly to load serialized jobs
- * form disk: LOADJOB <serialize-job-string>. */
+/* Emit a LOADJOB command into the AOF. which is used explicitly to load
+ * serialized jobs form disk: LOADJOB <serialize-job-string>. */
 void AOFLoadJob(job *job) {
     if (server.aof_state == DISQUE_AOF_OFF) return;
 
@@ -812,12 +814,36 @@ void AOFLoadJob(job *job) {
     decrRefCount(serobj);
 }
 
+/* Emit a DELJOB command into the AOF. This function is called in the following
+ * two cases:
+ *
+ * 1) As a side effect of the job being acknowledged, when AOFAckJob()
+ *    is called.
+ * 2) When the server evicts a job from memory, but only if the state is one
+ *    of active or queued. Yet not replicated jobs are not written into the
+ *    AOF so there is no need to send a DELJOB, while already acknowledged
+ *    jobs are handled by point "1". */
 void AOFDelJob(job *job) {
     if (server.aof_state == DISQUE_AOF_OFF) return;
+
+    robj *jobid = createStringObject(job->id,JOB_ID_LEN);
+    robj *argv[2] = {shared.deljob, jobid};
+    feedAppendOnlyFile(argv,2);
+    decrRefCount(jobid);
 }
 
+/* Emit a DELJOB command, since ths is how we handle acknowledged jobs from
+ * the point of view of AOF. We are not interested in loading back acknowledged
+ * jobs, nor we include them on AOF rewrites, since ACKs garbage collection
+ * works anyway if nodes forget about ACKs and dropping ACKs is not a safety
+ * violation, it may just result into multiple deliveries of the same
+ * message.
+ *
+ * However we keep the API separated, so it will be simple if we change our
+ * mind or we want to have a feature to persist ACKs. */
 void AOFAckJob(job *job) {
     if (server.aof_state == DISQUE_AOF_OFF) return;
+    AOFDelJob(job);
 }
 
 /* The LOADJOB command is emitted in the AOF to load serialized jobs at
@@ -1248,3 +1274,29 @@ void showCommand(client *c) {
     else
         addReply(c,shared.nullbulk);
 }
+
+/* DELJOB jobid_1 jobid_2 ... jobid_N
+ *
+ * Evict (and possibly remove from queue) all the jobs in memeory
+ * matching the specified job IDs. Jobs are evicted whatever their state
+ * is, since this command is mostly used inside the AOF or for debugging
+ * purposes.
+ *
+ * The return value is the number of jobs evicted.
+ */
+void deljobCommand(client *c) {
+    int j, evicted = 0;
+
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+
+    /* Perform the appropriate action for each job. */
+    for (j = 1; j < c->argc; j++) {
+        job *job = lookupJob(c->argv[j]->ptr);
+        if (job == NULL) return;
+        unregisterJob(job);
+        freeJob(job);
+        evicted++;
+    }
+    addReplyLongLong(c,evicted);
+}
+

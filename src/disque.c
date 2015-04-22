@@ -126,6 +126,7 @@ struct serverCommand serverCommandTable[] = {
     {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
     {"getjob",getjobCommand,-2,"wF",0,NULL,0,0,0,0,0},
     {"ackjob",ackjobCommand,-1,"wF",0,NULL,0,0,0,0,0},
+    {"deljob",deljobCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
@@ -902,6 +903,7 @@ void createSharedObjects(void) {
     shared.psubscribebulk = createStringObject("$10\r\npsubscribe\r\n",17);
     shared.punsubscribebulk = createStringObject("$12\r\npunsubscribe\r\n",19);
     shared.loadjob = createStringObject("LOADJOB",7);
+    shared.deljob = createStringObject("DELJOB",6);
     for (j = 0; j < DISQUE_SHARED_INTEGERS; j++) {
         shared.integers[j] = createObject(DISQUE_STRING,(void*)(long)j);
         shared.integers[j]->encoding = DISQUE_ENCODING_INT;

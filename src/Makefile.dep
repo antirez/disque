@@ -8,7 +8,7 @@ ae_select.o: ae_select.c
 anet.o: anet.c fmacros.h anet.h
 aof.o: aof.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
-  rio.h bio.h
+  rio.h bio.h job.h
 bio.o: bio.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
   rio.h bio.h
@@ -27,7 +27,7 @@ crc16.o: crc16.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
 crc64.o: crc64.c
 debug.o: debug.c disque.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   skiplist.h zmalloc.h anet.h version.h util.h latency.h sparkline.h \
-  rio.h sha1.h crc64.h bio.h
+  rio.h sha1.h crc64.h job.h queue.h bio.h
 dict.o: dict.c fmacros.h dict.h zmalloc.h disqueassert.h
 disque-check-aof.o: disque-check-aof.c fmacros.h config.h
 disque-cli.o: disque-cli.c fmacros.h version.h ../deps/hiredis/hiredis.h \

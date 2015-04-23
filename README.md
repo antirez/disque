@@ -1,7 +1,7 @@
 Disque, an in-memory, distributed job queue
 ===
 
-Disque is a distributed, in memory, message broker.
+Disque is ongoing experiment to build a distributed, in memory, message broker.
 Its goal is to capture the essence of the "Redis as a jobs queue" use case,
 which is usually implemented using blocking list operations, and move
 it into an ad-hoc, self-contained, scalable, and fault tolerant design, with
@@ -10,8 +10,10 @@ in terms of simplicity, performances, and implementation as a C non-blocking
 networked server.
 
 Currently the project is just an alpha quality preview, that was developed
-in roughly 100 hours (so far, keep me updated!), mostly at night and during
+in roughly 120 hours (so far, keep me updated!), mostly at night and during
 weekends.
+
+**WARNING: This is alpha code NOT suitable for production. The implementation and API will likely change in significant ways during the next months.**
 
 Give me the details!
 ---
@@ -37,9 +39,9 @@ Disque at-least-once delivery is designed to **approximate single delivery** whe
 
 Disque is a distributed system where **all nodes have the same role** (aka, it is multi-master). Producers and consumers can attach to whatever node they like, and there is no need for producers and consumers of the same queue, to stay connected to the same node. Nodes will automatically exchange messages based on load and client requests.
 
-Disque is Available (as in "A" of CAP): producers and consumers can make progresses as long as a single node is reachable.
+Disque is Available (it is an eventually consistent AP system in CAP terms): producers and consumers can make progresses as long as a single node is reachable.
 
-Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with replication factor of 3 but may want to run away before knowing if the contacted node was really able to replicate it to the specified number of nodes or not.
+Disque supports **optional asynchronous commands** that are low latency for the client but provide less guarantees. For example a producer can add a job to a queue with a replication factor of 3, but may want to run away before knowing if the contacted node was really able to replicate it to the specified number of nodes or not. The node will replicate the message in the background in a best effort way.
 
 Disque **automatically re-queue messages that are not acknowledged** as already processed by consumers, after a message-specific retry time. There is no need for consumers to re-queue a message if it was not processed.
 
@@ -55,19 +57,19 @@ Disque provides the user with fine-grained control for each job **using three ti
 3. The retry time (how much time should elapse, since the last time the job was queued, and without an acknowledge about the job delivery, before the job is re-queued again for delivery).
 4. The expire time (how much time should elapse for the job to be deleted regardless of the fact it was successfully delivered, i.e. acknowledged, or not).
 
-Finally, Disque supports optional on disk persistence, which is not enabled by default, but that can be handy in single data center setups and during restarts.
+Finally, Disque supports optional disk persistence, which is not enabled by default, but that can be handy in single data center setups and during restarts.
 
 ACKs and retries
 ---
 
 Disque implementation of *at least once* delivery semantics is designed in order
-to avoid multiple delivery during certain classes of failures. It is not able to guarantee that no multiple deliveries will occur. However there are many at least once workloads where duplicated deliveries are acceptable (or explicitly handled), but not desirable either. A trivial example is sending emails to users (it is not terrible if an user gets a duplicated email, but is important to avoid it when possible), or doing idempotent operations that are expensive (all the times where it is critical for performances to avoid multiple deliveries).
+to avoid multiple delivery during certain classes of failures. It is not able to guarantee that no multiple deliveries will occur. However there are many *at least once* workloads where duplicated deliveries are acceptable (or explicitly handled), but not desirable either. A trivial example is sending emails to users (it is not terrible if an user gets a duplicated email, but is important to avoid it when possible), or doing idempotent operations that are expensive (all the times where it is critical for performances to avoid multiple deliveries).
 
 In order to avoid multiple deliveries when possible, Disque uses client ACKs. When a consumer processes a message correctly, it should acknowledge this fact to Disque. ACKs are replicated to multiple nodes, and are garbage collected as soon as the system believes it is unlikely that more nodes in the cluster have the job (the ACK refers to) still active. Under memory pressure or under certain failure scenarios, ACKs are eventually discarded.
 
 More explicitly:
 
-1. A job is replicated to multiple nodes, but only *queued* in a single node. There is a difference between having a job in memory, and queueing it for delivery.
+1. A job is replicated to multiple nodes, but usually only *queued* in a single node. There is a difference between having a job in memory, and queueing it for delivery.
 2. Nodes having a copy of a message, if a certain amount of time has elapsed without getting the ACK for the message, will re-queue it. Nodes will run a best-effort protocol to avoid re-queueing the message multiple times.
 3. ACKs are replicated and garbage collected across the cluster so that eventually processed messages are evicted (this happens ASAP if there are no failures nor network partitions).
 
@@ -76,7 +78,7 @@ For example, if a node having a copy of a job gets partitioned away during the t
 So an ACK is just a **proof of delivery** that is replicated and retained for
 some time in order to make multiple deliveries less likely to happen in practice.
 
-As already mentioned, In order to control replication and retires, a Disque job has the following associated properties: number of replicas, delay, retry and expire.
+As already mentioned, In order to control replication and retries, a Disque job has the following associated properties: number of replicas, delay, retry and expire.
 
 If a job has a retry time set to 0, it will get queued exactly once (and in this case a replication factor greater than 1 is useless, and signaled as an error to the user), so it will get delivered either a single time or will never get delivered. While jobs can be persisted on disk for safety, queues aren't, so this behavior is guaranteed even when nodes restart after a crash, whatever the persistence configuration is. However when nodes are manually restarted by the sysadmin, for example for upgrades, queues are persisted correctly and reloaded at startup, since the store/load operation is atomic in this case, and there are no race conditions possible (it is not possible that a job was delivered to a client and is persisted on disk as queued at the same time).
 
@@ -89,7 +91,7 @@ However because there are single data center setups, this is
 too risky in certain environments, so:
 
 1. Optionally you can enable AOF persistence (similar to Redis). In this mode only jobs data is persisted, but content of queues is not. However jobs will be re-queued eventually.
-2. Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software. In this case both jobs and queues are persisted, since in this specific case persisting queues is safe. The format used is the same as the AOF format, but with additional commands to put the jobs into the queue.
+2. Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software. In this case both jobs and queues are persisted, since in this specific case persisting queues is safe. The format used is the same as the AOF format, but information about queued jobs is not discarded as is usually happens.
 
 Job IDs
 ---
@@ -123,14 +125,14 @@ other nodes.
 
 Only 32 bits of the original node ID is included in the message, however
 in a cluster with 100 Disque nodes, the probability of two nodes to have
-identical 64 bit ID prefixes is given by the birthday paradox:
+identical 32 bit ID prefixes is given by the birthday paradox:
 
     P(100,2^32) = .000001164
 
 In case of collisions, the workers may just do a non-efficient choice.
 
 Collisions in the 128 bits random part are believed to be impossible,
-since it ss computed as follows.
+since it is computed as follows.
 
     128 bit ID = SHA1(seed || counter)
 
@@ -156,11 +158,12 @@ Adds a job to the specified queue. Arguments are as follows:
 * *DELAY sec* is the number of seconds that should elapse before the job is queued by any server.
 * *RETRY sec* period after which, if no ACK is received, the job is put again into the queue for delivery. If RETRY is 0, the job has an at-least-once delivery semantics.
 * *TTL sec* is the max job life in seconds. After this time, the job is deleted even if it was not successfully delivered.
+* *MAXLEN count* specifies that if there are already *count* messages queued for the specified queue name, the message is refused and an error reported to the client.
 * *ASYNC* asks the server to let the command return ASAP and replicate the job to other nodes in the background. The job gets queued ASAP, while normally the job is put into the queue only when the client gets a positive reply.
 
 The command returns the Job ID of the added job, assuming ASYNC is specified, or if the job was replicated correctly to the specified number of nodes. Otherwise an error is returned.
 
-    GETJOBS [TIMEOUT <ms-timeout>] [COUNT <count>] FROM queue1 queue2 ... queueN
+    GETJOB [TIMEOUT <ms-timeout>] [COUNT <count>] FROM queue1 queue2 ... queueN
 
 Return jobs available in one of the specified queues, or return NULL
 if the timeout is reached. A single job per call is returned unless a count greater than 1 is specified. Jobs are returned as a three elements array containing the queue name, the Job ID, and the job body itself. If jobs are available into multiple queues, queues are processed left to right.
@@ -173,6 +176,8 @@ Acknowledges the execution of one or more jobs via job IDs. The node receiving t
 
 Other commands
 ===
+
+Note: not everything implemented yet.
 
     INFO
 Generic server information / stats.
@@ -205,11 +210,8 @@ nodes in the cluster.
     SHOW <job-id>
 Describe the job.
 
-    SCANJOBS <cursor> [STATE ...] [QUEUE ...] [COUNT ...]
+    SCAN <job|queue> <cursor> [STATE ...] [COUNT ...] [MAXIDLE ...]
 Iterate job IDs.
-
-    SCANQUEUES <cursor> [COUNT ...] [MAXIDLE ...]
-Iterate queue names.
 
 Client libraries
 ===
@@ -287,7 +289,7 @@ Cluster messages related to nodes federation
 
 * NEEDJOBS(queue,count): The sender asks the receiver to obtain messages for a given queue, possibly *count* messages, but this is only an hit for congestion control and messages optimization, the receiver is free to reply with whatever number of messages. NEEDJOBS messages are delivered in two ways: broadcasted to every node in the cluster from time to time, in order to discover new source nodes for a given queue, or more often, to a set of nodes that recently replies with jobs for a given queue. This latter mechanism is called an *ad hoc* delivery, and is possible since every node remembers for some time the set of nodes that were recent providers of messages for a given queue. In both cases, NEEDJOBS messages are delivered with exponential delays, with the exception of queues that drop to zero-messages and have a positive recent import rate, in this case an ad hoc NEEDJOBS delivery is performed regardless of the last time the message was delivered in order to allow a continuous stream of messages under load.
 
-* YOURJOBS(array of messages): The reply to NEEDJOBS. An array of serialized jobs, usually all about the same queue (but future optimization may allow to send different jobs from different queues). Jobs into YOURJOBS replies are extracted from the local queue, and queued at the receiver node's queue with the same name. So even messages with a retry set to 0 (at most once delivery) still guarantee the safety rule since a given message may be in the source node, in the wire, or already received in the destination node. If a YOURJOBS message is lost, at least once delivery jobs will be re-queued later when the retry time is reached.
+* YOURJOBS(array of messages): The reply to NEEDJOBS. An array of serialized jobs, usually all about the same queue (but future optimization may allow to send different jobs from different queues). Jobs into YOURJOBS replies are extracted from the local queue, and queued at the receiver node's queue with the same name. So even messages with a retry set to 0 (at most once delivery) still guarantee the safety rule since a given message may be in the source node, on the wire, or already received in the destination node. If a YOURJOBS message is lost, at least once delivery jobs will be re-queued later when the retry time is reached.
 
 Disque state machine
 ---
@@ -301,7 +303,7 @@ Note that: `job` is a job object with the following fields:
 3. `job.id`: The job 48 chars ID.
 4. `job.state`: The job state among: `wait-repl`, `active`, `queued`, `acknowledged`.
 5. `job.replicate`: Replication factor for this job.
-5. `job.qtime`: Time at which we need to re-enqueue the job.
+5. `job.qtime`: Time at which we need to re-queue the job.
 
 List fields such as `.delivered` and `.confirmed` support methods like `.size` to get the number of elements.
 
@@ -425,7 +427,7 @@ ON RECV cluster message `QUEUED(string job-id)`:
 4. IF `job.state == queued` THEN if sender node ID is greater than my node ID call DEQUEUE(job).
 5. Update `job.qtime` setting it to NOW + job.retry.
 
-Step 4: If multiple nodes re-enqueue the job about at the same time because of race conditions or network partitions that make `WILLQUEUE` not effective, then `QUEUED` forces receiving nodes to dequeue the message if the sender has a greater node ID, lowering the probability of unwanted multiple delivery.
+Step 4: If multiple nodes re-queue the job about at the same time because of race conditions or network partitions that make `WILLQUEUE` not effective, then `QUEUED` forces receiving nodes to dequeue the message if the sender has a greater node ID, lowering the probability of unwanted multiple delivery.
 
 Step 5: Now the message is already queued somewhere else, but the node will retry again after the retry time.
 
@@ -492,10 +494,9 @@ FAQ
 Is Disque part of Redis?
 ---
 
-No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However given that this was a side project coded mostly at night, I went for the simplest route. Sorry, I'm a pragmatic kind of person and it was very important to maximize the probability of me actually being able to release the project soon or later.
+No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common fundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways biggen than writing Disque itself.
 
-However conceptually Disque is related to Redis, since it tries to solve a
-Redis use case in a vertical, ad-hoc way.
+However while it is a separated project, conceptually Disque is related to Redis, since it tries to solve a Redis use case in a vertical, ad-hoc way.
 
 Who created Disque?
 ---
@@ -527,7 +528,10 @@ when an instance is out of memory, jobs are stored into a log file instead
 of memory. As more free memory is available in the instance, on disk jobs
 are loaded.
 
+However in order to implement this, there is to observe strong evidence of its
+general usefulness for the user base.
+
 What Disque means?
 ---
 
-DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*.
+DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*. And because of this tradeof it gains many other interesting things.

@@ -288,25 +288,18 @@ typedef long long mstime_t; /* millisecond time type. */
  * Data types
  *----------------------------------------------------------------------------*/
 
-/* A disque object, that is a type able to hold a string / list / set */
+/* A disque object, that is a type able to hold a string object with
+ * reference counting. The implementation is generic, with a type and pointer
+ * field so that it can represent other types if needed. */
 
 /* The actual Disque Object */
-#define DISQUE_LRU_BITS 24
-#define DISQUE_LRU_CLOCK_MAX ((1<<DISQUE_LRU_BITS)-1) /* Max value of obj->lru */
-#define DISQUE_LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
 typedef struct disqueObject {
     unsigned type:4;
     unsigned encoding:4;
-    unsigned lru:DISQUE_LRU_BITS; /* lru time (relative to server.lruclock) */
+    unsigned notused:24;
     int refcount;
     void *ptr;
 } robj;
-
-/* Macro used to obtain the current LRU clock.
- * If the current resolution is lower than the frequency we refresh the
- * LRU clock (as it should be in production servers) we return the
- * precomputed value, otherwise we need to resort to a function call. */
-#define LRU_CLOCK() ((1000/server.hz <= DISQUE_LRU_CLOCK_RESOLUTION) ? server.lruclock : getLRUClock())
 
 /* Macro used to initialize a Disque object allocated on the stack.
  * Note that this macro is taken near the structure definition to make sure
@@ -432,7 +425,6 @@ struct disqueServer {
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
     aeEventLoop *el;
-    unsigned lruclock:DISQUE_LRU_BITS; /* Clock for LRU eviction */
     int shutdown_asap;          /* SHUTDOWN needed ASAP */
     int activerehashing;        /* Incremental rehash in serverCron() */
     char *requirepass;          /* Pass for AUTH command, or NULL */

@@ -530,10 +530,6 @@ void flushServerData(void) {
 
 /* ======================= Cron: called every 100 ms ======================== */
 
-unsigned int getLRUClock(void) {
-    return (mstime()/DISQUE_LRU_CLOCK_RESOLUTION) & DISQUE_LRU_CLOCK_MAX;
-}
-
 /* Add a sample to the operations per second array of samples. */
 void trackInstantaneousMetric(int metric, long long current_reading) {
     long long t = mstime() - server.inst_metric[metric].last_sample_time;
@@ -711,19 +707,6 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         trackInstantaneousMetric(DISQUE_METRIC_NET_OUTPUT,
                 server.stat_net_output_bytes);
     }
-
-    /* We have just DISQUE_LRU_BITS bits per object for LRU information.
-     * So we use an (eventually wrapping) LRU clock.
-     *
-     * Note that even if the counter wraps it's not a big problem,
-     * everything will still work but some object will appear younger
-     * to Disque. However for this to happen a given object should never be
-     * touched for all the time needed to the counter to wrap, which is
-     * not likely.
-     *
-     * Note that you can change the resolution altering the
-     * DISQUE_LRU_CLOCK_RESOLUTION define. */
-    server.lruclock = getLRUClock();
 
     /* Record the max memory used since the server was started. */
     if (zmalloc_used_memory() > server.stat_peak_memory)
@@ -985,7 +968,6 @@ void initServerConfig(void) {
     server.cluster_configfile = zstrdup(DISQUE_DEFAULT_CLUSTER_CONFIG_FILE);
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
     server.loading_process_events_interval_bytes = (1024*1024*2);
-    server.lruclock = getLRUClock();
 
     /* Client output buffer limits */
     for (j = 0; j < DISQUE_CLIENT_TYPE_COUNT; j++)
@@ -1855,7 +1837,6 @@ sds genDisqueInfoString(char *section) {
             "uptime_in_seconds:%jd\r\n"
             "uptime_in_days:%jd\r\n"
             "hz:%d\r\n"
-            "lru_clock:%ld\r\n"
             "config_file:%s\r\n",
             DISQUE_VERSION,
             disqueGitSHA1(),
@@ -1875,7 +1856,6 @@ sds genDisqueInfoString(char *section) {
             (intmax_t)uptime,
             (intmax_t)(uptime/(3600*24)),
             server.hz,
-            (unsigned long) server.lruclock,
             server.configfile ? server.configfile : "");
     }
 

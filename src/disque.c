@@ -474,7 +474,8 @@ int htNeedsResize(dict *dict) {
 }
 
 void tryResizeHashTables(void) {
-    /* TODO: Resize dictionaries we'll use around. */
+    if (htNeedsResize(server.jobs)) dictResize(server.jobs);
+    if (htNeedsResize(server.queues)) dictResize(server.queues);
 }
 
 /* Our hash table implementation performs rehashing incrementally while
@@ -485,15 +486,17 @@ void tryResizeHashTables(void) {
  * The function returns 1 if some rehashing was performed, otherwise 0
  * is returned. */
 int incrementallyRehash(void) {
-    /* TODO: */
+    int workdone = 0;
 
-#if 0
-    if (dictIsRehashing(server.db[dbid].dict)) {
-        dictRehashMilliseconds(server.db[dbid].dict,1);
-        return 1; /* already used our millisecond for this loop... */
+    if (dictIsRehashing(server.jobs)) {
+        dictRehashMilliseconds(server.jobs,1);
+        workdone = 1;
     }
-#endif
-    return 0;
+    if (dictIsRehashing(server.queues)) {
+        dictRehashMilliseconds(server.queues,1);
+        workdone = 1;
+    }
+    return workdone;
 }
 
 /* This function is called once a background process of some kind terminates,
@@ -656,7 +659,6 @@ void databasesCron(void) {
          * DB we'll be able to start from the successive in the next
          * cron loop iteration. */
 
-        /* TODO: Fix the calls below to do something useful. */
         tryResizeHashTables();
         incrementallyRehash();
     }

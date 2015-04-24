@@ -779,6 +779,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
          }
     }
 
+    /* Queue cron function: deletes idle empty queues that are just using
+     * memory. */
+    run_with_period(100) {
+        queueCron();
+    }
 
     /* AOF postponed flush: Try at every cron cycle if the slow fsync
      * completed. */

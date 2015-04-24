@@ -807,6 +807,7 @@ void closeListeningSockets(int unlink_unix_socket);
 void updateCachedTime(void);
 void resetServerStats(void);
 unsigned int getLRUClock(void);
+void queueCron(void);
 
 /* Configuration */
 void loadServerConfig(char *filename, char *options);

@@ -219,6 +219,29 @@ int GCQueue(queue *q) {
     return DISQUE_OK;
 }
 
+/* This function is called form serverCron() in order to incrementally remove
+ * from memory queues which are found to be idle and empty. */
+void queueCron(void) {
+    mstime_t start = mstime();
+    long sampled = 0, evicted = 0;
+
+    while (dictSize(server.queues) != 0) {
+        dictEntry *de = dictGetRandomKey(server.queues);
+        queue *q = dictGetVal(de);
+
+        sampled++;
+        if (GCQueue(q) == DISQUE_OK) evicted++;
+
+        /* First exit condition: we are able to expire less than 10% of
+         * entries. */
+        if (sampled > 10 && (evicted * 10) < sampled) break;
+
+        /* Second exit condition: we are looping for some time and maybe
+         * we are using more than one or two milliseconds of time. */
+        if (((sampled+1) % 1000) == 0 && mstime()-start > 1) break;
+    }
+}
+
 /* -------------------------- Blocking on queues ---------------------------- */
 
 /* Handle blocking if GETJOBS fonud no jobs in the specified queues.

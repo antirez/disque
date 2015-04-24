@@ -369,7 +369,7 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
 void processJob(job *j) {
     mstime_t old_awakeme = j->awakeme;
 
-    serverLog(DISQUE_NOTICE,
+    serverLog(DISQUE_VERBOSE,
         "PROCESS %.48s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
         j->id,
         (int)j->state,
@@ -383,7 +383,7 @@ void processJob(job *j) {
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
-        serverLog(DISQUE_NOTICE,"EVICT %.48s", j->id);
+        serverLog(DISQUE_VERBOSE,"EVICT %.48s", j->id);
         unregisterJob(j);
         freeJob(j);
         return;
@@ -916,7 +916,7 @@ void addReplyJobID(client *c, job *j) {
  * copies from other nodes), to avoid non acknowledged jobs to be active
  * when possible. */
 void jobReplicationAchieved(job *j) {
-    serverLog(DISQUE_NOTICE,"Replication ACHIEVED");
+    serverLog(DISQUE_VERBOSE,"Replication ACHIEVED");
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */

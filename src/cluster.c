@@ -1326,7 +1326,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         uint32_t mayhave = ntohl(hdr->data.jobid.job.aux);
 
-        serverLog(DISQUE_NOTICE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.48s",
+        serverLog(DISQUE_VERBOSE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.48s",
             (int) mayhave,
             sender->name, hdr->data.jobid.job.id);
 
@@ -1363,7 +1363,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) {
-            serverLog(DISQUE_NOTICE,"RECEIVED DELJOB FOR JOB %.48s", j->id);
+            serverLog(DISQUE_VERBOSE,"RECEIVED DELJOB FOR JOB %.48s", j->id);
             unregisterJob(j);
             freeJob(j);
         }
@@ -1378,7 +1378,7 @@ int clusterProcessPacket(clusterLink *link) {
         j->flags &= ~JOB_FLAG_BCAST_QUEUED;
 
         if (j && j->state < JOB_STATE_QUEUED) {
-            serverLog(DISQUE_NOTICE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
+            serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
             if (delay == 0) {
                 enqueueJob(j);
             } else {
@@ -1390,7 +1390,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state <= JOB_STATE_QUEUED) {
-            serverLog(DISQUE_NOTICE,"UPDATING QTIME FOR JOB %.48s", j->id);
+            serverLog(DISQUE_VERBOSE,"UPDATING QTIME FOR JOB %.48s", j->id);
             /* Move the time we'll re-queue this job in the future. Moreover
              * if the sender has a Node ID greate than our node ID, and we
              * have the message queued as well, dequeue it, to avoid an
@@ -1430,7 +1430,7 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t count = ntohl(hdr->data.jobsreq.about.count);
         robj *qname = createStringObject(hdr->data.jobsreq.about.qname,
                                          qnamelen);
-        serverLog(DISQUE_NOTICE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
+        serverLog(DISQUE_VERBOSE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
             (char*)qname->ptr,count);
         receiveNeedJobs(sender,qname,count);
         decrRefCount(qname);
@@ -1876,13 +1876,13 @@ void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay) {
  * This message is sent to all the nodes we believe may have a copy
  * of the message and are reachable. */
 void clusterBroadcastQueued(job *j) {
-    serverLog(DISQUE_NOTICE,"BCAST QUEUED: %.48s",j->id);
+    serverLog(DISQUE_VERBOSE,"BCAST QUEUED: %.48s",j->id);
     clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_QUEUED,0);
 }
 
 /* Send a DELJOB message to all the nodes that may have a copy. */
 void clusterBroadcastDelJob(job *j) {
-    serverLog(DISQUE_NOTICE,"BCAST DELJOB: %.48s",j->id);
+    serverLog(DISQUE_VERBOSE,"BCAST DELJOB: %.48s",j->id);
     clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_DELJOB,0);
 }
 
@@ -1890,7 +1890,7 @@ void clusterBroadcastDelJob(job *j) {
  * already queued, to prevent us from queueing it in the next few
  * milliseconds. */
 void clusterSendWillQueue(job *j) {
-    serverLog(DISQUE_NOTICE,"BCAST WILLQUEUE: %.48s",j->id);
+    serverLog(DISQUE_VERBOSE,"BCAST WILLQUEUE: %.48s",j->id);
     clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_WILLQUEUE,0);
 }
 
@@ -1911,7 +1911,7 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     uint32_t alloclen;
     clusterMsg *hdr;
 
-    serverLog(DISQUE_NOTICE,"Sending NEEDJOBS for %s %d, %d nodes",
+    serverLog(DISQUE_VERBOSE,"Sending NEEDJOBS for %s %d, %d nodes",
         (char*)qname->ptr, (int)numjobs, (int)dictSize(nodes));
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
@@ -1938,7 +1938,7 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
 
     if (!node->link) return;
 
-    serverLog(DISQUE_NOTICE,"Sending %d jobs to %.40s", (int)count,node->name);
+    serverLog(DISQUE_VERBOSE,"Sending %d jobs to %.40s", (int)count,node->name);
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
     totlen += sizeof(clusterMsgDataJob) -

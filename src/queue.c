@@ -125,7 +125,7 @@ int enqueueJob(job *job) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
         return DISQUE_ERR;
 
-    serverLog(DISQUE_NOTICE,"QUEUED %.48s", job->id);
+    serverLog(DISQUE_VERBOSE,"QUEUED %.48s", job->id);
 
     job->state = JOB_STATE_QUEUED;
 
@@ -166,7 +166,7 @@ int dequeueJob(job *job) {
     if (!q) return DISQUE_ERR;
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
-    serverLog(DISQUE_NOTICE,"DE-QUEUED %.48s", job->id);
+    serverLog(DISQUE_VERBOSE,"DE-QUEUED %.48s", job->id);
     return DISQUE_ERR;
 }
 

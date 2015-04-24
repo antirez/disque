@@ -2111,59 +2111,59 @@ void monitorCommand(client *c) {
  * If all the bytes needed to return back under the limit were freed the
  * function returns DISQUE_OK, otherwise DISQUE_ERR is returned, and the caller
  * should block the execution of commands that will result in more memory
- * used by the server.
- *
- * ------------------------------------------------------------------------
- *
- * LRU approximation algorithm
- *
- * Disque uses an approximation of the LRU algorithm that runs in constant
- * memory. Every time there is a key to expire, we sample N keys (with
- * N very small, usually in around 5) to populate a pool of best keys to
- * evict of M keys (the pool size is defined by DISQUE_EVICTION_POOL_SIZE).
- *
- * The N keys sampled are added in the pool of good keys to expire (the one
- * with an old access time) if they are better than one of the current keys
- * in the pool.
- *
- * After the pool is populated, the best key we have in the pool is expired.
- * However note that we don't remove keys from the pool when they are deleted
- * so the pool may contain keys that no longer exist.
- *
- * When we try to evict a key, and all the entries in the pool don't exist
- * we populate it again. This time we'll be sure that the pool has at least
- * one key that can be evicted, if there is at least one key that can be
- * evicted in the whole database. */
+ * used by the server. */
+
+#define ACK_EVICTION_SAMPLE_SIZE 16
 
 int freeMemoryIfNeeded(void) {
-    size_t mem_used, mem_tofree, mem_freed;
+    size_t mem_used, mem_tofree, mem_freed, mem_target;
     mstime_t latency;
 
-    mem_used = zmalloc_used_memory();
-
-    /* AOF buffers should not be counted. */
-    if (server.aof_state != DISQUE_AOF_OFF) {
-        mem_used -= sdslen(server.aof_buf);
-        mem_used -= aofRewriteBufferSize();
-    }
-
-    /* Check if we are over the memory limit. */
-    if (mem_used <= server.maxmemory) return DISQUE_OK;
+    /* We start to reclaim memory only at memory warning 2 or greater, that is
+     * when 95% of maxmemory is reached. */
+    if (getMemoryWarningLevel() < 2) return DISQUE_OK;
 
     if (server.maxmemory_policy == DISQUE_MAXMEMORY_NO_EVICTION)
         return DISQUE_ERR; /* We need to free memory, but policy forbids. */
 
     /* Compute how much memory we need to free. */
-    mem_tofree = mem_used - server.maxmemory;
+    mem_used = zmalloc_used_memory();
+    mem_target = server.maxmemory / 100 * 95;
+
+    /* The following check is not actaully needed since we already checked
+     * that getMemoryWarningLevel() returned 2 or greater, but it is safer
+     * to have given that we are workign with unsigned integers to compute
+     * mem_tofree. */
+    if (mem_used <= mem_target) return DISQUE_OK;
+
+    /* The eviction loop: for up to 2 milliseconds we try to reclaim memory
+     * as long we are able to make progresses, otherwise we just stop ASAP. */
+    mem_tofree = mem_used - mem_target;
     mem_freed = 0;
     latencyStartMonitor(latency);
     while (mem_freed < mem_tofree) {
         int objects_freed = 0;
+        int count, j;
+        long long delta;
+        dictEntry *des[ACK_EVICTION_SAMPLE_SIZE];
 
-        /* TODO: ACKs cleanup or other stuff we can do when Disque got
-         * memory pressure. */
+        count = dictGetSomeKeys(server.jobs, des, ACK_EVICTION_SAMPLE_SIZE);
+        delta = (long long) zmalloc_used_memory();
+        for (j = 0; j < count; j++) {
+            job *job = dictGetKey(des[j]);
+            if (job->state == JOB_STATE_ACKED) {
+                unregisterJob(job);
+                freeJob(job);
+                objects_freed++;
+            }
+        }
+        delta -= (long long) zmalloc_used_memory();
+        mem_freed += delta;
 
-        if (!objects_freed) {
+        /* If no object was freed in the latest loop or we are here for
+         * more than 1 or 2 milliseconds, return to the caller with a failure
+         * return value. */
+        if (!objects_freed || (mstime() - latency) > 1) {
             latencyEndMonitor(latency);
             latencyAddSampleIfNeeded("eviction-cycle",latency);
             return DISQUE_ERR; /* nothing to free... */

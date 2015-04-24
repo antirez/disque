@@ -256,12 +256,7 @@ robj *tryObjectEncoding(robj *o) {
          * Note that we avoid using shared integers when maxmemory is used
          * because every object needs to have a private LRU field for the LRU
          * algorithm to work well. */
-        if ((server.maxmemory == 0 ||
-             (server.maxmemory_policy != DISQUE_MAXMEMORY_VOLATILE_LRU &&
-              server.maxmemory_policy != DISQUE_MAXMEMORY_ALLKEYS_LRU)) &&
-            value >= 0 &&
-            value < DISQUE_SHARED_INTEGERS)
-        {
+        if (value >= 0 && value < DISQUE_SHARED_INTEGERS) {
             decrRefCount(o);
             incrRefCount(shared.integers[value]);
             return shared.integers[value];

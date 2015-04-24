@@ -203,16 +203,8 @@ void loadServerConfigFromString(char *config) {
                 err = "You need to specify a memory limit greater than zero";
             }
         } else if (!strcasecmp(argv[0],"maxmemory-policy") && argc == 2) {
-            if (!strcasecmp(argv[1],"volatile-lru")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_VOLATILE_LRU;
-            } else if (!strcasecmp(argv[1],"volatile-random")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_VOLATILE_RANDOM;
-            } else if (!strcasecmp(argv[1],"volatile-ttl")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_VOLATILE_TTL;
-            } else if (!strcasecmp(argv[1],"allkeys-lru")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_ALLKEYS_LRU;
-            } else if (!strcasecmp(argv[1],"allkeys-random")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_ALLKEYS_RANDOM;
+            if (!strcasecmp(argv[1],"acks")) {
+                server.maxmemory_policy = DISQUE_MAXMEMORY_ACKS;
             } else if (!strcasecmp(argv[1],"noeviction")) {
                 server.maxmemory_policy = DISQUE_MAXMEMORY_NO_EVICTION;
             } else {
@@ -474,16 +466,8 @@ void configSetCommand(client *c) {
         if (server.hz < DISQUE_MIN_HZ) server.hz = DISQUE_MIN_HZ;
         if (server.hz > DISQUE_MAX_HZ) server.hz = DISQUE_MAX_HZ;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-policy")) {
-        if (!strcasecmp(o->ptr,"volatile-lru")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_VOLATILE_LRU;
-        } else if (!strcasecmp(o->ptr,"volatile-random")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_VOLATILE_RANDOM;
-        } else if (!strcasecmp(o->ptr,"volatile-ttl")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_VOLATILE_TTL;
-        } else if (!strcasecmp(o->ptr,"allkeys-lru")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_ALLKEYS_LRU;
-        } else if (!strcasecmp(o->ptr,"allkeys-random")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_ALLKEYS_RANDOM;
+        if (!strcasecmp(o->ptr,"acks")) {
+            server.maxmemory_policy = DISQUE_MAXMEMORY_ACKS;
         } else if (!strcasecmp(o->ptr,"noeviction")) {
             server.maxmemory_policy = DISQUE_MAXMEMORY_NO_EVICTION;
         } else {
@@ -738,11 +722,7 @@ void configGetCommand(client *c) {
         char *s;
 
         switch(server.maxmemory_policy) {
-        case DISQUE_MAXMEMORY_VOLATILE_LRU: s = "volatile-lru"; break;
-        case DISQUE_MAXMEMORY_VOLATILE_TTL: s = "volatile-ttl"; break;
-        case DISQUE_MAXMEMORY_VOLATILE_RANDOM: s = "volatile-random"; break;
-        case DISQUE_MAXMEMORY_ALLKEYS_LRU: s = "allkeys-lru"; break;
-        case DISQUE_MAXMEMORY_ALLKEYS_RANDOM: s = "allkeys-random"; break;
+        case DISQUE_MAXMEMORY_ACKS: s = "acks"; break;
         case DISQUE_MAXMEMORY_NO_EVICTION: s = "noeviction"; break;
         default: s = "unknown"; break; /* too harmless to panic */
         }
@@ -1337,11 +1317,7 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"maxclients",server.maxclients,DISQUE_MAX_CLIENTS);
     rewriteConfigBytesOption(state,"maxmemory",server.maxmemory,DISQUE_DEFAULT_MAXMEMORY);
     rewriteConfigEnumOption(state,"maxmemory-policy",server.maxmemory_policy,
-        "volatile-lru", DISQUE_MAXMEMORY_VOLATILE_LRU,
-        "allkeys-lru", DISQUE_MAXMEMORY_ALLKEYS_LRU,
-        "volatile-random", DISQUE_MAXMEMORY_VOLATILE_RANDOM,
-        "allkeys-random", DISQUE_MAXMEMORY_ALLKEYS_RANDOM,
-        "volatile-ttl", DISQUE_MAXMEMORY_VOLATILE_TTL,
+        "acks", DISQUE_MAXMEMORY_ACKS,
         "noeviction", DISQUE_MAXMEMORY_NO_EVICTION,
         NULL, DISQUE_DEFAULT_MAXMEMORY_POLICY);
     rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,DISQUE_DEFAULT_MAXMEMORY_SAMPLES);

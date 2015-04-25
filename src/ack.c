@@ -220,3 +220,40 @@ void ackjobCommand(client *c) {
     addReplyLongLong(c,known);
 }
 
+/* FASTACK jobid_1 jobid_2 ... jobid_N
+ *
+ * Performs a fast acknowledge of the specified jobs.
+ * A fast acknowledge does not really attempt to make sure all the nodes
+ * that may have a copy recive the ack. The job is just discarded and
+ * a best-effort DELJOB is sent to all the nodes that may have a copy
+ * without caring if they receive or not the message.
+ *
+ * This command will more likely result in duplicated messages delivery
+ * during network partiitons, but uses less messages compared to ACKJOB.
+ *
+ * If a job is not known, a cluster-wide DELJOB is broadcasted.
+ *
+ * The command returns the number of jobs that are deleted from the local
+ * node as a result of receiving the command.
+ */
+void fastackCommand(client *c) {
+    int j, known = 0;
+
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+
+    /* Perform the appropriate action for each job. */
+    for (j = 1; j < c->argc; j++) {
+        job *job = lookupJob(c->argv[j]->ptr);
+        if (job == NULL) {
+            /* Job not known, just broadcast the DELJOB message to everybody. */
+            clusterBroadcastJobIDMessage(server.cluster->nodes,c->argv[j]->ptr,
+                                         CLUSTERMSG_TYPE_DELJOB,0);
+        } else {
+            clusterBroadcastDelJob(job);
+            unregisterJob(job);
+            freeJob(job);
+            known++;
+        }
+    }
+    addReplyLongLong(c,known);
+}

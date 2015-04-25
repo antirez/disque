@@ -126,6 +126,7 @@ struct serverCommand serverCommandTable[] = {
     {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
     {"getjob",getjobCommand,-2,"wF",0,NULL,0,0,0,0,0},
     {"ackjob",ackjobCommand,-1,"wF",0,NULL,0,0,0,0,0},
+    {"fastack",fastackCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"deljob",deljobCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},

@@ -82,6 +82,42 @@ As already mentioned, In order to control replication and retries, a Disque job 
 
 If a job has a retry time set to 0, it will get queued exactly once (and in this case a replication factor greater than 1 is useless, and signaled as an error to the user), so it will get delivered either a single time or will never get delivered. While jobs can be persisted on disk for safety, queues aren't, so this behavior is guaranteed even when nodes restart after a crash, whatever the persistence configuration is. However when nodes are manually restarted by the sysadmin, for example for upgrades, queues are persisted correctly and reloaded at startup, since the store/load operation is atomic in this case, and there are no race conditions possible (it is not possible that a job was delivered to a client and is persisted on disk as queued at the same time).
 
+Fast acknowledges
+---
+
+Disque supports a faster way to acknowledge processed messages, via the
+`FASTACK` command. The normal acknowledge is very expensive from the point of
+view of messages exchanged between nodes, this is what happens during a normal
+acknowledge:
+
+1. The client sends ACKJOB to one node.
+2. The node sends a SETACK message to everybody it believes to have a copy.
+3. The receivers of SETACK reply with GOTACK to confirm.
+4. The node finally sends DELJOB to all the nodes.
+
+*Note: actual garbage collection is more complex in case of failures and is explained in the state machine later. The above is what happens 99% of times.*
+
+If a message is replicated to 3 nodes, acknowledging requires 1+2+2+2 messages,
+for the sake of retaining the ack if some nodes may not be reached when the
+message is acknowledged. This makes the probability of multiple deliveries of
+this message less likely.
+
+However the alternative **fast ack**, while less reliable, is much faster
+and invovles exchanging less messages. This is how a fast acknowledge works:
+
+1. The client sedns ACKJOB to one node.
+2. The node evicts the job and sends a best effort DELJOB to all the nodes that may have a copy, or to all the cluster if the node was not aware of the job.
+
+If during a fast acknowledge a node having a copy of the message is not
+reachable, for example because of a network partition, the node will deliver
+the message again, since it has a non acknowledged copy of the message and
+there is nobody able to inform it the message was acknowledged when it
+returns back available.
+
+If the network you are using is pretty reliable, you are very concerned with
+performances, and multiple deliveries in the context of your applications are
+a non issue, then `FASTACK` is probably the way to go.
+
 Disque and disk persistence
 ---
 
@@ -120,7 +156,7 @@ correctly processed by a worker.
 Part of the node ID is included in the message so that a worker processing
 messages for a given queue can easily guess what are the nodes where jobs
 are created, and move directly to these nodes to increase efficiency instead
-of listeing for messages in a node that will require to fetch messages from
+of listening for messages in a node that will require to fetch messages from
 other nodes.
 
 Only 32 bits of the original node ID is included in the message, however
@@ -173,6 +209,14 @@ If there are no jobs for the specified queues the command blocks, and messages a
     ACKJOB jobid1 jobid2 ... jobidN
 
 Acknowledges the execution of one or more jobs via job IDs. The node receiving the ACK will replicate it to multiple nodes and will try to garbage collect both the job and the ACKs from the cluster so that memory can be freed.
+
+    FASTACK jobid1 jobid2 ... jobidN
+
+Performs a best effort cluster wide deletion of the specified job IDs. When the
+network is well connected and there are no node failures, this is equivalent to
+`ACKJOB` but much faster (less messages exchanged), however during failures it
+is more likely that fast acknowledges will result into multiple deliveries of
+the same messages.
 
 Other commands
 ===

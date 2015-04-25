@@ -133,3 +133,37 @@ test "Acknowledge to non owner, while all the owners are down" {
         fail "Ack not GCed after some time"
     }
 }
+
+test "Fast ack to owner node" {
+    set id [D 0 addjob myqueue myjob 0 replicate 5]
+    set job [D 0 show $id]
+    assert {[count_job_copies $job {active queued}] >= 5}
+    D 0 fastack $id
+    wait_for_condition {
+        [count_job_copies $job {active queued}] == 0
+    } else {
+        fail "ACK garbage collection failed"
+    }
+}
+
+test "Fast ack to non owner node" {
+    # Add job to 5 nodes
+    set id [D 0 addjob myqueue myjob 0 replicate 5]
+    set job [D 0 show $id]
+    set no_copy_instance [lindex [get_job_instances $job {}] 0]
+
+    # Make sure the instance actually does not know about the job
+    assert {[D $no_copy_instance show $id] eq {}}
+
+    # Acknowledge the job to an instance not having a copy.
+    D $no_copy_instance fastack $id
+
+    # DELJOB should be broadcasted cluster-wide causign the job to be
+    # collected, given that the net is well connected right now.
+    wait_for_condition {
+        [count_job_copies $job {acked}] == 0
+    } else {
+        fail "Ack not GCed after some time"
+    }
+}
+

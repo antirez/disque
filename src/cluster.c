@@ -1837,17 +1837,24 @@ void clusterSendJobIDMessage(int type, clusterNode *node, char *id, int aux) {
     clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
 }
 
-/* Like clusterSendJobIDMessage(), but sends the message to the set
- * of nodes that may have a copy of the message. */
-void clusterBroadcastJobIDMessage(job *j, int type, uint32_t aux) {
-    dictIterator *di = dictGetIterator(j->nodes_delivered);
+/* Like clusterSendJobIDMessage(), but sends the message to the specified set
+ * of nodes (excluding myself if included in the set of nodes). */
+void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux) {
+    dictIterator *di = dictGetIterator(nodes);
     dictEntry *de;
+    unsigned char buf[sizeof(clusterMsg)];
+    clusterMsg *hdr = (clusterMsg*) buf;
+
+    /* Build the message one time, send the same to everybody. */
+    clusterBuildMessageHdr(hdr,type);
+    memcpy(hdr->data.jobid.job.id,id,JOB_ID_LEN);
+    hdr->data.jobid.job.aux = htonl(aux);
 
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
         if (node == myself) continue;
         if (node->link)
-            clusterSendJobIDMessage(type,node,j->id,aux);
+            clusterSendMessage(node->link,buf,ntohl(hdr->totlen));
     }
     dictReleaseIterator(di);
 }
@@ -1877,13 +1884,15 @@ void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay) {
  * of the message and are reachable. */
 void clusterBroadcastQueued(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST QUEUED: %.48s",j->id);
-    clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_QUEUED,0);
+    clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
+                                 CLUSTERMSG_TYPE_QUEUED,0);
 }
 
 /* Send a DELJOB message to all the nodes that may have a copy. */
 void clusterBroadcastDelJob(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST DELJOB: %.48s",j->id);
-    clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_DELJOB,0);
+    clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
+                                 CLUSTERMSG_TYPE_DELJOB,0);
 }
 
 /* Tell the receiver to reply with a QUEUED message if it has the job
@@ -1891,7 +1900,8 @@ void clusterBroadcastDelJob(job *j) {
  * milliseconds. */
 void clusterSendWillQueue(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST WILLQUEUE: %.48s",j->id);
-    clusterBroadcastJobIDMessage(j,CLUSTERMSG_TYPE_WILLQUEUE,0);
+    clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
+                                 CLUSTERMSG_TYPE_WILLQUEUE,0);
 }
 
 /* Force the receiver to acknowledge the job as delivered. */

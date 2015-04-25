@@ -227,5 +227,6 @@ void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);
 void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes);
 void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count);
+void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux);
 
 #endif /* __DISQUE_CLUSTER_H */

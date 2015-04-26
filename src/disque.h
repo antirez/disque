@@ -252,9 +252,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define UNIT_MILLISECONDS 1
 
 /* SHUTDOWN flags */
-#define DISQUE_SHUTDOWN_SAVE 1       /* Force SAVE on SHUTDOWN even if no save
-                                       points are configured. */
-#define DISQUE_SHUTDOWN_NOSAVE 2     /* Don't SAVE on SHUTDOWN. */
+#define DISQUE_SHUTDOWN_NOFLAGS 0  /* No flags. */
+#define DISQUE_SHUTDOWN_REWRITE 1  /* Sync AOF rewrite before exiting. */
 
 /* Command call flags, see call() function */
 #define DISQUE_CALL_NONE 0
@@ -775,6 +774,7 @@ int startAppendOnly(void);
 void backgroundRewriteDoneHandler(int exitcode, int bysignal);
 void aofRewriteBufferReset(void);
 unsigned long aofRewriteBufferSize(void);
+int rewriteAppendOnlyFile(char *filename, int background);
 
 /* Core functions */
 void flushServerData(void);
@@ -787,7 +787,7 @@ struct serverCommand *lookupCommandByCString(char *s);
 struct serverCommand *lookupCommandOrOriginal(sds name);
 void call(client *c, int flags);
 void propagate(struct serverCommand *cmd, robj **argv, int argc, int flags);
-int prepareForShutdown(void);
+int prepareForShutdown(int flags);
 #ifdef __GNUC__
 void serverLog(int level, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));

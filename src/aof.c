@@ -730,8 +730,17 @@ ssize_t aofReadDiffFromParent(void) {
 }
 
 /* Write a sequence of commands able to fully rebuild the dataset into
- * "filename". Used both by REWRITEAOF and BGREWRITEAOF. */
-int rewriteAppendOnlyFile(char *filename) {
+ * "filename". Used both by BGREWRITEAOF and SHUTDOWN REWRITE.
+ *
+ * If 'background' is non-zero, the function assumes to be running in the
+ * context of a child process, so it will attempt to read the accumulated
+ * difference buffer from the parent process (all the writes happening in the
+ * parent side while we rewrite the AOF). Otherwise if 'background' is zero
+ * the function assumes we are just doing a foreground rewrite, for example
+ * via the SHUTDOWN REWRITE command, and no parent diff is read.
+ *
+ * Return value: on success DISQUE_OK, on error DISQUE_ERR. */
+int rewriteAppendOnlyFile(char *filename, int background) {
     dictIterator *di = NULL;
     rio aof;
     FILE *fp;
@@ -747,7 +756,7 @@ int rewriteAppendOnlyFile(char *filename) {
         return DISQUE_ERR;
     }
 
-    server.aof_child_diff = sdsempty();
+    if (background) server.aof_child_diff = sdsempty();
     rioInitWithFile(&aof,fp);
     if (server.aof_rewrite_incremental_fsync)
         rioSetAutoSync(&aof,DISQUE_AOF_AUTOSYNC_BYTES);
@@ -770,6 +779,10 @@ int rewriteAppendOnlyFile(char *filename) {
     }
     dictReleaseIterator(di);
     di = NULL; /* Don't free it at end. */
+
+    /* If this is a synchronous rewrite, skip all the child-parent
+     * handshake about the difference buffer. */
+    if (!background) goto flush_and_rename;
 
     /* Do an initial slow fsync here while the parent is still sending
      * data, in order to make the next final fsync faster. */
@@ -816,13 +829,14 @@ int rewriteAppendOnlyFile(char *filename) {
     if (rioWrite(&aof,server.aof_child_diff,sdslen(server.aof_child_diff)) == 0)
         goto werr;
 
+flush_and_rename:
     /* Make sure data will not remain on the OS's output buffers */
     if (fflush(fp) == EOF) goto werr;
     if (fsync(fileno(fp)) == -1) goto werr;
     if (fclose(fp) == EOF) goto werr;
 
-    /* Use RENAME to make sure the DB file is changed atomically only
-     * if the generate DB file is ok. */
+    /* Use RENAME to make sure the AOF file is changed atomically only
+     * if the generate AOF file is ok. */
     if (rename(tmpfile,filename) == -1) {
         serverLog(DISQUE_WARNING,"Error moving temp append only file on the final destination: %s", strerror(errno));
         unlink(tmpfile);
@@ -943,7 +957,7 @@ int rewriteAppendOnlyFileBackground(void) {
         closeListeningSockets(0);
         serverSetProcTitle("disque-aof-rewrite");
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
-        if (rewriteAppendOnlyFile(tmpfile) == DISQUE_OK) {
+        if (rewriteAppendOnlyFile(tmpfile,1) == DISQUE_OK) {
             size_t private_dirty = zmalloc_get_private_dirty();
 
             if (private_dirty) {

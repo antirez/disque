@@ -719,7 +719,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
-        if (prepareForShutdown() == DISQUE_OK) exit(0);
+        if (prepareForShutdown(DISQUE_SHUTDOWN_NOFLAGS) == DISQUE_OK) exit(0);
         serverLog(DISQUE_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
         server.shutdown_asap = 0;
     }
@@ -1553,7 +1553,11 @@ void closeListeningSockets(int unlink_unix_socket) {
     }
 }
 
-int prepareForShutdown(void) {
+/* Performs the operations needed to shutdown correctly the server, including
+ * additional operations as specified by 'flags'. */
+int prepareForShutdown(int flags) {
+    int rewrite = flags & DISQUE_SHUTDOWN_REWRITE;
+
     serverLog(DISQUE_WARNING,"User requested shutdown...");
     /* Kill the saving child if there is a background saving in progress.
        We want to avoid race conditions, for instance our saving child may
@@ -1576,10 +1580,18 @@ int prepareForShutdown(void) {
         serverLog(DISQUE_NOTICE,"Calling fsync() on the AOF file.");
         aof_fsync(server.aof_fd);
     }
+
+    /* Perform a synchronous AOF rewrite if requested. */
+    if (rewrite) {
+        if (rewriteAppendOnlyFile(server.aof_filename,0) == DISQUE_ERR)
+            return DISQUE_ERR;
+    }
+
     if (server.daemonize) {
         serverLog(DISQUE_NOTICE,"Removing the pid file.");
         unlink(server.pidfile);
     }
+
     /* Close the listening sockets. Apparently this allows faster restarts. */
     closeListeningSockets(1);
     serverLog(DISQUE_WARNING,"Disque is now ready to exit, bye bye...");
@@ -1680,24 +1692,20 @@ void shutdownCommand(client *c) {
         addReply(c,shared.syntaxerr);
         return;
     } else if (c->argc == 2) {
-        if (!strcasecmp(c->argv[1]->ptr,"nosave")) {
-            flags |= DISQUE_SHUTDOWN_NOSAVE;
-        } else if (!strcasecmp(c->argv[1]->ptr,"save")) {
-            flags |= DISQUE_SHUTDOWN_SAVE;
+        if (!strcasecmp(c->argv[1]->ptr,"rewrite")) {
+            flags |= DISQUE_SHUTDOWN_REWRITE;
         } else {
             addReply(c,shared.syntaxerr);
             return;
         }
     }
     /* When SHUTDOWN is called while the server is loading a dataset in
-     * memory we need to make sure no attempt is performed to save
+     * memory we need to make sure no attempt is performed to rewrite
      * the dataset on shutdown (otherwise it could overwrite the current DB
-     * with half-read data).
-     *
-     * Also when in Sentinel mode clear the SAVE flag and force NOSAVE. */
+     * with half-read data). */
     if (server.loading)
-        flags = (flags & ~DISQUE_SHUTDOWN_SAVE) | DISQUE_SHUTDOWN_NOSAVE;
-    if (prepareForShutdown() == DISQUE_OK) exit(0);
+        flags = (flags & ~DISQUE_SHUTDOWN_REWRITE);
+    if (prepareForShutdown(flags) == DISQUE_OK) exit(0);
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
 

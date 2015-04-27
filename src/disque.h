@@ -252,8 +252,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define UNIT_MILLISECONDS 1
 
 /* SHUTDOWN flags */
-#define DISQUE_SHUTDOWN_NOFLAGS 0  /* No flags. */
-#define DISQUE_SHUTDOWN_REWRITE 1  /* Sync AOF rewrite before exiting. */
+#define DISQUE_SHUTDOWN_NOFLAGS 0 /* No flags. */
+#define DISQUE_SHUTDOWN_REWRITE_AOF 1 /* Sync AOF rewrite before exiting. */
 
 /* Command call flags, see call() function */
 #define DISQUE_CALL_NONE 0

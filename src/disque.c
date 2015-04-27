@@ -1556,7 +1556,7 @@ void closeListeningSockets(int unlink_unix_socket) {
 /* Performs the operations needed to shutdown correctly the server, including
  * additional operations as specified by 'flags'. */
 int prepareForShutdown(int flags) {
-    int rewrite = flags & DISQUE_SHUTDOWN_REWRITE;
+    int rewrite = flags & DISQUE_SHUTDOWN_REWRITE_AOF;
 
     serverLog(DISQUE_WARNING,"User requested shutdown...");
     /* Kill the saving child if there is a background saving in progress.
@@ -1692,8 +1692,8 @@ void shutdownCommand(client *c) {
         addReply(c,shared.syntaxerr);
         return;
     } else if (c->argc == 2) {
-        if (!strcasecmp(c->argv[1]->ptr,"rewrite")) {
-            flags |= DISQUE_SHUTDOWN_REWRITE;
+        if (!strcasecmp(c->argv[1]->ptr,"rewrite-aof")) {
+            flags |= DISQUE_SHUTDOWN_REWRITE_AOF;
         } else {
             addReply(c,shared.syntaxerr);
             return;
@@ -1704,7 +1704,7 @@ void shutdownCommand(client *c) {
      * the dataset on shutdown (otherwise it could overwrite the current DB
      * with half-read data). */
     if (server.loading)
-        flags = (flags & ~DISQUE_SHUTDOWN_REWRITE);
+        flags = (flags & ~DISQUE_SHUTDOWN_REWRITE_AOF);
     if (prepareForShutdown(flags) == DISQUE_OK) exit(0);
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }

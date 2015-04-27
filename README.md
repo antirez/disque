@@ -205,6 +205,36 @@ Where:
 * **seed** is a seed generated via `/dev/urandom` at startup.
 * **counter** is a 64 bit counter incremented at every ID generation.
 
+Setup
+===
+
+To play with Disque please do the following:
+
+1. Compile Disque, if you can compile Redis, you can compile Disque, it's the usual no external deps thing. Just type `make`.
+2. Run a few Disque nodes in different ports. Create different `disque.conf` files followign the example `disque.conf` in the source distribution.
+3. After you have them running, you need to join the cluster. Just select a random node among the nodes you are running, and send the command `CLUSTER MEET <ip> <port>` for every other node in the cluster.
+
+For example if you are running three Disque servers in port 7711, 7712, 7713 in order to join the cluster you should use the `disque` command line tool and run the following commands:
+
+    ./disque -p 7711 cluster meet 127.0.0.1 7712
+    ./disque -p 7711 cluster meet 127.0.0.1 7713
+
+Your cluster should now be ready. You can try to add a job and fetch it back
+in order to test if everything is working:
+
+    ./disque -p 7711
+    127.0.0.1:7711> ADDJOB queue body 0
+    DI0f0c644ffca14064ced6f8f997361a5c0af65ca305a0SQ
+    127.0.0.1:7711> GETJOB FROM queue
+    1) 1) "queue"
+       2) "DI0f0c644ffca14064ced6f8f997361a5c0af65ca305a0SQ"
+       3) "body"
+
+Remember that you can add and get jobs from different nodes as Disque
+is multi master. Also remember that you need to acknowledge jobs otherwise
+they'll never go away from the server memory (unless the time to live is
+reached).
+
 API
 ===
 

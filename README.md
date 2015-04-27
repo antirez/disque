@@ -121,13 +121,41 @@ a non issue, then `FASTACK` is probably the way to go.
 Disque and disk persistence
 ---
 
-The default mode of operation is in-memory only, since jobs
-are synchronously replicated, and safety is guaranteed by replication.
-However because there are single data center setups, this is
-too risky in certain environments, so:
+Disque can be operated in-memory only, using the synchronous replication as
+durability guarantee, or can be operated using the Append Only File where
+jobs creations and evictions are logged on disk (with configurable fsync
+policies) and reloaded at restart.
 
-1. Optionally you can enable AOF persistence (similar to Redis). In this mode only jobs data is persisted, but content of queues is not. However jobs will be re-queued eventually.
-2. Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software. In this case both jobs and queues are persisted, since in this specific case persisting queues is safe. The format used is the same as the AOF format, but information about queued jobs is not discarded as is usually happens.
+AOF is recommended especially if you run in a single availability zone
+where a mass reboot of all your nodes is possible.
+
+Normally Disque only reloads jobs data in memory, without populating queues,
+since anyway not acknowledged jobs are requeued eventually. Moreover reloading
+queue data is not safe in the case of at-most-once jobs having the retry value
+set to 0. However a special option is provided in order to reload the full
+state from the AOF. This is used together with an option that allows to
+shutdown the server just after the AOF is generated from scratch, in order to
+be safe to reload even jobs with retry set to 0, since the AOF is generated
+while the server no longer accepts commands from clients, so no race condition
+is possible.
+
+Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software.
+
+This is how to perform a controlled restart, that works whatever AOF is enabled
+or not:
+
+1. CONFIG SET aof-enqueue-jobs-once yes
+2. CONFIG REWRITE
+3. SHUTDOWN REWRITE-AOF
+
+At this point we have a freshly generated AOF on disk, and the server is
+configured in order to load the full state only at the next restart (the
+`aof-enqueue-jobs-once` is automatically turned off after the restart).
+
+We can just restart the server with the new software, or in a new server, and
+it will restart with the full state. Note that the `aof-enqueue-jobs-once`
+implies to load the AOF even if the AOF support is switched off, so there is
+no need to enable AOF just for the upgrade of an in-memory only server.
 
 Job IDs
 ---

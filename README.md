@@ -255,34 +255,39 @@ Note: not everything implemented yet.
 Generic server information / stats.
 
     HELLO
-Returns id ... version ... nodes ...
+Returns hello format version, this node ID, all the nodes IDs, IP addresses,
+ports, and priority (lower is better, means node more available).
+Clients should use this as an handshake command when connecting with a
+Disque node.
 
     QLEN <qname>
 Length of queue
 
-    QSTAT <qname>
+    QSTAT <qname> (TODO)
 Return produced ... consumed ... idle ... sources [...] ctime ...
 
     QPEEK <qname> <count>
-Return without consuming <count> jobs.
+Return, without consuming from queue, *count* jobs. If *count* is positive
+the specified number of jobs are returned from the oldest to the newest
+(in the same best-effort FIFO order as GETJOB). If *count* is negative the
+commands changes behavior and shows the *count* newest jobs, from the newest
+from the oldest.
 
-    QUEUE <job-id> ... <job-id>
+    ENQUEUE <job-id> ... <job-id>
 Queue jobs if not already queued.
 
     DEQUEUE <job-id> ... <job-id>
 Remove the job from the queue.
 
-    DELJOB [BCAST] [FORCE] <job-id> ... <job-id>
+    DELJOB <job-id> ... <job-id>
 Completely delete a job from a node.
-If BCAST is given, a DELJOB cluster message is broadcasted to the set of nodes
-that may have the job. If FORCE is given, when the job is not known, instead of
-returning an error the node will broadcast a DELJOB cluster message to all the
-nodes in the cluster.
+Note that this is similar to `FASTACK`, but limited to a single node since
+no `DELJOB` cluster bus message is sent to other nodes.
 
     SHOW <job-id>
 Describe the job.
 
-    SCAN <job|queue> <cursor> [STATE ...] [COUNT ...] [MAXIDLE ...]
+    SCAN <job|queue> <cursor> [STATE ...] [COUNT ...] [MAXIDLE ...] (TODO)
 Iterate job IDs.
 
 Client libraries

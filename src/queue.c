@@ -244,7 +244,7 @@ void queueCron(void) {
 
 /* -------------------------- Blocking on queues ---------------------------- */
 
-/* Handle blocking if GETJOBS fonud no jobs in the specified queues.
+/* Handle blocking if GETJOB fonud no jobs in the specified queues.
  *
  * 1) We set q->clients to the list of clients blocking for this queue.
  * 2) We set client->bpop.queues as well, as a dictionary of queues a client
@@ -742,4 +742,53 @@ void dequeueCommand(client *c) {
             dequeued++;
     }
     addReplyLongLong(c,dequeued);
+}
+
+/* QPEEK <queue> <count>
+ *
+ * Return an array of at most "count" jobs available inside the queue "queue"
+ * without removing the jobs from the queue. This is basically an introspection
+ * and debugging command.
+ *
+ * Normally jobs are returned from the oldest to the newest (according to the
+ * job creation time field), however if "count" is negative , jobs are
+ * returend from newset to oldest instead.
+ *
+ * Each job is returned as a two elements array with the Job ID and body. */
+void qpeekCommand(client *c) {
+    int newjobs = 0; /* Return from newest to oldest if true. */
+    long long count, returned = 0;
+
+    if (getLongLongFromObjectOrReply(c,c->argv[2],&count,NULL) != DISQUE_OK)
+        return;
+
+    if (count < 0) {
+        count = -count;
+        newjobs = 1;
+    }
+
+    skiplistNode *sn = NULL;
+    queue *q = lookupQueue(c->argv[1]);
+
+    if (q != NULL)
+        sn = newjobs ? q->sl->tail : q->sl->header->level[0].forward;
+
+    if (sn == NULL) {
+        addReply(c,shared.emptymultibulk);
+        return;
+    }
+
+    void *deflen = addDeferredMultiBulkLength(c);
+    while(count-- && sn) {
+        job *j = sn->obj;
+        addReplyMultiBulkLen(c,2);
+        addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
+        addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+        returned++;
+        if (newjobs)
+            sn = sn->backward;
+        else
+            sn = sn->level[0].forward;
+    }
+    setDeferredMultiBulkLength(c,deflen,returned);
 }

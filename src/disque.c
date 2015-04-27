@@ -138,7 +138,8 @@ struct serverCommand serverCommandTable[] = {
     {"bgrewriteaof",bgrewriteaofCommand,1,"ar",0,NULL,0,0,0,0,0},
 
     /* Queues */
-    {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0}
+    {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
+    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

@@ -1004,6 +1004,7 @@ void addjobCommand(client *c) {
     long long ttl = 3600*24;
     long long retry = -1;
     long long delay = 0;
+    long long maxlen = 0; /* Max queue length for job to be accepted. */
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
@@ -1039,6 +1040,13 @@ void addjobCommand(client *c) {
             retval = getLongLongFromObject(c->argv[j+1],&delay);
             if (retval != DISQUE_OK || delay < 0) {
                 addReplyError(c,"DELAY time must be a non negative number");
+                return;
+            }
+            j++;
+        } else if (!strcasecmp(opt,"maxlen") && !lastarg) {
+            retval = getLongLongFromObject(c->argv[j+1],&maxlen);
+            if (retval != DISQUE_OK || maxlen <= 0) {
+                addReplyError(c,"MAXLEN must be a positive number");
                 return;
             }
             j++;
@@ -1093,6 +1101,15 @@ void addjobCommand(client *c) {
                 sdsnew("-NOREPL Not enough reachable nodes "
                        "for the requested replication level\r\n"));
         }
+        return;
+    }
+
+    /* If maxlen was specified, check that the local queue len is
+     * within the requested limits. */
+    if (maxlen && queueNameLength(c->argv[1]) > (unsigned long) maxlen) {
+        addReplySds(c,
+            sdsnew("-MAXLEN Queue is already longer than "
+                   "the specified MAXLEN count\r\n"));
         return;
     }
 

@@ -1352,7 +1352,7 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"hz",server.hz,DISQUE_DEFAULT_HZ);
     rewriteConfigYesNoOption(state,"aof-rewrite-incremental-fsync",server.aof_rewrite_incremental_fsync,DISQUE_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC);
     rewriteConfigYesNoOption(state,"aof-load-truncated",server.aof_load_truncated,DISQUE_DEFAULT_AOF_LOAD_TRUNCATED);
-    rewriteConfigYesNoOption(state,"aof-enqueue-jobs-once",server.aof_enqueue_jobs_once,DISQUE_DEFAULT_AOF_LOAD_TRUNCATED);
+    rewriteConfigYesNoOption(state,"aof-enqueue-jobs-once",server.aof_enqueue_jobs_once,DISQUE_DEFAULT_AOF_ENQUEUE_JOBS_ONCE);
 
     /* Step 3: remove all the orphaned lines in the old file, that is, lines
      * that were used by a config option and are no longer used, like in case

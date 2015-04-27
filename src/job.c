@@ -1231,7 +1231,10 @@ void showCommand(client *c) {
     addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
 
     addReplyBulkCString(c,"queue");
-    addReplyBulk(c,j->queue);
+    if (j->queue)
+        addReplyBulk(c,j->queue);
+    else
+        addReply(c,shared.nullbulk);
 
     addReplyBulkCString(c,"state");
     addReplyBulkCString(c,jobStateToString(j->state));
@@ -1254,10 +1257,14 @@ void showCommand(client *c) {
     addReplyLongLong(c,j->retry);
 
     addReplyBulkCString(c,"nodes-delivered");
-    addReplyMultiBulkLen(c,dictSize(j->nodes_delivered));
-    dictForeach(j->nodes_delivered,de)
-        addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
-    dictEndForeach
+    if (j->nodes_delivered) {
+        addReplyMultiBulkLen(c,dictSize(j->nodes_delivered));
+        dictForeach(j->nodes_delivered,de)
+            addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
+        dictEndForeach
+    } else {
+        addReplyMultiBulkLen(c,0);
+    }
 
     addReplyBulkCString(c,"nodes-confirmed");
     if (j->nodes_confirmed) {

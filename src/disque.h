@@ -860,6 +860,7 @@ void dequeueCommand(client *c);
 void loadjobCommand(client *c);
 void deljobCommand(client *c);
 void bgrewriteaofCommand(client *c);
+void helloCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

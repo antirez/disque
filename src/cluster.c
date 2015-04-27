@@ -2470,3 +2470,26 @@ void clusterCommand(client *c) {
         addReplyError(c,"Wrong CLUSTER subcommand or number of arguments");
     }
 }
+
+/* HELLO handshake command. Returns an array with:
+ * 1) Reply version. 1 for this version.
+ * 2) This node ID.
+ * The following elements list all the available nodes with
+ * ID, IP, port, priority. A smaller priority means better node
+ * in terms of availability / latency. */
+void helloCommand(client *c) {
+    addReplyMultiBulkLen(c,2+dictSize(server.cluster->nodes));
+    addReplyLongLong(c,1); /* Version. */
+    addReplyBulkCBuffer(c,myself->name,DISQUE_CLUSTER_NAMELEN); /* My ID. */
+    dictForeach(server.cluster->nodes,de)
+        clusterNode *node = dictGetVal(de);
+        int priority = 1;
+        if (node->flags & DISQUE_NODE_PFAIL) priority = 10;
+        if (node->flags & DISQUE_NODE_FAIL) priority = 100;
+        addReplyMultiBulkLen(c,4);
+        addReplyBulkCBuffer(c,node->name,DISQUE_CLUSTER_NAMELEN); /* ID. */
+        addReplyBulkCString(c,node->ip); /* IP address. */
+        addReplyBulkLongLong(c,node->port); /* TCP port. */
+        addReplyBulkLongLong(c,priority); /* Priority. */
+    dictEndForeach
+}

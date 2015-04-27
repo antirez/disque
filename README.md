@@ -9,11 +9,9 @@ simple to understand properties and guarantees, but still resembling Redis
 in terms of simplicity, performances, and implementation as a C non-blocking
 networked server.
 
-Currently the project is just an alpha quality preview, that was developed
-in roughly 120 hours (so far, keep me updated!), mostly at night and during
-weekends.
+Currently (27 April 2015) the project is just an alpha quality preview, that was developed in roughly 120 hours, 244 different commits performed in 72 different days, often at night and during weekends. In short: don't expect much or rock solid production systems here.
 
-**WARNING: This is alpha code NOT suitable for production. The implementation and API will likely change in significant ways during the next months.**
+**WARNING: This is alpha code NOT suitable for production. The implementation and API will likely change in significant ways during the next months. The code and algorithms are not tested enough. A lot more work is needed.**
 
 Give me the details!
 ---

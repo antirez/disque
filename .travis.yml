@@ -1,0 +1,4 @@
+language: c
+before_script: sudo apt-get install tclsh
+install: make
+script: make test

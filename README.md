@@ -560,6 +560,18 @@ TIMER, from time to time (exponential backoff with random error), for every ackn
 
 1. call `START-GC(job)`.
 
+Limitations
+===
+
+* Disque is new code, not tested, and will require quite some time to reach production quality. It is likely very buggy and may contain wrong assumptions or tradeoffs.
+* As long as the software is non stable, the API may change in random ways without prior notification.
+* It is possible that Disque spends too much effort in approximating single delivery during failures. The **fast acknowledge** concept and command makes the user able to opt-out this efforts, but yet I may change the Disque implementation and internals in the future if I see the user base really not caring about multiple deliveries during partitions.
+* There is yet a lot of Redis dead code inside probably that could be removed.
+* Disque was designed a bit in *astronaut mode*, not triggered by an actual use case of mine, but more in response to what I was seeing people doing with Redis as a message queue and with other message queues. However I'm not an expert, if I succeeded to ship something useful for most users, this is kinda of an accomplishment. Otherwise it may just be that Disque is pretty useless.
+* As Redis, Disque is single threaded. While in Redis there are stronger reasons to do so, in Disque there is no manipulation of complex data structures, so maybe in the future it should be moved into a threaded server. We need to see what happens in real use cases in order to understand if it's worth it or not.
+* The number of jobs in a Disque process is limited to the amount of memory available. Again while this in Redis makes sense (IMHO), in Disque there are definitely simple ways in order to circumvent this limitation, like logging messages on disk when the server is out of memory and consuming back the messages when memory pressure is already acceptable. However in general, like in Redis, manipulating data structures in memory is a big advantage from the point of view of the implementation simplicity and the functionality we can provide to users.
+* Disque is completely not optimized for speed, was never profiled so far. I'm currently not aware of the fact it's slow, fast, or average, compared to other messaging solutions. For sure it is not going to have Redis-alike numbers because it does a lot more work at each command. For example when a job is added, it is serialized and transmitted to other `N` servers. There is a lot more messaging passing between nodes involved, and so forth. The good news is that being totally unoptimized, there is room for improvements.
+
 FAQ
 ===
 

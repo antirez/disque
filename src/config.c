@@ -282,6 +282,10 @@ void loadServerConfigFromString(char *config) {
             if ((server.aof_load_truncated = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
+        } else if (!strcasecmp(argv[0],"aof-enqueue-jobs-once") && argc == 2) {
+            if ((server.aof_enqueue_jobs_once = yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
         } else if (!strcasecmp(argv[0],"requirepass") && argc == 2) {
             if (strlen(argv[1]) > DISQUE_AUTHPASS_MAX_LEN) {
                 err = "Password is longer than DISQUE_AUTHPASS_MAX_LEN";
@@ -529,6 +533,11 @@ void configSetCommand(client *c) {
 
         if (yn == -1) goto badfmt;
         server.aof_load_truncated = yn;
+    } else if (!strcasecmp(c->argv[2]->ptr,"aof-enqueue-jobs-once")) {
+        int yn = yesnotoi(o->ptr);
+
+        if (yn == -1) goto badfmt;
+        server.aof_enqueue_jobs_once = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"dir")) {
         if (chdir((char*)o->ptr) == -1) {
             addReplyErrorFormat(c,"Changing directory: %s", strerror(errno));
@@ -700,6 +709,8 @@ void configGetCommand(client *c) {
             server.aof_rewrite_incremental_fsync);
     config_get_bool_field("aof-load-truncated",
             server.aof_load_truncated);
+    config_get_bool_field("aof-enqueue-jobs-once",
+            server.aof_enqueue_jobs_once);
 
     /* Everything we can't handle with macros follows. */
 
@@ -1341,6 +1352,7 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"hz",server.hz,DISQUE_DEFAULT_HZ);
     rewriteConfigYesNoOption(state,"aof-rewrite-incremental-fsync",server.aof_rewrite_incremental_fsync,DISQUE_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC);
     rewriteConfigYesNoOption(state,"aof-load-truncated",server.aof_load_truncated,DISQUE_DEFAULT_AOF_LOAD_TRUNCATED);
+    rewriteConfigYesNoOption(state,"aof-enqueue-jobs-once",server.aof_enqueue_jobs_once,DISQUE_DEFAULT_AOF_LOAD_TRUNCATED);
 
     /* Step 3: remove all the orphaned lines in the old file, that is, lines
      * that were used by a config option and are no longer used, like in case

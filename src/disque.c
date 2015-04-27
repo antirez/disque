@@ -2351,9 +2351,21 @@ void memtest(size_t megabytes, int passes);
 /* Function called at startup to load RDB or AOF file in memory. */
 void loadDataFromDisk(void) {
     long long start = ustime();
-    if (server.aof_state == DISQUE_AOF_ON) {
+    if (server.aof_state == DISQUE_AOF_ON || server.aof_enqueue_jobs_once) {
         if (loadAppendOnlyFile(server.aof_filename) == DISQUE_OK)
             serverLog(DISQUE_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
+
+        /* Rewrite aof-enqueue-jobs-once setting it to no if enabled: this
+         * option has the special property of auto-turning itself off. */
+        if (server.aof_enqueue_jobs_once && server.configfile) {
+            server.aof_enqueue_jobs_once = 0;
+            if (rewriteConfig(server.configfile) == -1) {
+                serverLog(DISQUE_WARNING,
+                    "CONFIG REWRITE failed "
+                    "(executed to turn off aof-enqueue-jobs-once): %s",
+                    strerror(errno));
+            }
+        }
     }
 }
 

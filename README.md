@@ -50,6 +50,7 @@ Disque queues only provides **best effort ordering**. Each queue sorts messages 
 Note that since Disque does not provide strict FIFO semantics, technically speaking it should not be called a *message queue*, and it could better identified as a message broker. However I believe that at this point in the IT industry a *message queue* is often more lightly used to identify a generic broker that may or may not be able to guarantee order in all the cases. Given that we document very clearly the semantics, I grant myself the right to call Disque a message queue anyway.
 
 Disque provides the user with fine-grained control for each job **using three time related parameters**, and one replication parameter. For each job, the user can control:
+
 1. The replication factor (how many nodes have a copy).
 2. The delay time (the min time Disque will wait before putting the message in a queue, making the message deliverable).
 3. The retry time (how much time should elapse, since the last time the job was queued, and without an acknowledge about the job delivery, before the job is re-queued again for delivery).

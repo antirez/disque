@@ -1375,14 +1375,16 @@ int clusterProcessPacket(clusterLink *link) {
         /* We received a QUEUEJOB message: consider this node as the
          * first to queue the job, so no need to broadcast a QUEUED
          * message the first time we queue it. */
-        j->flags &= ~JOB_FLAG_BCAST_QUEUED;
+        if (j) {
+            j->flags &= ~JOB_FLAG_BCAST_QUEUED;
 
-        if (j && j->state < JOB_STATE_QUEUED) {
-            serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
-            if (delay == 0) {
-                enqueueJob(j);
-            } else {
-                updateJobRequeueTime(j,server.mstime+delay*1000);
+            if (j->state < JOB_STATE_QUEUED) {
+                serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
+                if (delay == 0) {
+                    enqueueJob(j);
+                } else {
+                    updateJobRequeueTime(j,server.mstime+delay*1000);
+                }
             }
         }
     } else if (type == CLUSTERMSG_TYPE_QUEUED) {

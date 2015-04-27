@@ -104,7 +104,7 @@ this message less likely.
 However the alternative **fast ack**, while less reliable, is much faster
 and invovles exchanging less messages. This is how a fast acknowledge works:
 
-1. The client sedns ACKJOB to one node.
+1. The client sends ACKJOB to one node.
 2. The node evicts the job and sends a best effort DELJOB to all the nodes that may have a copy, or to all the cluster if the node was not aware of the job.
 
 If during a fast acknowledge a node having a copy of the message is not
@@ -210,7 +210,7 @@ Setup
 To play with Disque please do the following:
 
 1. Compile Disque, if you can compile Redis, you can compile Disque, it's the usual no external deps thing. Just type `make`.
-2. Run a few Disque nodes in different ports. Create different `disque.conf` files followign the example `disque.conf` in the source distribution.
+2. Run a few Disque nodes in different ports. Create different `disque.conf` files following the example `disque.conf` in the source distribution.
 3. After you have them running, you need to join the cluster. Just select a random node among the nodes you are running, and send the command `CLUSTER MEET <ip> <port>` for every other node in the cluster.
 
 For example if you are running three Disque servers in port 7711, 7712, 7713 in order to join the cluster you should use the `disque` command line tool and run the following commands:
@@ -614,7 +614,7 @@ FAQ
 Is Disque part of Redis?
 ---
 
-No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common fundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways biggen than writing Disque itself.
+No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common fundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways bigger than writing Disque itself.
 
 However while it is a separated project, conceptually Disque is related to Redis, since it tries to solve a Redis use case in a vertical, ad-hoc way.
 

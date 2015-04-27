@@ -210,7 +210,7 @@ Setup
 To play with Disque please do the following:
 
 1. Compile Disque, if you can compile Redis, you can compile Disque, it's the usual no external deps thing. Just type `make`.
-2. Run a few Disque nodes in different ports. Create different `disque.conf` files followign the example `disque.conf` in the source distribution.
+2. Run a few Disque nodes in different ports. Create different `disque.conf` files following the example `disque.conf` in the source distribution.
 3. After you have them running, you need to join the cluster. Just select a random node among the nodes you are running, and send the command `CLUSTER MEET <ip> <port>` for every other node in the cluster.
 
 For example if you are running three Disque servers in port 7711, 7712, 7713 in order to join the cluster you should use the `disque` command line tool and run the following commands:

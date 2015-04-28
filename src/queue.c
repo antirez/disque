@@ -167,7 +167,7 @@ int dequeueJob(job *job) {
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
     serverLog(DISQUE_VERBOSE,"DE-QUEUED %.48s", job->id);
-    return DISQUE_ERR;
+    return DISQUE_OK;
 }
 
 /* Fetch a job from the specified queue if any, updating the job state

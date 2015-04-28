@@ -1301,7 +1301,6 @@ int clusterProcessPacket(clusterLink *link) {
                 updateJobNodes(j);
                 freeJob(j);
             } else {
-                registerJob(j);
                 AOFLoadJob(j);
                 if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
                     clusterSendGotJob(sender,j);

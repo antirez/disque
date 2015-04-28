@@ -302,6 +302,9 @@ the specified number of jobs are returned from the oldest to the newest
 commands changes behavior and shows the *count* newest jobs, from the newest
 from the oldest.
 
+    QUEUES
+Return all the queue names
+
     ENQUEUE <job-id> ... <job-id>
 Queue jobs if not already queued.
 

@@ -139,7 +139,8 @@ struct serverCommand serverCommandTable[] = {
 
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0}
+    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
+    {"queues",queuesCommand,1,"rF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */
@@ -1685,6 +1686,14 @@ void timeCommand(client *c) {
     addReplyMultiBulkLen(c,2);
     addReplyBulkLongLong(c,tv.tv_sec);
     addReplyBulkLongLong(c,tv.tv_usec);
+}
+
+void queuesCommand(client *c) {
+    addReplyMultiBulkLen(c, dictSize(server.queues));
+    dictSafeForeach(server.queues,de)
+        queue *q = dictGetVal(de);
+        addReplyBulkCString(c, q->name->ptr);
+    dictEndForeach
 }
 
 void shutdownCommand(client *c) {

@@ -117,3 +117,14 @@ test "Single node jobs are correctly ordered in a FIFO fashion" {
         assert {$body == $j}
     }
 }
+
+test "Job queue names can be retrieved using the QUEUE command" {
+    set initial [D 0 queues]
+
+    for {set j 0} {$j < 3} {incr j} {
+        D 0 addjob "queue$j" body 0
+    }
+
+    set resulting [D 0 queues]
+    assert {[lsort "$resulting"] == [lsort "queue0 queue1 queue2 $initial"]}
+}

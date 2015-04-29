@@ -338,6 +338,7 @@ Known Client Libraries
 *Go*
 
 - [disque-go](https://github.com/zencoder/disque-go)
+- [go-disque](https://github.com/EverythingMe/go-disque/)
 
 *Python*
 

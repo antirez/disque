@@ -336,14 +336,16 @@ Known Client Libraries
 ====
 
 *Go*
-[disque-go](https://github.com/zencoder/disque-go)
+
+- [disque-go](https://github.com/zencoder/disque-go)
 
 *Python*
 
-[disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))
+- [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))
 
 *Ruby*
-[disque-rb](https://github.com/soveran/disque-rb)
+
+- [disque-rb](https://github.com/soveran/disque-rb)
 
 Implementation details
 ===

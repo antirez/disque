@@ -349,6 +349,10 @@ API on top of Disque:
 
 - [disque-rb](https://github.com/soveran/disque-rb)
 
+*Java*
+
+- [jedisque](https://github.com/xetorthio/jedisque)
+
 Implementation details
 ===
 

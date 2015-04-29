@@ -332,6 +332,21 @@ While a vanilla Redis client may work well with Disque, clients should optionall
 
 This way producers and consumers will eventually try to minimize nodes messages exchanges whenever possible.
 
+Known Client Libraries
+====
+
+*Go*
+
+- [disque-go](https://github.com/zencoder/disque-go)
+
+*Python*
+
+- [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))
+
+*Ruby*
+
+- [disque-rb](https://github.com/soveran/disque-rb)
+
 Implementation details
 ===
 

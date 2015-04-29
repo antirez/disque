@@ -332,8 +332,9 @@ While a vanilla Redis client may work well with Disque, clients should optionall
 
 This way producers and consumers will eventually try to minimize nodes messages exchanges whenever possible.
 
-Known Client Libraries
-====
+So basically you could perform basic usage using just a Redis client, however
+there are already specialized client libraries implementing a more specialized
+API on top of Disque:
 
 *Go*
 

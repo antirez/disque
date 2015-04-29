@@ -68,8 +68,8 @@ In order to avoid multiple deliveries when possible, Disque uses client ACKs. Wh
 
 More explicitly:
 
-1. A job is replicated to multiple nodes, but usually only *queued* in a single node. There is a difference between having a job in memory, and queueing it for delivery.
-2. Nodes having a copy of a message, if a certain amount of time has elapsed without getting the ACK for the message, will re-queue it. Nodes will run a best-effort protocol to avoid re-queueing the message multiple times.
+1. A job is replicated to multiple nodes, but usually only *queued* in a single node. There is a difference between having a job in memory, and queuing it for delivery.
+2. Nodes having a copy of a message, if a certain amount of time has elapsed without getting the ACK for the message, will re-queue it. Nodes will run a best-effort protocol to avoid re-queuing the message multiple times.
 3. ACKs are replicated and garbage collected across the cluster so that eventually processed messages are evicted (this happens ASAP if there are no failures nor network partitions).
 
 For example, if a node having a copy of a job gets partitioned away during the time the job gets acknowledged by the consumer, it is likely that when it returns back (in a reasonable amount of time, that is, before the retry time is reached) it will be informed about the ACK and will avoid to re-queue the message. Similarly jobs can be acknowledged during a partition to just a single node available, and when the partition heals the ACK will be propagated to other nodes that may still have a copy of the message.
@@ -102,7 +102,7 @@ message is acknowledged. This makes the probability of multiple deliveries of
 this message less likely.
 
 However the alternative **fast ack**, while less reliable, is much faster
-and invovles exchanging less messages. This is how a fast acknowledge works:
+and involves exchanging less messages. This is how a fast acknowledge works:
 
 1. The client sends ACKJOB to one node.
 2. The node evicts the job and sends a best effort DELJOB to all the nodes that may have a copy, or to all the cluster if the node was not aware of the job.
@@ -172,7 +172,7 @@ DI | 0f0c644f | d3ccb51c2cedbd47fcb6f312646c993c | 05a0 | SQ
 
 1. DI is the prefix
 2. 0f0c644f is the first 8 bytes of the node ID where the message was generated.
-3. d3ccb51c2cedbd47fcb6f312646c993c is the 128 bit ID pesudo random part in hex.
+3. d3ccb51c2cedbd47fcb6f312646c993c is the 128 bit ID pseudo random part in hex.
 4. 05a0 is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
 5. SQ is the suffix.
 
@@ -374,7 +374,7 @@ describing the Disque state machine, there is a more detailed description
 of the behavior caused by messages reception, and in what cases they are
 generated.
 
-Cluster messages related to jobs replication and queueing
+Cluster messages related to jobs replication and queuing
 ---
 
 * ADDJOB: ask the receiver to replicate a job, that is, to add a copy of the job among the registered jobs in the target node. When a job is accepted, the receiver replies with GOTJOB to the sender. A job may not be accepted if the receiving node is near out of memory. In this case GOTJOB is not send and the message discarded.
@@ -418,7 +418,7 @@ States are as follows:
 1. `wait-repl`: the job is waiting to be synchronously replicated.
 2. `active`: the job is active, either it reached the replication factor in the originating node, or it was created because the node received an `ADDJOB` message from another node.
 3. `queued`: the job is active and also is pending into a queue in this node.
-4. `acknowledged`: the job is no longer actived since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
+4. `acknowledged`: the job is no longer active since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
 
 Generic functions
 ---
@@ -570,7 +570,7 @@ ON RECV cluster message `SETACK(string job-id, integer may-have)`:
 4. IF `job != NULL` and `jobs.delivered.size > may-have` THEN call `START-GC(job)`.
 5. IF `may-have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START-GC(job)`. 
 
-Steps 3 and 4 makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
+Steps 3 and 4 makes sure that among the reachable nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
 
 Step 5 instead is used in order to start a GC attempt if we received a SETACK message from a node just hacking a dummy ACK (an acknowledge about a job it was not aware of).
 
@@ -614,7 +614,7 @@ FAQ
 Is Disque part of Redis?
 ---
 
-No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common fundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways bigger than writing Disque itself.
+No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common foundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways bigger than writing Disque itself.
 
 However while it is a separated project, conceptually Disque is related to Redis, since it tries to solve a Redis use case in a vertical, ad-hoc way.
 
@@ -654,4 +654,4 @@ general usefulness for the user base.
 What Disque means?
 ---
 
-DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*. And because of this tradeof it gains many other interesting things.
+DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*. And because of this tradeoff it gains many other interesting things.

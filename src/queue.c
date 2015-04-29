@@ -627,8 +627,8 @@ void getjobCommand(client *c) {
             j++;
         } else if (!strcasecmp(opt,"count") && !lastarg) {
             int retval = getLongLongFromObject(c->argv[j+1],&count);
-            if (retval != DISQUE_OK || count < 0) {
-                addReplyError(c,"COUNT must be a number > 0");
+            if (retval != DISQUE_OK || count <= 0) {
+                addReplyError(c,"COUNT must be a number greater than zero");
                 return;
             }
             j++;

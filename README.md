@@ -655,3 +655,12 @@ What Disque means?
 ---
 
 DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*. And because of this tradeof it gains many other interesting things.
+
+Thanks
+===
+
+I would like to say thank you to the following persons and companies.
+
+* Pivotal, for allowing me to work on Disque, most in my spare time, but sometimes during work hours. Moreover Pivotal agreed to leave the copyright of the code to me. This is very generous. Thanks Pivotal!
+* Michel Martens and Damian Janowski for providing early feedbacks about Disque while the project was still private.
+* Everybody which is already writing client libraries, sending pull requests, creating issues in order to move this forward from alpha to something actually usable.

@@ -2357,7 +2357,7 @@ void clusterShuffleReachableNodes(void) {
     int r, i;
     clusterNode *tmp;
     for(i = server.cluster->reachable_nodes_count - 1; i > 0; i--) {
-        r = rand() % i;
+        r = rand() % (i + 1);
         tmp = server.cluster->reachable_nodes[r];
         server.cluster->reachable_nodes[r] = server.cluster->reachable_nodes[i];
         server.cluster->reachable_nodes[i] = tmp;

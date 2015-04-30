@@ -341,6 +341,10 @@ API on top of Disque:
 - [disque-go](https://github.com/zencoder/disque-go)
 - [go-disque](https://github.com/EverythingMe/go-disque/)
 
+*Java*
+
+- [jedisque](https://github.com/xetorthio/jedisque)
+
 *Python*
 
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))

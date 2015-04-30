@@ -338,6 +338,10 @@ So basically you could perform basic usage using just a Redis client, however
 there are already specialized client libraries implementing a more specialized
 API on top of Disque:
 
+*Erlang*
+
+- [edisque](https://github.com/nacmartin/edisque)
+
 *Go*
 
 - [disque-go](https://github.com/zencoder/disque-go)

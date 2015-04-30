@@ -1371,19 +1371,16 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t delay = ntohl(hdr->data.jobid.job.aux);
 
         job *j = lookupJob(hdr->data.jobid.job.id);
-        /* We received a QUEUEJOB message: consider this node as the
-         * first to queue the job, so no need to broadcast a QUEUED
-         * message the first time we queue it. */
-        if (j) {
+        if (j && j->state < JOB_STATE_QUEUED) {
+            /* We received a QUEUEJOB message: consider this node as the
+             * first to queue the job, so no need to broadcast a QUEUED
+             * message the first time we queue it. */
             j->flags &= ~JOB_FLAG_BCAST_QUEUED;
-
-            if (j->state < JOB_STATE_QUEUED) {
-                serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
-                if (delay == 0) {
-                    enqueueJob(j);
-                } else {
-                    updateJobRequeueTime(j,server.mstime+delay*1000);
-                }
+            serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
+            if (delay == 0) {
+                enqueueJob(j);
+            } else {
+                updateJobRequeueTime(j,server.mstime+delay*1000);
             }
         }
     } else if (type == CLUSTERMSG_TYPE_QUEUED) {

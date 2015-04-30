@@ -1316,7 +1316,7 @@ void deljobCommand(client *c) {
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
-        if (job == NULL) return;
+        if (job == NULL) continue;
         unregisterJob(job);
         freeJob(job);
         evicted++;

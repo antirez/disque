@@ -2350,17 +2350,17 @@ void clusterUpdateReachableNodes(void) {
     dictReleaseIterator(di);
 }
 
-/* Shuffle the array of reachable nodes so the caller can just pick the first
- * N to send messages to N random nodes. */
+/* Shuffle the array of reachable nodes using the Fisher Yates method so the
+ * caller can just pick the first N to send messages to N random nodes.
+ * */
 void clusterShuffleReachableNodes(void) {
-    int j, r;
+    int r, i;
     clusterNode *tmp;
-
-    for (j = 0; j < server.cluster->reachable_nodes_count; j++) {
-        r = rand() % server.cluster->reachable_nodes_count;
-        tmp = server.cluster->reachable_nodes[j];
-        server.cluster->reachable_nodes[j] = server.cluster->reachable_nodes[r];
-        server.cluster->reachable_nodes[r] = tmp;
+    for(i = server.cluster->reachable_nodes_count - 1; i > 0; i--) {
+        r = rand() % i;
+        tmp = server.cluster->reachable_nodes[r];
+        server.cluster->reachable_nodes[r] = server.cluster->reachable_nodes[i];
+        server.cluster->reachable_nodes[i] = tmp;
     }
 }
 

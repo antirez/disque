@@ -1,3 +1,5 @@
+![](https://travis-ci.org/antirez/disque.svg)
+
 Disque, an in-memory, distributed job queue
 ===
 

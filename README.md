@@ -355,6 +355,10 @@ API on top of Disque:
 
 - [disque.js](https://www.npmjs.com/package/disque.js)
 
+*PHP*
+
+- [disque-php](https://github.com/mariano/disque-php) ([Composer/Packagist](https://packagist.org/packages/mariano/disque-php))
+
 *Python*
 
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))

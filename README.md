@@ -350,6 +350,7 @@ API on top of Disque:
 *Python*
 
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))
+- [pydisque](https://github.com/ybrs/pydisque) ([PyPi](https://pypi.python.org/pypi/pydisque))
 
 *Ruby*
 

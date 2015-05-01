@@ -347,6 +347,10 @@ API on top of Disque:
 
 - [jedisque](https://github.com/xetorthio/jedisque)
 
+*Node.js*
+
+- [disque.js](https://www.npmjs.com/package/disque.js)
+
 *Python*
 
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))

@@ -214,7 +214,7 @@ static void cliOutputCommandHelp(struct commandHelp *help, int group) {
 static void cliOutputGenericHelp(void) {
     sds version = cliVersion();
     printf(
-        "disque-cli %s\r\n"
+        "disque %s\r\n"
         "Type: \"help @<group>\" to get a list of commands in <group>\r\n"
         "      \"help <command>\" for help on <command>\r\n"
         "      \"help <tab>\" to get a list of possible help topics\r\n"
@@ -774,7 +774,7 @@ static int parseOptions(int argc, char **argv) {
             config.mb_delim = sdsnew(argv[++i]);
         } else if (!strcmp(argv[i],"-v") || !strcmp(argv[i], "--version")) {
             sds version = cliVersion();
-            printf("disque-cli %s\n", version);
+            printf("disque %s\n", version);
             sdsfree(version);
             exit(0);
         } else {
@@ -812,9 +812,9 @@ static sds readArgFromStdin(void) {
 static void usage(void) {
     sds version = cliVersion();
     fprintf(stderr,
-"disque-cli %s\n"
+"disque %s\n"
 "\n"
-"Usage: disque-cli [OPTIONS] [cmd [arg [arg ...]]]\n"
+"Usage: disque [OPTIONS] [cmd [arg [arg ...]]]\n"
 "  -h <hostname>      Server hostname (default: 127.0.0.1).\n"
 "  -p <port>          Server port (default: 7711).\n"
 "  -s <socket>        Server socket (overrides hostname and port).\n"
@@ -849,16 +849,16 @@ static void usage(void) {
 "  --version          Output version and exit.\n"
 "\n"
 "Examples:\n"
-"  cat /etc/passwd | disque-cli -x set mypasswd\n"
-"  disque-cli get mypasswd\n"
-"  disque-cli -r 100 lpush mylist x\n"
-"  disque-cli -r 100 -i 1 info | grep used_memory_human:\n"
-"  disque-cli --eval myscript.lua key1 key2 , arg1 arg2 arg3\n"
-"  disque-cli --scan --pattern '*:12345*'\n"
+"  cat /etc/passwd | disque -x set mypasswd\n"
+"  disque get mypasswd\n"
+"  disque -r 100 lpush mylist x\n"
+"  disque -r 100 -i 1 info | grep used_memory_human:\n"
+"  disque --eval myscript.lua key1 key2 , arg1 arg2 arg3\n"
+"  disque --scan --pattern '*:12345*'\n"
 "\n"
 "  (Note: when using --eval the comma separates KEYS[] from ARGV[] items)\n"
 "\n"
-"When no command is given, disque-cli starts in interactive mode.\n"
+"When no command is given, disque starts in interactive mode.\n"
 "Type \"help\" in interactive mode for information on available commands.\n"
 "\n",
         version, DISQUE_CLI_DEFAULT_PIPE_TIMEOUT);

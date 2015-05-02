@@ -359,9 +359,6 @@ API on top of Disque:
 *PHP*
 
 - [phpque](https://github.com/s12v/phpque) (PHP/HHVM)
-
-*PHP*
-
 - [disque-php](https://github.com/mariano/disque-php) ([Composer/Packagist](https://packagist.org/packages/mariano/disque-php))
 
 *Python*

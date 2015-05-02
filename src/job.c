@@ -892,6 +892,9 @@ void unblockClientWaitingJobRepl(client *c) {
      * waiting it gets freed or reaches the timeout, we unblock the client and
      * forget about the job. */
     if (c->bpop.job->state == JOB_STATE_WAIT_REPL) {
+        /* Set the job as active before calling deleteJobFromCluster() since
+         * otherwise unregistering the job will, in turn, unblock the client,
+         * which we are already doing here. */
         c->bpop.job->state = JOB_STATE_ACTIVE;
         deleteJobFromCluster(c->bpop.job);
     }

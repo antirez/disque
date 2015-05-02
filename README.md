@@ -356,6 +356,10 @@ API on top of Disque:
 - [disque.js](https://www.npmjs.com/package/disque.js)
 - [thunk-disque](https://github.com/thunks/thunk-disque)
 
+*PHP*
+
+- [phpque](https://github.com/s12v/phpque) (PHP/HHVM)
+
 *Python*
 
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))

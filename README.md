@@ -354,6 +354,7 @@ API on top of Disque:
 *Node.js*
 
 - [disque.js](https://www.npmjs.com/package/disque.js)
+- [thunk-disque](https://github.com/thunks/thunk-disque)
 
 *Python*
 
@@ -600,7 +601,7 @@ ON RECV cluster message `SETACK(string job-id, integer may-have)`:
 2. Call ACK-JOB(job) IF job is not `NULL`.
 3. Reply with GOTACK IF `job == NULL OR job.delivered.size <= may-have`.
 4. IF `job != NULL` and `jobs.delivered.size > may-have` THEN call `START-GC(job)`.
-5. IF `may-have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START-GC(job)`. 
+5. IF `may-have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START-GC(job)`.
 
 Steps 3 and 4 makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
 

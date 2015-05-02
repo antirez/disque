@@ -360,6 +360,10 @@ API on top of Disque:
 
 - [phpque](https://github.com/s12v/phpque) (PHP/HHVM)
 
+*PHP*
+
+- [disque-php](https://github.com/mariano/disque-php) ([Composer/Packagist](https://packagist.org/packages/mariano/disque-php))
+
 *Python*
 
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))

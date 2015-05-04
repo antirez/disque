@@ -689,6 +689,37 @@ are loaded.
 However in order to implement this, there is to observe strong evidence of its
 general usefulness for the user base.
 
+When I consume and produce from different nodes, sometimes there is a delay in order for the jobs to reach the consumer, why?
+---
+
+Disque routing is not static, the cluster automatically tries to provide
+messages to nodes where consumers are attached. When there is an high
+enough traffic (even one message per second is enough) nodes remember other
+nodes that recently were sources for jobs in a given queue, so it is possible
+to aggressively send messages asking for more jobs, every time there are
+consumers waiting for more messages and the local queue is empty.
+
+However when the traffic is very low, informations about recent sources of
+messages are discarded, and nodes rely on a more generic mechanism (which
+is used during high traffic as well) in order to discover nodes that may have
+messages in the queues we need them.
+
+For example imagine a setup with two nodes, A and B.
+
+1. A client attaches to node A and asks for jobs in the queue `myqueue`. Node A has no jobs enqueued, so the client is blocked.
+2. After a few seconds another client produces messages into `myqueue`, but sending them to node B.
+
+During step `1` if there was no recent traffic of imported messages for this queue, node A has no idea about who may have messages for the queue `myqueue`. Every other node may have, or none may have. So it starts to broadcast `NEEDJOBS` messages to the whole cluster. However we can't spam the cluster with messages, so if no reply is received after the first broadcast, the next will be sent with a larger delay, and so foth. The delay is exponential, with a maximum value of 30 seconds (this parameters will be configurable in the future, likely).
+
+When there is some traffic instead, nodes send `NEEDJOBS` messages ASAP to other nodes that were recent sources of messages. Even when no reply is received, the next `NEEDJOBS` messages will be sent more aggressively to the subset of nodes that had messages in the mast, with a delay that starts at 25 milliseconds and has a maximum value of two seconds.
+
+In order to minimize the latency when `NEEDJOBS` messages are not trottled at all when:
+
+1. A client consumed the last message from a given queue. Source nodes are informed immediately in order to receive messages before the node asks for more.
+2. Blocked clients are served the last message available in the queue.
+
+For more information, please refer to the file `queue.c`, especially the function `needJobsForQueue` and its callers.
+
 What Disque means?
 ---
 

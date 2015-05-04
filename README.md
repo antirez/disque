@@ -714,7 +714,7 @@ During step `1` if there was no recent traffic of imported messages for this que
 
 When there is some traffic instead, nodes send `NEEDJOBS` messages ASAP to other nodes that were recent sources of messages. Even when no reply is received, the next `NEEDJOBS` messages will be sent more aggressively to the subset of nodes that had messages in the mast, with a delay that starts at 25 milliseconds and has a maximum value of two seconds.
 
-In order to minimize the latency when `NEEDJOBS` messages are not trottled at all when:
+In order to minimize the latency, `NEEDJOBS` messages are not trottled at all when:
 
 1. A client consumed the last message from a given queue. Source nodes are informed immediately in order to receive messages before the node asks for more.
 2. Blocked clients are served the last message available in the queue.

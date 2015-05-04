@@ -700,9 +700,10 @@ to aggressively send messages asking for more jobs, every time there are
 consumers waiting for more messages and the local queue is empty.
 
 However when the traffic is very low, informations about recent sources of
-messages are discarded, and nodes rely on a more generic mechanism (which
-is used during high traffic as well) in order to discover nodes that may have
-messages in the queues we need them.
+messages are discarded, and nodes rely on a more generic mechanism in order to
+discover other nodes that may have messages in the queues we need them (which
+is also used in high traffic conditions as well, in order to discover new
+sources of messages for a given queue).
 
 For example imagine a setup with two nodes, A and B.
 

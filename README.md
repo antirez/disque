@@ -350,6 +350,7 @@ API on top of Disque:
 *Java*
 
 - [jedisque](https://github.com/xetorthio/jedisque)
+- [spinach](https://github.com/mp911de/spinach)
 
 *Node.js*
 

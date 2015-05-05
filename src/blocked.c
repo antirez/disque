@@ -116,11 +116,17 @@ void processUnblockedClients(void) {
         c = ln->value;
         listDelNode(server.unblocked_clients,ln);
         c->flags &= ~DISQUE_UNBLOCKED;
-        c->btype = DISQUE_BLOCKED_NONE;
+        /* Note that the client may be blocked again at this point, since
+         * a new blocking command was processed. In that case we just remove
+         * it from the unblocked clients list without actually processing
+         * its pending query buffer. */
+        if (!(c->flags & DISQUE_BLOCKED)) {
+            c->btype = DISQUE_BLOCKED_NONE;
 
-        /* Process remaining data in the input buffer. */
-        if (c->querybuf && sdslen(c->querybuf) > 0) {
-            processInputBuffer(c);
+            /* Process remaining data in the input buffer. */
+            if (c->querybuf && sdslen(c->querybuf) > 0) {
+                processInputBuffer(c);
+            }
         }
     }
 }

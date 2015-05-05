@@ -919,7 +919,7 @@ void addReplyJobID(client *c, job *j) {
  * copies from other nodes), to avoid non acknowledged jobs to be active
  * when possible. */
 void jobReplicationAchieved(job *j) {
-    serverLog(DISQUE_VERBOSE,"Replication ACHIEVED");
+    serverLog(DISQUE_WARNING,"Replication ACHIEVED %.48s",j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */

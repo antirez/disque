@@ -345,7 +345,8 @@ API on top of Disque:
 *Go*
 
 - [disque-go](https://github.com/zencoder/disque-go)
-- [go-disque](https://github.com/EverythingMe/go-disque/)
+- [go-disque](https://github.com/EverythingMe/go-disque)
+- [disque](https://github.com/goware/disque)
 
 *Java*
 

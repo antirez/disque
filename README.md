@@ -373,6 +373,10 @@ API on top of Disque:
 
 - [disque-rb](https://github.com/soveran/disque-rb)
 
+*C++*
+
+- [disque C++ client](https://github.com/zhengshuxin/acl/tree/master/lib_acl_cpp/samples/disque)
+
 Implementation details
 ===
 

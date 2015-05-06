@@ -338,6 +338,10 @@ So basically you could perform basic usage using just a Redis client, however
 there are already specialized client libraries implementing a more specialized
 API on top of Disque:
 
+*C++*
+
+- [disque C++ client](https://github.com/zhengshuxin/acl/tree/master/lib_acl_cpp/samples/disque)
+
 *Erlang*
 
 - [edisque](https://github.com/nacmartin/edisque)
@@ -372,10 +376,6 @@ API on top of Disque:
 *Ruby*
 
 - [disque-rb](https://github.com/soveran/disque-rb)
-
-*C++*
-
-- [disque C++ client](https://github.com/zhengshuxin/acl/tree/master/lib_acl_cpp/samples/disque)
 
 Implementation details
 ===

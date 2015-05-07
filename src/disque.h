@@ -101,7 +101,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_REPL_BACKLOG_MIN_SIZE (1024*16)          /* 16k */
 #define DISQUE_BGSAVE_RETRY_DELAY 5 /* Wait a few secs before trying again. */
 #define DISQUE_DEFAULT_PID_FILE "/var/run/disque.pid"
-#define DISQUE_DEFAULT_SYSLOG_IDENT "redis"
+#define DISQUE_DEFAULT_SYSLOG_IDENT "disque"
 #define DISQUE_DEFAULT_CLUSTER_CONFIG_FILE "nodes.conf"
 #define DISQUE_DEFAULT_DAEMONIZE 0
 #define DISQUE_DEFAULT_UNIX_SOCKET_PERM 0

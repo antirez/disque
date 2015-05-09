@@ -108,6 +108,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_DELJOB 11       /* Delete the specified job. */
 #define CLUSTERMSG_TYPE_NEEDJOBS 12     /* I need jobs for some queue. */
 #define CLUSTERMSG_TYPE_YOURJOBS 13     /* NEEDJOBS reply with jobs. */
+#define CLUSTERMSG_TYPE_WORKING 14      /* Postpone re-queueing & dequeue */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -222,6 +223,7 @@ void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
 void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay);
 void clusterBroadcastQueued(job *j);
+void clusterBroadcastWorking(job *j);
 void clusterBroadcastDelJob(job *j);
 void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);

@@ -139,7 +139,8 @@ struct serverCommand serverCommandTable[] = {
 
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0}
+    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
+    {"queues",queuesCommand,1,"rF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

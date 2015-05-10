@@ -792,3 +792,22 @@ void qpeekCommand(client *c) {
     }
     setDeferredMultiBulkLength(c,deflen,returned);
 }
+
+/* QUEUES
+ *
+ * Return an array of the names of all registered queues. */
+void queuesCommand(client *c) {
+    dictIterator *di;
+    dictEntry *de;
+    unsigned long numqueues = 0;
+    void *replylen = addDeferredMultiBulkLength(c);
+
+    di = dictGetSafeIterator(server.queues);
+    while((de = dictNext(di)) != NULL) {
+        robj *qname = dictGetKey(de);
+        addReplyBulk(c,qname);
+        numqueues++;
+    }
+    dictReleaseIterator(di);
+    setDeferredMultiBulkLength(c,replylen,numqueues);
+}

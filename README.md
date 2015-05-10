@@ -246,15 +246,15 @@ single very specific problem. The three main commands are:
 
 Adds a job to the specified queue. Arguments are as follows:
 
-* *queue_name* is the name of the queue, any string, basically. You don't need to create queues, if it does not exist, it gets created automatically. If it has no longer jobs, it gets removed.
-* *job* is a string representing the job. Disque is job meaning agnostic, for it a job is just a message to deliver. Job max size is 4GB.
-* *ms-timeout* is the command timeout in milliseconds. If no ASYNC is specified, and the replication level specified is not reached in the specified number of milliseconds, the command returns with an error, and the node does a best-effort cleanup, that is, it will try to delete copies of the job across the cluster. However the job may still be delivered later. Note that the actual timeout resolution is 1/10 of second or worse with the default server hz.
-* *REPLICATE count* is the number of nodes the job should be replicated to.
-* *DELAY sec* is the number of seconds that should elapse before the job is queued by any server.
-* *RETRY sec* period after which, if no ACK is received, the job is put again into the queue for delivery. If RETRY is 0, the job has at-most-once delivery semantics.
-* *TTL sec* is the max job life in seconds. After this time, the job is deleted even if it was not successfully delivered.
-* *MAXLEN count* specifies that if there are already *count* messages queued for the specified queue name, the message is refused and an error reported to the client.
-* *ASYNC* asks the server to let the command return ASAP and replicate the job to other nodes in the background. The job gets queued ASAP, while normally the job is put into the queue only when the client gets a positive reply.
+* `queue_name` is the name of the queue, any string, basically. You don't need to create queues, if it does not exist, it gets created automatically. If it has no longer jobs, it gets removed.
+* `job` is a string representing the job. Disque is job meaning agnostic, for it a job is just a message to deliver. Job max size is 4GB.
+* `ms-timeout` is the command timeout in milliseconds. If no `ASYNC` is specified, and the replication level specified is not reached in the specified number of milliseconds, the command returns with an error, and the node does a best-effort cleanup, that is, it will try to delete copies of the job across the cluster. However the job may still be delivered later. Note that the actual timeout resolution is 1/10 of second or worse with the default server hz.
+* `REPLICATE count` is the number of nodes the job should be replicated to.
+* `DELAY sec` is the number of seconds that should elapse before the job is queued by any server.
+* `RETRY sec` period after which, if no `ACKJOB` is received, the job is put again into the queue for delivery. If `RETRY` is 0, the job has at-most-once delivery semantics.
+* `TTL sec` is the max job life in seconds. After this time, the job is deleted even if it was not successfully delivered.
+* `MAXLEN count` specifies that if there are already `count` messages queued for the specified queue name, the message is refused and an error reported to the client.
+* `ASYNC` asks the server to let the command return ASAP and replicate the job to other nodes in the background. The job gets queued ASAP, while normally the job is put into the queue only when the client gets a positive reply.
 
 The command returns the Job ID of the added job, assuming ASYNC is specified, or if the job was replicated correctly to the specified number of nodes. Otherwise an error is returned.
 

@@ -106,7 +106,7 @@ this message less likely.
 However the alternative **fast ack**, while less reliable, is much faster
 and invovles exchanging less messages. This is how a fast acknowledge works:
 
-1. The client sends ACKJOB to one node.
+1. The client sends `FASTACK` to one node.
 2. The node evicts the job and sends a best effort DELJOB to all the nodes that may have a copy, or to all the cluster if the node was not aware of the job.
 
 If during a fast acknowledge a node having a copy of the message is not

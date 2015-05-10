@@ -750,7 +750,7 @@ char *strEncoding(int encoding);
 int compareStringObjects(robj *a, robj *b);
 int collateStringObjects(robj *a, robj *b);
 int equalStringObjects(robj *a, robj *b);
-unsigned long long estimateObjectIdleTime(robj *o);
+int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor);
 #define sdsEncodedObject(objptr) (objptr->encoding == DISQUE_ENCODING_RAW || objptr->encoding == DISQUE_ENCODING_EMBSTR)
 
 /* Synchronous I/O with timeout */
@@ -862,6 +862,7 @@ void deljobCommand(client *c);
 void bgrewriteaofCommand(client *c);
 void helloCommand(client *c);
 void qpeekCommand(client *c);
+void qscanCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

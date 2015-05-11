@@ -672,6 +672,7 @@ void getjobCommand(client *c) {
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
             addReplyJob(c,job);
             count--;
+
             emitted_jobs++;
             if (count == 0) break;
         }
@@ -781,9 +782,7 @@ void qpeekCommand(client *c) {
     void *deflen = addDeferredMultiBulkLength(c);
     while(count-- && sn) {
         job *j = sn->obj;
-        addReplyMultiBulkLen(c,2);
-        addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
-        addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+        addReplyJob(c, j);
         returned++;
         if (newjobs)
             sn = sn->backward;

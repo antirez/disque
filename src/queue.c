@@ -672,7 +672,6 @@ void getjobCommand(client *c) {
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
             addReplyJob(c,job);
             count--;
-
             emitted_jobs++;
             if (count == 0) break;
         }

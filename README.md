@@ -367,6 +367,7 @@ API on top of Disque:
 - [phpque](https://github.com/s12v/phpque) (PHP/HHVM)
 - [disque-php](https://github.com/mariano/disque-php) ([Composer/Packagist](https://packagist.org/packages/mariano/disque-php))
 - [disque-client-php](https://github.com/mavimo/disque-client-php) ([Composer/Packagist](https://packagist.org/packages/mavimo/disque-client))
+- [phloppy](https://github.com/0x20h/phloppy) ([Composer/Packagist](https://packagist.org/packages/0x20h/phloppy))
 
 *Python*
 

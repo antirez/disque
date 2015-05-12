@@ -106,7 +106,7 @@ this message less likely.
 However the alternative **fast ack**, while less reliable, is much faster
 and invovles exchanging less messages. This is how a fast acknowledge works:
 
-1. The client sends ACKJOB to one node.
+1. The client sends `FASTACK` to one node.
 2. The node evicts the job and sends a best effort DELJOB to all the nodes that may have a copy, or to all the cluster if the node was not aware of the job.
 
 If during a fast acknowledge a node having a copy of the message is not
@@ -142,7 +142,7 @@ is possible.
 
 Even when running memory-only, Disque is able to dump its memory on disk and reload from disk on controlled restarts, for example in order to upgrade the software.
 
-This is how to perform a controlled restart, that works whatever AOF is enabled
+This is how to perform a controlled restart, that works whether AOF is enabled
 or not:
 
 1. CONFIG SET aof-enqueue-jobs-once yes
@@ -330,7 +330,7 @@ While a vanilla Redis client may work well with Disque, clients should optionall
 
 1. The client should be given a number of IP addresses and ports where nodes are located. The client should select random nodes and should try to connect until one available is found.
 2. On a successful connection the `HELLO` command should be used in order to retrieve the Node ID and other potentially useful information (server version, number of nodes).
-3. If a consumer sees an high message rate received from foreign nodes, it may optionally have logic in order to retrieve messages directly from the nodes where producers are producing the messages for a given topic. The consumer can easily check the source of the messages by checking the Node ID prefix in the messages IDs.
+3. If a consumer sees a high message rate received from foreign nodes, it may optionally have logic in order to retrieve messages directly from the nodes where producers are producing the messages for a given topic. The consumer can easily check the source of the messages by checking the Node ID prefix in the messages IDs.
 
 This way producers and consumers will eventually try to minimize nodes messages exchanges whenever possible.
 
@@ -367,6 +367,7 @@ API on top of Disque:
 - [phpque](https://github.com/s12v/phpque) (PHP/HHVM)
 - [disque-php](https://github.com/mariano/disque-php) ([Composer/Packagist](https://packagist.org/packages/mariano/disque-php))
 - [disque-client-php](https://github.com/mavimo/disque-client-php) ([Composer/Packagist](https://packagist.org/packages/mavimo/disque-client))
+- [phloppy](https://github.com/0x20h/phloppy) ([Composer/Packagist](https://packagist.org/packages/0x20h/phloppy))
 
 *Python*
 

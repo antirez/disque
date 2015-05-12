@@ -699,7 +699,7 @@ void getjobCommand(client *c) {
  *
  * If the job is active, queue it if job retry != 0.
  * If the job is in any other state, do nothing.
- * If the job is not knonw, do nothing.
+ * If the job is not known, do nothing.
  *
  * NOTE: Even jobs with retry set to 0 are enqueued! Be aware that
  * using this command may violate the at-most-once contract.
@@ -725,7 +725,7 @@ void enqueueCommand(client *c) {
  *
  * If the job is queued, remove it from queue and change state to active.
  * If the job is in any other state, do nothing.
- * If the job is not knonw, do nothing.
+ * If the job is not known, do nothing.
  *
  * Return the number of jobs actually moved from queue to active state. */
 void dequeueCommand(client *c) {

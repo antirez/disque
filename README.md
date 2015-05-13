@@ -318,8 +318,28 @@ no `DELJOB` cluster bus message is sent to other nodes.
     SHOW <job-id>
 Describe the job.
 
-    SCAN <job|queue> <cursor> [STATE ...] [COUNT ...] [MAXIDLE ...] (TODO)
-Iterate job IDs.
+    QSCAN [COUNT <count>] [BLOCKING] [MINLEN <len>]
+          [MAXLEN <len>] [IMPORTRATE <rate>]
+The command provides an interface to iterate all the existing queues in
+the local node, providing a cursor in the form of an integer that is passed
+to the next command invocation. During the first call cursor must be 0,
+in the next calls the cursor returned in the previous call is used in the
+next. The iterator guarantees to return all the elements but may return
+duplicated elements.
+
+Options:
+
+* `COUNT <count>` An hit about how much work to do per iteration.
+* `BUSYLOOP` Block and return all the elements in a busy loop.
+* `MINLEN <count>` Don't return elements with less than count jobs queued.
+* `MAXLEN <count>`Don't return elements with more than count jobs queued.
+* `IMPORTRATE <rate>` Only return elements with an job import rate (from other nodes) `>=` rate.
+
+The cursor argument can be in any place, the first non matching option
+that has valid cursor form of an usigned number will be sensed as a valid
+cursor.
+
+    JSCAN (TODO: jobs iterator similar to QSCAN).
 
 Client libraries
 ===

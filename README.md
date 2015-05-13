@@ -318,7 +318,7 @@ no `DELJOB` cluster bus message is sent to other nodes.
     SHOW <job-id>
 Describe the job.
 
-    QSCAN [COUNT <count>] [BLOCKING] [MINLEN <len>]
+    QSCAN [COUNT <count>] [BUSYLOOP] [MINLEN <len>]
           [MAXLEN <len>] [IMPORTRATE <rate>]
 The command provides an interface to iterate all the existing queues in
 the local node, providing a cursor in the form of an integer that is passed

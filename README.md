@@ -362,6 +362,10 @@ API on top of Disque:
 
 - [disque C++ client](https://github.com/zhengshuxin/acl/tree/master/lib_acl_cpp/samples/disque)
 
+*Elixir*
+
+- [exdisque](https://github.com/mosic/exdisque)
+
 *Erlang*
 
 - [edisque](https://github.com/nacmartin/edisque)

@@ -598,7 +598,7 @@ sds serializeJob(sds jobs, job *j, int sertype) {
     p = msg + 4 + JOB_STRUCT_SER_LEN;
 
     /* Queue name is 4 bytes prefixed len in little endian + actual bytes. */
-    p = serializeSdsString(p,j->queue->ptr);
+    p = serializeSdsString(p,j->queue ? j->queue->ptr : NULL);
 
     /* Body is 4 bytes prefixed len in little endian + actual bytes. */
     p = serializeSdsString(p,j->body);

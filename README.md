@@ -753,6 +753,11 @@ In order to minimize the latency, `NEEDJOBS` messages are not trottled at all wh
 
 For more information, please refer to the file `queue.c`, especially the function `needJobsForQueue` and its callers.
 
+Are messages re-enqueued in the queue tail or head or what?
+---
+
+Messages are put into the queue according to their *creation time* attribute. This means that they are enqueued in a best effort order in the local node queue. Messages that need to be put back into the queue again because their delivery failed are usually (but not always) older than messages already in queue, so they'll likely be among the first to be delivered to workers.
+
 What Disque means?
 ---
 

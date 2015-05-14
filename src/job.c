@@ -430,7 +430,7 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int period = 100; /* 100 ms default period. */
     int max = 10000; /* 10k jobs * 1000 milliseconds = 10M jobs/sec max. */
     mstime_t now = mstime(), latency;
-    skiplistNode *current, *next;
+    skiplistNode *current;
     DISQUE_NOTUSED(eventLoop);
     DISQUE_NOTUSED(id);
     DISQUE_NOTUSED(clientData);
@@ -449,8 +449,9 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     latencyStartMonitor(latency);
     server.mstime = now; /* Update it since it's used by processJob(). */
-    current = server.awakeme->header->level[0].forward;
-    while(current && max--) {
+    skiplistIter iter;
+    skiplistRewind(server.awakeme, &iter);
+    while((current = skiplistNext(&iter)) != NULL && max--) {
         job *j = current->obj;
 
 #ifdef DEBUG_SCHEDULER
@@ -464,16 +465,15 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 #endif
 
         if (j->awakeme > now) break;
-        next = current->level[0].forward;
         processJob(j);
-        current = next;
     }
 
     /* Try to block between 1 and 100 millseconds depending on how near
      * in time is the next async event to process. Note that because of
      * received commands or change in state jobs state may be modified so
      * we set a max time of 100 milliseconds to wakeup anyway. */
-    current = server.awakeme->header->level[0].forward;
+    skiplistRewind(server.awakeme, &iter);
+    current = skiplistNext(&iter);
     if (current) {
         job *j = current->obj;
         period = server.mstime-j->awakeme;

@@ -767,11 +767,18 @@ void qpeekCommand(client *c) {
         newjobs = 1;
     }
 
+    skiplistIter iter;
     skiplistNode *sn = NULL;
     queue *q = lookupQueue(c->argv[1]);
 
     if (q != NULL)
-        sn = newjobs ? q->sl->tail : q->sl->header->level[0].forward;
+    {
+        if (newjobs)
+            skiplistRewindTail(server.awakeme, &iter);
+        else
+            skiplistRewind(server.awakeme, &iter);
+        sn = skiplistNext(&iter);
+    }
 
     if (sn == NULL) {
         addReply(c,shared.emptymultibulk);
@@ -785,10 +792,7 @@ void qpeekCommand(client *c) {
         addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
         addReplyBulkCBuffer(c,j->body,sdslen(j->body));
         returned++;
-        if (newjobs)
-            sn = sn->backward;
-        else
-            sn = sn->level[0].forward;
+        sn = skiplistNext(&iter);
     }
     setDeferredMultiBulkLength(c,deflen,returned);
 }

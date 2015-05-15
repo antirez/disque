@@ -297,6 +297,23 @@ it can't happen that a set of broken workers monopolize a job with `WORKING`
 never processing it. After 50% of the TTL elapsed, the job will be delivered
 to other workers anyway.
 
+Note that `WORKING` returns the number of seconds you (likely) postponed the
+message visiblity for other workers (the command basically returns the
+*retry* time of the job), so the worker should make sure to send the next
+`WORKING` command before this time elapses. Moreover a worker that may want
+to use such an iterface may fetch the retry value with the `SHOW` command
+when starting to process a message, or may simply send a `WORKING` command
+ASAP, like in the following example (in pseudo code):
+
+    retry = WORKING(jobid)
+    RESET timer
+    WHILE ... work with the job still not finished ...
+        IF timer reached 80% of the retry time
+            WORKING(jobid)
+            RESET timer
+        END
+    END
+
 Other commands
 ===
 

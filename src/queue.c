@@ -807,6 +807,8 @@ void qpeekCommand(client *c) {
  * -ACKED     The job is already acknowledged, so was processed already.
  * -NOJOB     We don't know about this job. The job was either already
  *            acknowledged and purged, or this node never received a copy.
+ * -TOOLATE   50% of the job TTL already elapsed, is no longer possible to
+ *            delay it.
  */
 void workingCommand(client *c) {
     if (validateJobIDs(c,c->argv+1,1) == DISQUE_ERR) return;
@@ -815,6 +817,19 @@ void workingCommand(client *c) {
     if (job == NULL) {
         addReplySds(c,
             sdsnew("-NOJOB Job not known in the context of this node.\r\n"));
+        return;
+    }
+
+    /* Don't allow to postpone jobs that have less than 50% of time to live
+     * left, in order to prevent a worker from monopolizing a job for all its
+     * lifetime. */
+    mstime_t ttl = ((mstime_t)job->etime*1000) - (job->ctime/1000000);
+    mstime_t elapsed = server.mstime - (job->ctime/1000000);
+    if (ttl > 0 && elapsed > ttl/2) {
+        addReplySds(c,
+            sdsnew("-TOOLATE Half of job TTL already elapsed, "
+                   "you are no longer allowed to postpone the "
+                   "next delivery.\r\n"));
         return;
     }
 

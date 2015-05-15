@@ -863,6 +863,7 @@ void bgrewriteaofCommand(client *c);
 void helloCommand(client *c);
 void qpeekCommand(client *c);
 void qscanCommand(client *c);
+void workingCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

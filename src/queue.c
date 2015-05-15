@@ -916,3 +916,52 @@ void qscanCommand(client *c) {
     }
     listRelease(list);
 }
+
+/* WORKING job-id
+ *
+ * If the job is queued, remove it from queue and change state to active.
+ * Postpone the job requeue time in the future so that we'll wait the retry
+ * time before enqueueing again.
+ * Broadcast a WORKING message to all the other nodes that have a copy according
+ * to our local info.
+ *
+ * Return how much time the worker likely have before the next requeue event
+ * or an error:
+ *
+ * -ACKED     The job is already acknowledged, so was processed already.
+ * -NOJOB     We don't know about this job. The job was either already
+ *            acknowledged and purged, or this node never received a copy.
+ * -TOOLATE   50% of the job TTL already elapsed, is no longer possible to
+ *            delay it.
+ */
+void workingCommand(client *c) {
+    if (validateJobIDs(c,c->argv+1,1) == DISQUE_ERR) return;
+
+    job *job = lookupJob(c->argv[1]->ptr);
+    if (job == NULL) {
+        addReplySds(c,
+            sdsnew("-NOJOB Job not known in the context of this node.\r\n"));
+        return;
+    }
+
+    /* Don't allow to postpone jobs that have less than 50% of time to live
+     * left, in order to prevent a worker from monopolizing a job for all its
+     * lifetime. */
+    mstime_t ttl = ((mstime_t)job->etime*1000) - (job->ctime/1000000);
+    mstime_t elapsed = server.mstime - (job->ctime/1000000);
+    if (ttl > 0 && elapsed > ttl/2) {
+        addReplySds(c,
+            sdsnew("-TOOLATE Half of job TTL already elapsed, "
+                   "you are no longer allowed to postpone the "
+                   "next delivery.\r\n"));
+        return;
+    }
+
+    if (job->state == JOB_STATE_QUEUED) dequeueJob(job);
+    job->flags |= JOB_FLAG_BCAST_WILLQUEUE;
+    updateJobRequeueTime(job,server.mstime+
+                         job->retry*1000+
+                         randomTimeError(DISQUE_TIME_ERR));
+    clusterBroadcastWorking(job);
+    addReplyLongLong(c,job->retry);
+}

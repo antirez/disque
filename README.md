@@ -277,6 +277,26 @@ network is well connected and there are no node failures, this is equivalent to
 is more likely that fast acknowledges will result into multiple deliveries of
 the same messages.
 
+    WORKING jobid
+
+Claims to be still working with the specified job, and asks Disque to postpone
+the next time it will deliver again the job. The next delivery is postponed
+for the job retry time, however the command works in a **best effort** way
+since there is no way to guarantee during failures that another node in a
+different network partition is performing a delivery of the same job.
+
+Another limitation of the `WORKING` command is that it cannot be sent to
+nodes not knowing about this particular job. In such a case the command replies
+with a `NOJOB` error. Similarly if the job is already acknowledged an error
+is returned.
+
+Note that the `WORKING` command is refused by Disque nodes if 50% of the job
+time to live has already elapsed. This limitation makes Disque safer since
+usually the *retry* time is much smaller than the time to live of a job, so
+it can't happen that a set of broken workers monopolize a job with `WORKING`
+never processing it. After 50% of the TTL elapsed, the job will be delivered
+to other workers anyway.
+
 Other commands
 ===
 

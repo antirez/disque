@@ -265,64 +265,6 @@ unsigned long skiplistLength(skiplist *sl) {
     return sl->length;
 }
 
-/* Returns a skiplist iterator 'iter'. After the initialization every
- * call to listNext() will return the next element of the list.
- *
- * This function can't fail. */
-skiplistIter *skiplistGetIterator(skiplist *skiplist, int direction) {
-    skiplistIter *iter;
-
-    if ((iter = zmalloc(sizeof(*iter))) == NULL) return NULL;
-    if (direction == SL_START_HEAD)
-        iter->next = skiplist->header->level[0].forward;
-    else
-        iter->next = skiplist->tail;
-    iter->direction = direction;
-    return iter;
-}
-
-/* Release the iterator memory */
-void skiplistReleaseIterator(skiplistIter *iter) {
-    zfree(iter);
-}
-
-/* Return the next element of an iterator.
- * It's valid to remove the currently returned element using
- * skiplistDelete(), but not to remove other elements.
- *
- * The function returns a pointer to the next element of the skiplist,
- * or NULL if there are no more elements, so the classical usage patter
- * is:
- *
- * iter = skiplistGetIterator(list,<direction>);
- * while ((node = skiplistNext(iter)) != NULL) {
- *     doSomethingWith(skiplistNodeValue(node));
- * }
- *
- * */
-skiplistNode *skiplistNext(skiplistIter *iter) {
-    skiplistNode *current = iter->next;
-
-    if (current != NULL) {
-        if (iter->direction == SL_START_HEAD)
-            iter->next = current->level[0].forward;
-        else
-            iter->next = current->backward;
-    }
-    return current;
-}
-
-/* Create an iterator in the list private iterator structure */
-void skiplistRewind(skiplist *skiplist, skiplistIter *sli) {
-    sli->next = skiplist->header->level[0].forward;
-    sli->direction = SL_START_HEAD;
-}
-
-void skiplistRewindTail(skiplist *skiplist, skiplistIter *sli) {
-    sli->next = skiplist->tail;
-    sli->direction = SL_START_TAIL;
-}
-
 #ifdef TEST_MAIN
 #include <stdio.h>
 #include <string.h>

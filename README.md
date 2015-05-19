@@ -800,6 +800,15 @@ What Disque means?
 
 DIStributed QUEue but is also a joke with "dis" as negation (like in *dis*order) of the strict concept of queue, since Disque is not able to guarantee the strict ordering you expect from something called *queue*. And because of this tradeof it gains many other interesting things.
 
+Community: how to get help and how to help
+===
+
+Get in touch with us in one of the following ways:
+
+1. Join the `#disque` IRC channel at **irc.freenode.net**.
+2. Post on Stack Overflow using the `disque` tag.
+3. Create an Issue or Pull request if you wish.
+
 Thanks
 ===
 

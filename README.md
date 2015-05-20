@@ -423,6 +423,10 @@ API on top of Disque:
 - [disque.js](https://www.npmjs.com/package/disque.js)
 - [thunk-disque](https://github.com/thunks/thunk-disque)
 
+*Perl*
+
+- [perl-disque](https://github.com/lovelle/perl-disque)
+
 *PHP*
 
 - [phpque](https://github.com/s12v/phpque) (PHP/HHVM)

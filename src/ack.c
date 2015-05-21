@@ -120,6 +120,10 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
     serverLog(DISQUE_VERBOSE,"RECEIVED GOTACK FROM %.40s FOR JOB %.48s",
         sender->name, job->id);
 
+    /* We should never receive a GOTACK for a job which is not acknowledged,
+     * but it is more robust to handle it explicitly. */
+    if (job->state != JOB_STATE_ACKED) return;
+
     /* If this is a dummy ACK, and we reached a node that knows about this job,
      * it's up to it to perform the garbage collection, so we can forget about
      * this job and reclaim memory. */
@@ -141,7 +145,13 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
      * 2) Add the node to the list of nodes that acknowledged the ACK. */
     if (known || dictFind(job->nodes_delivered,sender->name) != NULL) {
         dictAdd(job->nodes_delivered,sender->name,sender);
-        dictAdd(job->nodes_confirmed,sender->name,sender);
+        /* job->nodes_confirmed exists if we started a job garbage collection,
+         * but we may receive GOTACK messages in other conditions sometimes,
+         * since we reply with SETACK to QUEUED and WILLQUEUE if the job is
+         * acknowledged but we did not yet started to GC. So we need to test
+         * if the hash table actually exists. */
+        if (job->nodes_confirmed)
+            dictAdd(job->nodes_confirmed,sender->name,sender);
     }
 
     /* If our job is actually a dummy ACK, we are still interested to collect

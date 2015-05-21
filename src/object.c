@@ -533,6 +533,27 @@ int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) 
     return DISQUE_OK;
 }
 
+/* Try to parse a SCAN-like cursor stored at object 'o':
+ * if the cursor is valid, store it as unsigned integer into *cursor and
+ * returns DISQUE_OK. Otherwise return DISQUE_ERR and send an error to the
+ * client.
+ *
+ * Used by QSCAN & JSCAN. */
+int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor) {
+    char *eptr;
+
+    /* Use strtoul() because we need an *unsigned* long, so
+     * getLongLongFromObject() does not cover the whole cursor space. */
+    errno = 0;
+    *cursor = strtoul(o->ptr, &eptr, 10);
+    if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' || errno == ERANGE)
+    {
+        addReplyError(c, "invalid cursor or option name");
+        return DISQUE_ERR;
+    }
+    return DISQUE_OK;
+}
+
 char *strEncoding(int encoding) {
     switch(encoding) {
     case DISQUE_ENCODING_RAW: return "raw";

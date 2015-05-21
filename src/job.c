@@ -598,7 +598,7 @@ sds serializeJob(sds jobs, job *j, int sertype) {
     p = msg + 4 + JOB_STRUCT_SER_LEN;
 
     /* Queue name is 4 bytes prefixed len in little endian + actual bytes. */
-    p = serializeSdsString(p,j->queue->ptr);
+    p = serializeSdsString(p,j->queue ? j->queue->ptr : NULL);
 
     /* Body is 4 bytes prefixed len in little endian + actual bytes. */
     p = serializeSdsString(p,j->body);
@@ -892,6 +892,9 @@ void unblockClientWaitingJobRepl(client *c) {
      * waiting it gets freed or reaches the timeout, we unblock the client and
      * forget about the job. */
     if (c->bpop.job->state == JOB_STATE_WAIT_REPL) {
+        /* Set the job as active before calling deleteJobFromCluster() since
+         * otherwise unregistering the job will, in turn, unblock the client,
+         * which we are already doing here. */
         c->bpop.job->state = JOB_STATE_ACTIVE;
         deleteJobFromCluster(c->bpop.job);
     }
@@ -916,7 +919,7 @@ void addReplyJobID(client *c, job *j) {
  * copies from other nodes), to avoid non acknowledged jobs to be active
  * when possible. */
 void jobReplicationAchieved(job *j) {
-    serverLog(DISQUE_VERBOSE,"Replication ACHIEVED");
+    serverLog(DISQUE_VERBOSE,"Replication ACHIEVED %.48s",j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */
@@ -1231,7 +1234,10 @@ void showCommand(client *c) {
     addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
 
     addReplyBulkCString(c,"queue");
-    addReplyBulk(c,j->queue);
+    if (j->queue)
+        addReplyBulk(c,j->queue);
+    else
+        addReply(c,shared.nullbulk);
 
     addReplyBulkCString(c,"state");
     addReplyBulkCString(c,jobStateToString(j->state));
@@ -1254,10 +1260,14 @@ void showCommand(client *c) {
     addReplyLongLong(c,j->retry);
 
     addReplyBulkCString(c,"nodes-delivered");
-    addReplyMultiBulkLen(c,dictSize(j->nodes_delivered));
-    dictForeach(j->nodes_delivered,de)
-        addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
-    dictEndForeach
+    if (j->nodes_delivered) {
+        addReplyMultiBulkLen(c,dictSize(j->nodes_delivered));
+        dictForeach(j->nodes_delivered,de)
+            addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
+        dictEndForeach
+    } else {
+        addReplyMultiBulkLen(c,0);
+    }
 
     addReplyBulkCString(c,"nodes-confirmed");
     if (j->nodes_confirmed) {
@@ -1309,7 +1319,7 @@ void deljobCommand(client *c) {
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
-        if (job == NULL) return;
+        if (job == NULL) continue;
         unregisterJob(job);
         freeJob(job);
         evicted++;

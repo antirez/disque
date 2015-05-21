@@ -1107,6 +1107,7 @@ int clusterProcessPacket(clusterLink *link) {
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
                type == CLUSTERMSG_TYPE_ENQUEUE ||
                type == CLUSTERMSG_TYPE_QUEUED ||
+               type == CLUSTERMSG_TYPE_WORKING ||
                type == CLUSTERMSG_TYPE_SETACK ||
                type == CLUSTERMSG_TYPE_GOTACK ||
                type == CLUSTERMSG_TYPE_WILLQUEUE)
@@ -1301,7 +1302,6 @@ int clusterProcessPacket(clusterLink *link) {
                 updateJobNodes(j);
                 freeJob(j);
             } else {
-                registerJob(j);
                 AOFLoadJob(j);
                 if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
                     clusterSendGotJob(sender,j);
@@ -1372,12 +1372,11 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t delay = ntohl(hdr->data.jobid.job.aux);
 
         job *j = lookupJob(hdr->data.jobid.job.id);
-        /* We received a QUEUEJOB message: consider this node as the
-         * first to queue the job, so no need to broadcast a QUEUED
-         * message the first time we queue it. */
-        j->flags &= ~JOB_FLAG_BCAST_QUEUED;
-
         if (j && j->state < JOB_STATE_QUEUED) {
+            /* We received a QUEUEJOB message: consider this node as the
+             * first to queue the job, so no need to broadcast a QUEUED
+             * message the first time we queue it. */
+            j->flags &= ~JOB_FLAG_BCAST_QUEUED;
             serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
             if (delay == 0) {
                 enqueueJob(j);
@@ -1385,7 +1384,8 @@ int clusterProcessPacket(clusterLink *link) {
                 updateJobRequeueTime(j,server.mstime+delay*1000);
             }
         }
-    } else if (type == CLUSTERMSG_TYPE_QUEUED) {
+    } else if (type == CLUSTERMSG_TYPE_QUEUED ||
+               type == CLUSTERMSG_TYPE_WORKING) {
         if (!sender) return 1;
 
         job *j = lookupJob(hdr->data.jobid.job.id);
@@ -1394,9 +1394,14 @@ int clusterProcessPacket(clusterLink *link) {
             /* Move the time we'll re-queue this job in the future. Moreover
              * if the sender has a Node ID greate than our node ID, and we
              * have the message queued as well, dequeue it, to avoid an
-             * useless multiple delivery. */
+             * useless multiple delivery.
+             *
+             * If the message is WORKING always dequeue regardless of the
+             * sender name, since there is a client claiming to work on the
+             * message. */
             if (j->state == JOB_STATE_QUEUED &&
-                memcmp(sender->name,myself->name,DISQUE_CLUSTER_NAMELEN) > 0)
+                (type == CLUSTERMSG_TYPE_WORKING ||
+                 memcmp(sender->name,myself->name,DISQUE_CLUSTER_NAMELEN) > 0))
             {
                 dequeueJob(j);
             }
@@ -1601,6 +1606,7 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
     } else if (type == CLUSTERMSG_TYPE_GOTJOB ||
                type == CLUSTERMSG_TYPE_ENQUEUE ||
                type == CLUSTERMSG_TYPE_QUEUED ||
+               type == CLUSTERMSG_TYPE_WORKING ||
                type == CLUSTERMSG_TYPE_SETACK ||
                type == CLUSTERMSG_TYPE_GOTACK ||
                type == CLUSTERMSG_TYPE_DELJOB ||
@@ -1886,6 +1892,13 @@ void clusterBroadcastQueued(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST QUEUED: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_QUEUED,0);
+}
+
+/* WORKING is like QUEUED, but will always force the receiver to dequeue. */
+void clusterBroadcastWorking(job *j) {
+    serverLog(DISQUE_VERBOSE,"BCAST WORKING: %.48s",j->id);
+    clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
+                                 CLUSTERMSG_TYPE_WORKING,0);
 }
 
 /* Send a DELJOB message to all the nodes that may have a copy. */
@@ -2352,17 +2365,17 @@ void clusterUpdateReachableNodes(void) {
     dictReleaseIterator(di);
 }
 
-/* Shuffle the array of reachable nodes so the caller can just pick the first
- * N to send messages to N random nodes. */
+/* Shuffle the array of reachable nodes using the Fisher Yates method so the
+ * caller can just pick the first N to send messages to N random nodes.
+ * */
 void clusterShuffleReachableNodes(void) {
-    int j, r;
+    int r, i;
     clusterNode *tmp;
-
-    for (j = 0; j < server.cluster->reachable_nodes_count; j++) {
-        r = rand() % server.cluster->reachable_nodes_count;
-        tmp = server.cluster->reachable_nodes[j];
-        server.cluster->reachable_nodes[j] = server.cluster->reachable_nodes[r];
-        server.cluster->reachable_nodes[r] = tmp;
+    for(i = server.cluster->reachable_nodes_count - 1; i > 0; i--) {
+        r = rand() % (i + 1);
+        tmp = server.cluster->reachable_nodes[r];
+        server.cluster->reachable_nodes[r] = server.cluster->reachable_nodes[i];
+        server.cluster->reachable_nodes[i] = tmp;
     }
 }
 

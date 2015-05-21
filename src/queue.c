@@ -167,7 +167,7 @@ int dequeueJob(job *job) {
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
     serverLog(DISQUE_VERBOSE,"DE-QUEUED %.48s", job->id);
-    return DISQUE_ERR;
+    return DISQUE_OK;
 }
 
 /* Fetch a job from the specified queue if any, updating the job state
@@ -317,7 +317,7 @@ void handleClientsBlockedOnQueues(void) {
     di = dictGetIterator(server.ready_queues);
     while((de = dictNext(di)) != NULL) {
         queue *q = lookupQueue(dictGetKey(de));
-        if (!q) continue;
+        if (!q || !q->clients) continue;
         int numclients = listLength(q->clients);
         while(numclients--) {
             unsigned long qlen;
@@ -627,8 +627,8 @@ void getjobCommand(client *c) {
             j++;
         } else if (!strcasecmp(opt,"count") && !lastarg) {
             int retval = getLongLongFromObject(c->argv[j+1],&count);
-            if (retval != DISQUE_OK || count < 0) {
-                addReplyError(c,"COUNT must be a number > 0");
+            if (retval != DISQUE_OK || count <= 0) {
+                addReplyError(c,"COUNT must be a number greater than zero");
                 return;
             }
             j++;
@@ -699,7 +699,7 @@ void getjobCommand(client *c) {
  *
  * If the job is active, queue it if job retry != 0.
  * If the job is in any other state, do nothing.
- * If the job is not knonw, do nothing.
+ * If the job is not known, do nothing.
  *
  * NOTE: Even jobs with retry set to 0 are enqueued! Be aware that
  * using this command may violate the at-most-once contract.
@@ -725,7 +725,7 @@ void enqueueCommand(client *c) {
  *
  * If the job is queued, remove it from queue and change state to active.
  * If the job is in any other state, do nothing.
- * If the job is not knonw, do nothing.
+ * If the job is not known, do nothing.
  *
  * Return the number of jobs actually moved from queue to active state. */
 void dequeueCommand(client *c) {
@@ -781,9 +781,7 @@ void qpeekCommand(client *c) {
     void *deflen = addDeferredMultiBulkLength(c);
     while(count-- && sn) {
         job *j = sn->obj;
-        addReplyMultiBulkLen(c,2);
-        addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
-        addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+        addReplyJob(c, j);
         returned++;
         if (newjobs)
             sn = sn->backward;
@@ -791,4 +789,179 @@ void qpeekCommand(client *c) {
             sn = sn->level[0].forward;
     }
     setDeferredMultiBulkLength(c,deflen,returned);
+}
+
+/* QSCAN [<cursor>] [COUNT <count>] [BLOCKING] [MINLEN <len>] [MAXLEN <len>]
+ * [IMPORTRATE <rate>]
+ *
+ * The command provides an interface to iterate all the existing queues in
+ * the local node, providing a cursor in the form of an integer that is passed
+ * to the next command invocation. During the first call cursor must be 0,
+ * in the next calls the cursor returned in the previous call is used in the
+ * next. The iterator guarantees to return all the elements but may return
+ * duplicated elements.
+ *
+ * Options:
+ *
+ * COUNT <count>     -- An hit about how much work to do per iteration.
+ * BUSYLOOP          -- Block and return all the elements in a busy loop.
+ * MINLEN <count>    -- Don't return elements with less than count jobs queued.
+ * MAXLEN <count>    -- Don't return elements with more than count jobs queued.
+ * IMPORTRATE <rate> -- Only return elements with an job import rate (from
+ *                      other nodes) >= rate.
+ *
+ * The cursor argument can be in any place, the first non matching option
+ * that has valid cursor form of an usigned number will be sensed as a valid
+ * cursor.
+ */
+
+/* The structure to pass the filter options to the callback. */
+struct qscanFilter {
+    long minlen, maxlen;
+    long importrate;
+};
+
+/* Callback for the dictionary scan used by QSCAN. */
+void qscanCallback(void *privdata, const dictEntry *de) {
+    void **pd = (void**)privdata;
+    list *list = pd[0];
+    struct qscanFilter *filter = pd[1];
+    queue *queue = dictGetVal(de);
+    long qlen = (filter->minlen != -1 || filter->maxlen != -1) ?
+                    (long) queueLength(queue) : 0;
+
+    /* Don't add the item if it does not satisfies our filter. */
+    if (filter->minlen != -1 && qlen < filter->minlen) return;
+    if (filter->maxlen != -1 && qlen > filter->maxlen) return;
+    if (filter->importrate != -1 &&
+        getQueueImportRate(queue) < filter->importrate) return;
+
+    /* Otherwise put the queue into the list that will be returned to the
+     * client later. */
+    incrRefCount(queue->name);
+    listAddNodeTail(list,queue->name);
+}
+
+#define QSCAN_DEFAULT_COUNT 100
+void qscanCommand(client *c) {
+    struct qscanFilter filter = {-1,-1,-1};
+    int busyloop = 0; /* If true return all the queues in a blocking way. */
+    long count = QSCAN_DEFAULT_COUNT;
+    long maxiterations;
+    unsigned long cursor = 0;
+    int cursor_set = 0, j;
+
+    /* Parse arguments and cursor if any. */
+    for (j = 1; j < c->argc; j++) {
+        int remaining = c->argc - j -1;
+        char *opt = c->argv[j]->ptr;
+
+        if (!strcasecmp(opt,"count") && remaining >= 1) {
+            if (getLongFromObjectOrReply(c, c->argv[j+1], &count, NULL) !=
+                DISQUE_OK) return;
+            j++;
+        } else if (!strcasecmp(opt,"busyloop")) {
+            busyloop = 1;
+        } else if (!strcasecmp(opt,"minlen") && remaining >= 1) {
+            if (getLongFromObjectOrReply(c, c->argv[j+1],&filter.minlen,NULL) !=
+                DISQUE_OK) return;
+            j++;
+        } else if (!strcasecmp(opt,"maxlen") && remaining >= 1) {
+            if (getLongFromObjectOrReply(c, c->argv[j+1],&filter.maxlen,NULL) !=
+                DISQUE_OK) return;
+            j++;
+        } else if (!strcasecmp(opt,"importrate") && remaining >= 1) {
+            if (getLongFromObjectOrReply(c, c->argv[j+1],
+                &filter.importrate,NULL) != DISQUE_OK) return;
+            j++;
+        } else {
+            if (cursor_set != 0) {
+                addReply(c,shared.syntaxerr);
+                return;
+            }
+            if (parseScanCursorOrReply(c,c->argv[j],&cursor) == DISQUE_ERR)
+                return;
+            cursor_set = 1;
+        }
+    }
+
+    /* Scan the hash table to retrieve elements. */
+    maxiterations = count*10; /* Put a bound in the work we'll do. */
+
+    /* We pass two pointsr to the callback: the list where to append
+     * elements and the filter structure so that the callback will refuse
+     * to add non matching elements. */
+    void *privdata[2];
+    list *list = listCreate();
+    privdata[0] = list;
+    privdata[1] = &filter;
+    do {
+        cursor = dictScan(server.queues,cursor,qscanCallback,privdata);
+    } while (cursor &&
+             (busyloop || /* If it's a busyloop, don't check iterations & len */
+              (maxiterations-- &&
+               listLength(list) < (unsigned long)count)));
+
+    /* Provide the reply to the client. */
+    addReplyMultiBulkLen(c, 2);
+    addReplyBulkLongLong(c,cursor);
+
+    addReplyMultiBulkLen(c, listLength(list));
+    listNode *node;
+    while ((node = listFirst(list)) != NULL) {
+        robj *kobj = listNodeValue(node);
+        addReplyBulk(c, kobj);
+        decrRefCount(kobj);
+        listDelNode(list, node);
+    }
+    listRelease(list);
+}
+
+/* WORKING job-id
+ *
+ * If the job is queued, remove it from queue and change state to active.
+ * Postpone the job requeue time in the future so that we'll wait the retry
+ * time before enqueueing again.
+ * Broadcast a WORKING message to all the other nodes that have a copy according
+ * to our local info.
+ *
+ * Return how much time the worker likely have before the next requeue event
+ * or an error:
+ *
+ * -ACKED     The job is already acknowledged, so was processed already.
+ * -NOJOB     We don't know about this job. The job was either already
+ *            acknowledged and purged, or this node never received a copy.
+ * -TOOLATE   50% of the job TTL already elapsed, is no longer possible to
+ *            delay it.
+ */
+void workingCommand(client *c) {
+    if (validateJobIDs(c,c->argv+1,1) == DISQUE_ERR) return;
+
+    job *job = lookupJob(c->argv[1]->ptr);
+    if (job == NULL) {
+        addReplySds(c,
+            sdsnew("-NOJOB Job not known in the context of this node.\r\n"));
+        return;
+    }
+
+    /* Don't allow to postpone jobs that have less than 50% of time to live
+     * left, in order to prevent a worker from monopolizing a job for all its
+     * lifetime. */
+    mstime_t ttl = ((mstime_t)job->etime*1000) - (job->ctime/1000000);
+    mstime_t elapsed = server.mstime - (job->ctime/1000000);
+    if (ttl > 0 && elapsed > ttl/2) {
+        addReplySds(c,
+            sdsnew("-TOOLATE Half of job TTL already elapsed, "
+                   "you are no longer allowed to postpone the "
+                   "next delivery.\r\n"));
+        return;
+    }
+
+    if (job->state == JOB_STATE_QUEUED) dequeueJob(job);
+    job->flags |= JOB_FLAG_BCAST_WILLQUEUE;
+    updateJobRequeueTime(job,server.mstime+
+                         job->retry*1000+
+                         randomTimeError(DISQUE_TIME_ERR));
+    clusterBroadcastWorking(job);
+    addReplyLongLong(c,job->retry);
 }

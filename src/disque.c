@@ -130,8 +130,6 @@ struct serverCommand serverCommandTable[] = {
     {"fastack",fastackCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"deljob",deljobCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
-    {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
 
     /* AOF specific. */
     {"loadjob",loadjobCommand,2,"w",0,NULL,0,0,0,0,0},
@@ -139,7 +137,11 @@ struct serverCommand serverCommandTable[] = {
 
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0}
+    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
+    {"qscan",qscanCommand,-1,"r",0,NULL,0,0,0,0,0},
+    {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
+    {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
+    {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

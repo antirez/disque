@@ -116,11 +116,17 @@ void processUnblockedClients(void) {
         c = ln->value;
         listDelNode(server.unblocked_clients,ln);
         c->flags &= ~DISQUE_UNBLOCKED;
-        c->btype = DISQUE_BLOCKED_NONE;
+        /* Note that the client may be blocked again at this point, since
+         * a new blocking command was processed. In that case we just remove
+         * it from the unblocked clients list without actually processing
+         * its pending query buffer. */
+        if (!(c->flags & DISQUE_BLOCKED)) {
+            c->btype = DISQUE_BLOCKED_NONE;
 
-        /* Process remaining data in the input buffer. */
-        if (c->querybuf && sdslen(c->querybuf) > 0) {
-            processInputBuffer(c);
+            /* Process remaining data in the input buffer. */
+            if (c->querybuf && sdslen(c->querybuf) > 0) {
+                processInputBuffer(c);
+            }
         }
     }
 }
@@ -138,10 +144,14 @@ void unblockClient(client *c) {
     /* Clear the flags, and put the client in the unblocked list so that
      * we'll process new commands in its query buffer ASAP. */
     c->flags &= ~DISQUE_BLOCKED;
-    c->flags |= DISQUE_UNBLOCKED;
     c->btype = DISQUE_BLOCKED_NONE;
     server.bpop_blocked_clients--;
-    listAddNodeTail(server.unblocked_clients,c);
+    /* The client may already be into the unblocked list because of a previous
+     * blocking operation, don't add back it into the list multiple times. */
+    if (!(c->flags & DISQUE_UNBLOCKED)) {
+        c->flags |= DISQUE_UNBLOCKED;
+        listAddNodeTail(server.unblocked_clients,c);
+    }
 }
 
 /* This function gets called when a blocked client timed out in order to

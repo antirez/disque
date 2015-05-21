@@ -9,7 +9,7 @@ test "Add multiple jobs to the same queue, different nodes" {
         set id [D $i addjob myqueue job_$j 5000 replicate 3]
         set job [D $i show $id]
         assert {$id ne {}}
-        assert {[count_job_copies $job active] == 2}
+        assert {[count_job_copies $job active] >= 2}
     }
 }
 

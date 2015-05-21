@@ -317,7 +317,7 @@ void handleClientsBlockedOnQueues(void) {
     di = dictGetIterator(server.ready_queues);
     while((de = dictNext(di)) != NULL) {
         queue *q = lookupQueue(dictGetKey(de));
-        if (!q) continue;
+        if (!q || !q->clients) continue;
         int numclients = listLength(q->clients);
         while(numclients--) {
             unsigned long qlen;

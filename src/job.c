@@ -177,6 +177,7 @@ job *createJob(char *id, int state, int ttl) {
 
     j->queue = NULL;
     j->state = state;
+    j->gc_retry = 0;
     j->flags = 0;
     j->body = NULL;
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);

@@ -445,6 +445,10 @@ API on top of Disque:
 
 - [disque-rb](https://github.com/soveran/disque-rb)
 
+*.NET*
+
+- [Disque.Net](https://github.com/ziyasal/Disque.Net)
+
 Implementation details
 ===
 

@@ -2113,8 +2113,7 @@ void monitorCommand(client *c) {
  * should block the execution of commands that will result in more memory
  * used by the server. */
 
-#define ACK_EVICTION_SAMPLE_SIZE 16
-
+#define DISQUE_NOT_FREED_MAX_LEN 10 /* Return after that count. */
 int freeMemoryIfNeeded(void) {
     size_t mem_used, mem_tofree, mem_freed, mem_target;
     mstime_t latency;
@@ -2141,29 +2140,32 @@ int freeMemoryIfNeeded(void) {
     mem_tofree = mem_used - mem_target;
     mem_freed = 0;
     latencyStartMonitor(latency);
-    while (mem_freed < mem_tofree) {
-        int objects_freed = 0;
-        int count, j;
-        long long delta;
-        dictEntry *des[ACK_EVICTION_SAMPLE_SIZE];
 
-        count = dictGetSomeKeys(server.jobs, des, ACK_EVICTION_SAMPLE_SIZE);
+    int not_freed = 0; /* Num of continuous iterations with no job freed. */
+    while (mem_freed < mem_tofree) {
+        long long delta;
+        dictEntry *de;
+
+        /* Get a random job, check if it is an ACK, release it in that
+         * case, otherwise keep counting the number of iterations we failed
+         * to free jobs. */
+        de = dictGetRandomKey(server.jobs);
         delta = (long long) zmalloc_used_memory();
-        for (j = 0; j < count; j++) {
-            job *job = dictGetKey(des[j]);
-            if (job->state == JOB_STATE_ACKED) {
-                unregisterJob(job);
-                freeJob(job);
-                objects_freed++;
-            }
+        job *job = dictGetKey(de);
+        if (job->state == JOB_STATE_ACKED) {
+            unregisterJob(job);
+            freeJob(job);
+            not_freed = 0;
+        } else {
+            not_freed++;
         }
         delta -= (long long) zmalloc_used_memory();
         mem_freed += delta;
 
-        /* If no object was freed in the latest loop or we are here for
-         * more than 1 or 2 milliseconds, return to the caller with a failure
-         * return value. */
-        if (!objects_freed || (mstime() - latency) > 1) {
+        /* If no object was freed in the latest N iterations or we are here
+         * for more than 1 or 2 milliseconds, return to the caller with a
+         * failure return value. */
+        if (not_freed > DISQUE_NOT_FREED_MAX_LEN || (mstime() - latency) > 1) {
             latencyEndMonitor(latency);
             latencyAddSampleIfNeeded("eviction-cycle",latency);
             return DISQUE_ERR; /* nothing to free... */

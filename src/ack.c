@@ -173,8 +173,8 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
 
     /* Finally the common case: our SETACK reached everybody. Broadcast
      * a DELJOB to all the nodes involved, and delete the job. */
-    if (!dummy_ack && dictSize(job->nodes_confirmed) >=
-                      dictSize(job->nodes_delivered))
+    if (!dummy_ack && job->nodes_confirmed &&
+         dictSize(job->nodes_confirmed) >= dictSize(job->nodes_delivered))
     {
         serverLog(DISQUE_VERBOSE,
             "Deleting %.48s: All nodes involved acknowledged the job",

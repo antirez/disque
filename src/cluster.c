@@ -1110,6 +1110,7 @@ int clusterProcessPacket(clusterLink *link) {
                type == CLUSTERMSG_TYPE_WORKING ||
                type == CLUSTERMSG_TYPE_SETACK ||
                type == CLUSTERMSG_TYPE_GOTACK ||
+               type == CLUSTERMSG_TYPE_DELJOB ||
                type == CLUSTERMSG_TYPE_WILLQUEUE)
     {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
@@ -2422,8 +2423,8 @@ void clusterCommand(client *c) {
             "cluster_stats_messages_received:%lld\r\n"
             , statestr[server.cluster->state],
             dictSize(server.cluster->nodes),
-            server.cluster->size,
             server.cluster->reachable_nodes_count,
+            server.cluster->size,
             server.cluster->stats_bus_messages_sent,
             server.cluster->stats_bus_messages_received
         );

@@ -406,6 +406,9 @@ void clusterReset(int hard) {
     }
     dictReleaseIterator(di);
 
+    /* Information about reachable nodes is no longer valid. Update it. */
+    clusterUpdateReachableNodes();
+
     /* Hard reset only: change node ID. */
     if (hard) {
         sds oldname;

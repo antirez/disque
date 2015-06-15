@@ -1117,6 +1117,12 @@ void addjobCommand(client *c) {
         return;
     }
 
+    /* Are we going to discard the local copy before to return to the caller?
+     * This happens when the job is at the same type asynchronously
+     * replicated AND because of memory warning level we are going to
+     * replicate externally without taking a copy. */
+    int discard_local_copy = async && extrepl;
+
     /* Create a new job. */
     job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl);
     job->queue = c->argv[1];
@@ -1152,10 +1158,8 @@ void addjobCommand(client *c) {
         job->qtime = server.mstime + retry*1000;
     }
 
-    /* Register the job locally in all the cases but when the job
-     * is externally replicated and asynchronous replicated at the same
-     * time: in this case we don't want to take a local copy at all. */
-    if (!(async && extrepl) && registerJob(job) == DISQUE_ERR) {
+    /* Register the job locally, unless we are going to remove it locally. */
+    if (!discard_local_copy && registerJob(job) == DISQUE_ERR) {
         /* A job ID with the same name? Practically impossible but
          * let's handle it to trap possible bugs in a cleaner way. */
         serverLog(DISQUE_WARNING,"ID already existing in ADDJOB command!");
@@ -1192,10 +1196,10 @@ void addjobCommand(client *c) {
              * forward to ACTIVE state ASAP, and get scheduled for
              * queueing. */
             job->state = JOB_STATE_ACTIVE;
-            updateJobAwakeTime(job,0);
+            if (!discard_local_copy) updateJobAwakeTime(job,0);
         }
         addReplyJobID(c,job);
-        AOFLoadJob(job);
+        if (!extrepl) AOFLoadJob(job);
     }
 
     /* If the replication factor is > 1, send REPLJOB messages to REPLICATE-1
@@ -1206,16 +1210,11 @@ void addjobCommand(client *c) {
     /* If the job is asynchronously and externally replicated at the same time,
      * send a QUEUE message ASAP to one random node, and delete the job from
      * this node right now. */
-    if (async && extrepl) {
+    if (discard_local_copy) {
         dictEntry *de = dictGetRandomKey(job->nodes_delivered);
         if (de) {
             clusterNode *n = dictGetVal(de);
             clusterSendEnqueue(n,job,job->delay);
-        }
-        /* If the new job is already added into server.awakeme list,
-         * we must remove it to avoid visiting freed memory. */
-        if (job->awakeme) {
-            serverAssert(skiplistDelete(server.awakeme,job));
         }
         /* We don't have to unregister the job since we did not registered
          * it if it's async + extrepl. */

@@ -1212,6 +1212,11 @@ void addjobCommand(client *c) {
             clusterNode *n = dictGetVal(de);
             clusterSendEnqueue(n,job,job->delay);
         }
+        /* If the new job is already added into server.awakeme list,
+         * we must remove it to avoid visiting freed memory. */
+        if (job->awakeme) {
+            serverAssert(skiplistDelete(server.awakeme,job));
+        }
         /* We don't have to unregister the job since we did not registered
          * it if it's async + extrepl. */
         freeJob(job);

@@ -1304,6 +1304,8 @@ int clusterProcessPacket(clusterLink *link) {
                 /* The job already exists. Just update the list of nodes
                  * that may have a copy. */
                 updateJobNodes(j);
+                if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
+                    clusterSendGotJob(sender,j);
                 freeJob(j);
             } else {
                 AOFLoadJob(j);
@@ -1789,8 +1791,9 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         }
     }
 
-    /* Resend the message if we have at least one new node in the list. */
-    if (added > 0) {
+    /* Resend the message if we have at least one new node in the list or
+     * we are waiting for a long time. */
+    if (added > 0 || server.cronloops % 100 == 0) {
         unsigned char buf[sizeof(clusterMsg)], *payload;
         clusterMsg *hdr = (clusterMsg*) buf;
         uint32_t totlen;

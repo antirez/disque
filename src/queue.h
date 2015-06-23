@@ -84,6 +84,7 @@ unsigned long queueLength(queue *q);
 unsigned long queueNameLength(robj *qname);
 void unblockClientBlockedForJobs(client *c);
 void handleClientsBlockedOnQueues(void);
+int GCQueue(queue *q);
 
 #define NEEDJOBS_CLIENTS_WAITING 0 /* Called because clients are waiting. */
 #define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */

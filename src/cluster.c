@@ -1335,7 +1335,30 @@ int clusterProcessPacket(clusterLink *link) {
             sender->name, hdr->data.jobid.job.id);
 
         job *j = lookupJob(hdr->data.jobid.job.id);
-        if (j) acknowledgeJob(j);
+        if (j) {
+            if (j->state == JOB_STATE_WAIT_REPL) {
+
+                /* Change the job state to active. This is critical to
+                 * avoid the job will be freed by unblockClient(). */
+                j->state = JOB_STATE_ACTIVE;
+                /* If set, cleanup nodes_confirmed to free memory. We'll
+                 * reuse this hash table again for ACKs tracking in order
+                 * to garbage collect the job once processed. */
+                if (j->nodes_confirmed) {
+                    dictRelease(j->nodes_confirmed);
+                    j->nodes_confirmed = NULL;
+                }
+
+                /* Reply to the blocked client wating for enough replicate. */
+                client *c = jobGetAssociatedValue(j);
+                setJobAssociatedValue(j,NULL);
+                /* Return the jobID to the blocking client as the command is
+                 * successfully executed */
+                addReplyStatusLength(c,j->id,JOB_ID_LEN);
+                unblockClient(c);
+            }
+            acknowledgeJob(j);
+        }
         if (j == NULL || dictSize(j->nodes_delivered) <= mayhave) {
             /* If we don't know the job or our set of nodes that may have
              * the job is not larger than the sender, reply with GOTACK. */

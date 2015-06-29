@@ -1352,8 +1352,9 @@ int clusterProcessPacket(clusterLink *link) {
                 /* Reply to the blocked client wating for enough replicate. */
                 client *c = jobGetAssociatedValue(j);
                 setJobAssociatedValue(j,NULL);
-                addReplyError(c, "The job is already acked while blocking "
-                        "for enough replicate");
+                /* Return the jobID to the blocking client as the command is
+                 * successfully executed */
+                addReplyStatusLength(c,j->id,JOB_ID_LEN);
                 unblockClient(c);
             }
             acknowledgeJob(j);

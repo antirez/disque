@@ -70,6 +70,16 @@ void stopLoading(void) {
     server.loading = 0;
 }
 
+/* Get the AOF state as string for INFO reporting. */
+char *aofGetStateString(void) {
+    switch(server.aof_state) {
+    case DISQUE_AOF_OFF: return "off";
+    case DISQUE_AOF_ON: return "on";
+    case DISQUE_AOF_WAIT_REWRITE: return "wait-rewrite";
+    default: return "unknown";
+    }
+}
+
 /* ----------------------------------------------------------------------------
  * AOF rewrite buffer implementation.
  *

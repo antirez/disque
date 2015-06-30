@@ -1951,6 +1951,7 @@ sds genDisqueInfoString(char *section) {
             "# Persistence\r\n"
             "loading:%d\r\n"
             "aof_enabled:%d\r\n"
+            "aof_state:%s\r\n"
             "aof_rewrite_in_progress:%d\r\n"
             "aof_rewrite_scheduled:%d\r\n"
             "aof_last_rewrite_time_sec:%jd\r\n"
@@ -1959,6 +1960,7 @@ sds genDisqueInfoString(char *section) {
             "aof_last_write_status:%s\r\n",
             server.loading,
             server.aof_state != DISQUE_AOF_OFF,
+            aofGetStateString(),
             server.aof_child_pid != -1,
             server.aof_rewrite_scheduled,
             (intmax_t)server.aof_rewrite_time_last,

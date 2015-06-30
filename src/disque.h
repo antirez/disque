@@ -775,6 +775,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal);
 void aofRewriteBufferReset(void);
 unsigned long aofRewriteBufferSize(void);
 int rewriteAppendOnlyFile(char *filename, int background);
+char *aofGetStateString(void);
 
 /* Core functions */
 void flushServerData(void);

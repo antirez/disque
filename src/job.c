@@ -918,8 +918,14 @@ void addReplyJobID(client *c, job *j) {
  * unblocked if this function is called, since if the blocked client is
  * released, the job is deleted (and a best effort try is made to remove
  * copies from other nodes), to avoid non acknowledged jobs to be active
- * when possible. */
-void jobReplicationAchieved(job *j) {
+ * when possible.
+ *
+ * Return value: if the job is retained after the function is called
+ * (normal replication) then DISQUE_OK is returned. Otherwise if the
+ * function removes the job from the node, since the job is externally
+ * replicated, DISQUE_ERR is returned, in order to signal the client further
+ * accesses to the job are not allowed. */
+int jobReplicationAchieved(job *j) {
     serverLog(DISQUE_VERBOSE,"Replication ACHIEVED %.48s",j->id);
 
     /* Change the job state to active. This is critical to avoid the job
@@ -950,7 +956,7 @@ void jobReplicationAchieved(job *j) {
         }
         unregisterJob(j);
         freeJob(j);
-        return;
+        return DISQUE_ERR;
     }
 
     /* Queue the job locally. */
@@ -960,6 +966,7 @@ void jobReplicationAchieved(job *j) {
         updateJobAwakeTime(j,0); /* Queue with delay. */
 
     AOFLoadJob(j);
+    return DISQUE_OK;
 }
 
 /* This function is called periodically by clientsCron(). Its goal is to

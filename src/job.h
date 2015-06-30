@@ -157,7 +157,7 @@ void updateJobNodes(job *j);
 int registerJob(job *j);
 int unregisterJob(job *j);
 void freeJob(job *j);
-void jobReplicationAchieved(job *j);
+int jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
 void updateJobAwakeTime(job *j, mstime_t at);
 void updateJobRequeueTime(job *j, mstime_t qtime);

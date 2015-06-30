@@ -1335,30 +1335,24 @@ int clusterProcessPacket(clusterLink *link) {
             sender->name, hdr->data.jobid.job.id);
 
         job *j = lookupJob(hdr->data.jobid.job.id);
+
+        /* If we have the job, change the state to acknowledged. */
         if (j) {
             if (j->state == JOB_STATE_WAIT_REPL) {
-
-                /* Change the job state to active. This is critical to
-                 * avoid the job will be freed by unblockClient(). */
-                j->state = JOB_STATE_ACTIVE;
-                /* If set, cleanup nodes_confirmed to free memory. We'll
-                 * reuse this hash table again for ACKs tracking in order
-                 * to garbage collect the job once processed. */
-                if (j->nodes_confirmed) {
-                    dictRelease(j->nodes_confirmed);
-                    j->nodes_confirmed = NULL;
+                /* The job was acknowledged before ADDJOB achieved the
+                 * replication level requested! Unblock the client and
+                 * change the job state to active. */
+                if (jobReplicationAchieved(j) == DISQUE_ERR) {
+                    /* The job was externally replicated and deleted from
+                     * this node. Nothing to do... */
+                    return 1;
                 }
-
-                /* Reply to the blocked client wating for enough replicate. */
-                client *c = jobGetAssociatedValue(j);
-                setJobAssociatedValue(j,NULL);
-                /* Return the jobID to the blocking client as the command is
-                 * successfully executed */
-                addReplyStatusLength(c,j->id,JOB_ID_LEN);
-                unblockClient(c);
             }
+            /* ACK it if not already acked. */
             acknowledgeJob(j);
         }
+
+        /* Reply according to the job exact state. */
         if (j == NULL || dictSize(j->nodes_delivered) <= mayhave) {
             /* If we don't know the job or our set of nodes that may have
              * the job is not larger than the sender, reply with GOTACK. */
@@ -1366,7 +1360,7 @@ int clusterProcessPacket(clusterLink *link) {
             clusterSendGotAck(sender,hdr->data.jobid.job.id,known);
         } else {
             /* We have the job but we know more nodes that may have it
-             * than the sender if we are here. Don't reply to GOTACK unless
+             * than the sender, if we are here. Don't reply with GOTACK unless
              * mayhave is 0 (the sender just received an ACK from client about
              * a job it does not know), in order to let the sender delete it. */
             if (mayhave == 0)

@@ -198,9 +198,11 @@ void loadServerConfigFromString(char *config) {
                 err = "Invalid max clients limit"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"maxmemory") && argc == 2) {
-            server.maxmemory = memtoll(argv[1],NULL);
-            if (server.maxmemory <= 0) {
-                err = "You need to specify a memory limit greater than zero";
+            /* To check for negative values, we need a long long first */
+            long long maxmemory = memtoll(argv[1],NULL);
+            server.maxmemory = maxmemory;
+            if (maxmemory <= 0) {
+                err = "You need to specify a memory limit greater than zero"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"maxmemory-policy") && argc == 2) {
             if (!strcasecmp(argv[1],"acks")) {

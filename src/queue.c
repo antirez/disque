@@ -864,21 +864,21 @@ void qscanCommand(client *c) {
         int remaining = c->argc - j -1;
         char *opt = c->argv[j]->ptr;
 
-        if (!strcasecmp(opt,"count") && remaining >= 1) {
+        if (!strcasecmp(opt,"count") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1], &count, NULL) !=
                 DISQUE_OK) return;
             j++;
         } else if (!strcasecmp(opt,"busyloop")) {
             busyloop = 1;
-        } else if (!strcasecmp(opt,"minlen") && remaining >= 1) {
+        } else if (!strcasecmp(opt,"minlen") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1],&filter.minlen,NULL) !=
                 DISQUE_OK) return;
             j++;
-        } else if (!strcasecmp(opt,"maxlen") && remaining >= 1) {
+        } else if (!strcasecmp(opt,"maxlen") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1],&filter.maxlen,NULL) !=
                 DISQUE_OK) return;
             j++;
-        } else if (!strcasecmp(opt,"importrate") && remaining >= 1) {
+        } else if (!strcasecmp(opt,"importrate") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1],
                 &filter.importrate,NULL) != DISQUE_OK) return;
             j++;

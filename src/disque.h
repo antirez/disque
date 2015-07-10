@@ -864,6 +864,7 @@ void bgrewriteaofCommand(client *c);
 void helloCommand(client *c);
 void qpeekCommand(client *c);
 void qscanCommand(client *c);
+void jscanCommand(client *c);
 void workingCommand(client *c);
 
 #if defined(__GNUC__)

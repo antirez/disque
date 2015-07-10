@@ -856,9 +856,9 @@ flush_and_rename:
     return DISQUE_OK;
 
 werr:
+    serverLog(DISQUE_WARNING,"Write error writing append only file on disk: %s", strerror(errno));
     fclose(fp);
     unlink(tmpfile);
-    serverLog(DISQUE_WARNING,"Write error writing append only file on disk: %s", strerror(errno));
     if (di) dictReleaseIterator(di);
     return DISQUE_ERR;
 }

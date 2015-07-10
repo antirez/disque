@@ -541,6 +541,14 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
         /* Don't need to send QUEUED when adding this job into the queue,
          * we are just moving from the queue of one node to another. */
         job->flags &= ~JOB_FLAG_BCAST_QUEUED;
+
+        /* If we are receiving a job with retry set to 0, let's set
+         * job->qtime to non-zero, to force enqueueJob() to queue the job
+         * the first time. As a side effect the function will set the qtime
+         * value to 0, preventing a successive enqueue of the job */
+        if (job->retry == 0)
+            job->qtime = server.mstime; /* Any value will do. */
+
         if (enqueueJob(job) == DISQUE_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */

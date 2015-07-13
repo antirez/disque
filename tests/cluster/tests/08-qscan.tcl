@@ -5,7 +5,9 @@ source "../tests/includes/job-utils.tcl"
 test "QSCAN based on non blocking iterator" {
     # Create 512 queues, each has a job enqueued
     for {set i 0} {$i < 512} {incr i} {
-        D 0 addjob [randomQueue] myjob 5000 replicate 1 retry 0
+        set qname [randomQueue]
+        lappend myqueues $qname
+        D 0 addjob $qname myjob 5000 replicate 1 retry 0
     }
     set cur 0
     set queues {}
@@ -19,6 +21,7 @@ test "QSCAN based on non blocking iterator" {
     # Eliminate duplicates
     set queues [lsort -unique $queues]
     assert_equal 512 [llength $queues]
+    assert_equal [lsort $queues] [lsort $myqueues]
     # Remove all the jobs, queues
     D 0 debug flushall
 }
@@ -31,23 +34,6 @@ test "QSCAN with BUSYLOOP option" {
     set res [D 0 qscan busyloop]
     set queues [lindex $res 1]
     assert_equal 512 [llength $queues]
-    # Remove all the jobs, queues
-    D 0 debug flushall
-}
-
-test "QSCAN with COUNT option" {
-    # Create 512 queues, each has a job enqueued
-    for {set i 0} {$i < 512} {incr i} {
-        D 0 addjob [randomQueue] myjob 5000 replicate 1 retry 0
-    }
-    set cur 0
-    while 1 {
-        set res [D 0 qscan $cur count 5]
-        set cur [lindex $res 0]
-        set que [lindex $res 1]
-        if {$cur == 0} break
-        assert {5 <= [llength $que]}
-    }
     # Remove all the jobs, queues
     D 0 debug flushall
 }

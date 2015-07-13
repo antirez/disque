@@ -529,15 +529,16 @@ void flushServerData(void) {
 
     /* Before destroying all the queues, we need to make sure we have no
      * longer clients referenced in the queue waiting list. We just unblock
-     * all the GETJOB clients with an error. */
+     * all the GETJOB clients waiting for jobs. */
     listIter li;
     listNode *ln;
     listRewind(server.clients,&li);
     while((ln = listNext(&li))) {
         client *c = ln->value;
         if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_QUEUES) {
-            addReplyError(c, "Queue deleted by the system "
-                             "administrator");
+            /* We send the same reply we send on timeout, in order to avoid
+             * for the client to be aware of a different error to handle. */
+            addReply(c,shared.nullmultibulk);
             unblockClient(c);
         }
     }

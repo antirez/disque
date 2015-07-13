@@ -527,17 +527,17 @@ void flushServerData(void) {
         freeJob(job);
     dictEndForeach
 
+    /* Before destroying all the queues, we need to make sure we have no
+     * longer clients referenced in the queue waiting list. We just unblock
+     * all the GETJOB clients with an error. */
     listIter li;
     listNode *ln;
     listRewind(server.clients,&li);
     while((ln = listNext(&li))) {
-        client *c= ln->value;
-        /* As we already unregister and free all the jobs, if a client
-         * is blocked, it must be of the BLOCKED_QUEUES type. We need
-         * to unblock and inform the client before destroy queue. */
-        if (c->flags & DISQUE_BLOCKED) {
+        client *c = ln->value;
+        if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_QUEUES) {
             addReplyError(c, "Queue deleted by the system "
-                    "administrator while blocking on it");
+                             "administrator");
             unblockClient(c);
         }
     }

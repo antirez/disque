@@ -102,8 +102,7 @@ int destroyQueue(robj *name) {
     dictDelete(server.queues,name);
     decrRefCount(q->name);
     skiplistFree(q->sl);
-    if (q->needjobs_responders)
-        dictRelease(q->needjobs_responders);
+    if (q->needjobs_responders) dictRelease(q->needjobs_responders);
     if (q->clients) {
         serverAssert(listLength(q->clients) == 0);
         listRelease(q->clients);

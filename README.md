@@ -378,7 +378,27 @@ The cursor argument can be in any place, the first non matching option
 that has valid cursor form of an usigned number will be sensed as a valid
 cursor.
 
-    JSCAN (TODO: jobs iterator similar to QSCAN).
+    JSCAN [<cursor>] [COUNT <count>] [BLOCKING] [QUEUE <queue>]
+          [STATE <state1> STATE <state2> ... STATE <stateN>]
+          [REPLY all|id]
+The command provides an interface to iterate all the existing jobs in
+the local node, providing a cursor in the form of an integer that is passed
+to the next command invocation. During the first call cursor must be 0,
+in the next calls the cursor returned in the previous call is used in the
+next. The iterator guarantees to return all the elements but may return
+duplicated elements.
+
+Options:
+
+* `COUNT <count>` An hit about how much work to do per iteration.
+* `BUSYLOOP` Block and return all the elements in a busy loop.
+* `QUEUE <queue>` Return only jobs in the specified queue.
+* `STATE <state>` Return jobs in the specified state. Can be used multiple times for a logic OR.
+* `REPLY <type>` Job reply type. Type can be `all` or `id`. Default is to report just the job ID. If `all` is specified the full job state is returned like for the SHOW command.
+
+The cursor argument can be in any place, the first non matching option
+that has valid cursor form of an usigned number will be sensed as a valid
+cursor.
 
 Client libraries
 ===

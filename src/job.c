@@ -1357,7 +1357,7 @@ void deljobCommand(client *c) {
  * [STATE <state1> STATE <state2> ... STATE <stateN>]
  * [REPLY all|id]
  *
- * The command provides an interface to iterate all the existing queues in
+ * The command provides an interface to iterate all the existing jobs in
  * the local node, providing a cursor in the form of an integer that is passed
  * to the next command invocation. During the first call cursor must be 0,
  * in the next calls the cursor returned in the previous call is used in the

@@ -527,6 +527,21 @@ void flushServerData(void) {
         freeJob(job);
     dictEndForeach
 
+    listIter li;
+    listNode *ln;
+    listRewind(server.clients,&li);
+    while((ln = listNext(&li))) {
+        client *c= ln->value;
+        /* As we already unregister and free all the jobs, if a client
+         * is blocked, it must be of the BLOCKED_QUEUES type. We need
+         * to unblock and inform the client before destroy queue. */
+        if (c->flags & DISQUE_BLOCKED) {
+            addReplyError(c, "Queue deleted by the system "
+                    "administrator while blocking on it");
+            unblockClient(c);
+        }
+    }
+
     dictSafeForeach(server.queues,de)
         queue *q = dictGetVal(de);
         serverAssert(queueLength(q) == 0);

@@ -580,9 +580,12 @@ long long getInstantaneousMetric(int metric) {
     return sum / DISQUE_METRIC_SAMPLES;
 }
 
-/* Check for timeouts. Returns non-zero if the client was terminated */
-int clientsCronHandleTimeout(client *c) {
-    time_t now = server.unixtime;
+/* Check for timeouts. Returns non-zero if the client was terminated.
+ * The function gets the current time in milliseconds as argument since
+ * it gets called multiple times in a loop, so calling gettimeofday() for
+ * each iteration would be costly without any actual gain. */
+int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
+    time_t now = now_ms/1000;
 
     if (server.maxidletime &&
         !(c->flags & DISQUE_BLOCKED) &&  /* no timeout for blocked clients. */
@@ -595,7 +598,6 @@ int clientsCronHandleTimeout(client *c) {
         /* Blocked OPS timeout is handled with milliseconds resolution.
          * However note that the actual resolution is limited by
          * server.hz. */
-        mstime_t now_ms = mstime();
 
         if (c->bpop.timeout != 0 && c->bpop.timeout < now_ms) {
             replyToBlockedClientTimedOut(c);
@@ -635,17 +637,23 @@ int clientsCronSendNeedJobs(client *c); /* see queue.c */
 
 int clientsCronHandleDelayedJobReplication(client *c); /* see job.c */
 
+#define CLIENTS_CRON_MIN_ITERATIONS 5
 void clientsCron(void) {
-    /* Make sure to process at least numclients/(server.hz*10) of clients
+    /* Make sure to process at least numclients/server.hz of clients
      * per call. Since this function is called server.hz times per second
-     * we are sure that in the worst case we process all the clients in 10
-     * seconds. In normal conditions (a reasonable number of clients) we
-     * process all the clients in a shorter time. */
+     * we are sure that in the worst case we process all the clients in 1
+     * second. */
     int numclients = listLength(server.clients);
-    int iterations = numclients/(server.hz*10);
+    int iterations = numclients/server.hz;
+    mstime_t now = mstime();
 
-    if (iterations < 50)
-        iterations = (numclients < 50) ? numclients : 50;
+    /* Process at least a few clients while we are at it, even if we need
+     * to process less than CLIENTS_CRON_MIN_ITERATIONS to meet our contract
+     * of processing each client once per second. */
+    if (iterations < CLIENTS_CRON_MIN_ITERATIONS)
+        iterations = (numclients < CLIENTS_CRON_MIN_ITERATIONS) ?
+                     numclients : CLIENTS_CRON_MIN_ITERATIONS;
+
     while(listLength(server.clients) && iterations--) {
         client *c;
         listNode *head;
@@ -659,7 +667,7 @@ void clientsCron(void) {
         /* The following functions do different service checks on the client.
          * The protocol is that they return non-zero if the client was
          * terminated. */
-        if (clientsCronHandleTimeout(c)) continue;
+        if (clientsCronHandleTimeout(c,now)) continue;
         if (clientsCronResizeQueryBuffer(c)) continue;
         if (clientsCronHandleDelayedJobReplication(c)) continue;
         if (clientsCronSendNeedJobs(c)) continue;

@@ -95,6 +95,7 @@ void debugCommand(client *c) {
         sizes = sdscatprintf(sizes,"queue:%d ", (int)sizeof(queue));
         sizes = sdscatprintf(sizes,"robj:%d ",(int)sizeof(robj));
         sizes = sdscatprintf(sizes,"dictentry:%d ",(int)sizeof(dictEntry));
+        sizes = sdscatprintf(sizes,"sdshdr5:%d ",(int)sizeof(struct sdshdr5));
         sizes = sdscatprintf(sizes,"sdshdr8:%d ",(int)sizeof(struct sdshdr8));
         sizes = sdscatprintf(sizes,"sdshdr16:%d ",(int)sizeof(struct sdshdr16));
         sizes = sdscatprintf(sizes,"sdshdr32:%d ",(int)sizeof(struct sdshdr32));

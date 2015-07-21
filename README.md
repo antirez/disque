@@ -835,9 +835,9 @@ Community: how to get help and how to help
 
 Get in touch with us in one of the following ways:
 
-1. Join the `#disque` IRC channel at **irc.freenode.net**.
-2. Post on Stack Overflow using the `disque` tag.
-3. Create an Issue or Pull request if you wish.
+1. Post on [Stack Overflow](http://stackoverflow.com) using the `disque` tag. This is the preferred method to get general help about Disque: other users will easily find previous questions so we can incrementally build a knowledge base.
+2. Join the `#disque` IRC channel at **irc.freenode.net**.
+3. Create an Issue or Pull request if your question or issue is about the Disque implementation itself.
 
 Thanks
 ===

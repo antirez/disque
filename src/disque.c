@@ -2181,6 +2181,19 @@ int freeMemoryIfNeeded(void) {
         delta -= (long long) zmalloc_used_memory();
         mem_freed += delta;
 
+        /* Free idle queues (queues that are empty, have no clients in their
+         * list and are idle for a given time). Another gc cycle is also
+         * triggered in each cron job, if the server reached at least 75% of
+         * its max memory. */
+        de = dictGetRandomKey(server.queues);
+        if (de) {
+            delta = (long long) zmalloc_used_memory();
+            queue* queue = dictGetKey(de);
+            GCQueue(queue);
+            delta -= (long long) zmalloc_used_memory();
+            mem_freed += delta;
+        }
+
         /* If no object was freed in the latest N iterations or we are here
          * for more than 1 or 2 milliseconds, return to the caller with a
          * failure return value. */

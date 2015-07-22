@@ -214,7 +214,7 @@ unsigned long queueNameLength(robj *qname) {
 /* Remove a queue that was not accessed for enough time, has no clients
  * blocked, has no jobs inside. If the queue is removed DISQUE_OK is
  * returned, otherwise DISQUE_ERR is returned. */
-#define QUEUE_MAX_IDLE_TIME (60*5)
+#define QUEUE_MAX_IDLE_TIME (10*5)
 int GCQueue(queue *q) {
     time_t elapsed = server.unixtime - q->atime;
     if (elapsed < QUEUE_MAX_IDLE_TIME) return DISQUE_ERR;
@@ -229,6 +229,8 @@ int GCQueue(queue *q) {
 void queueCron(void) {
     mstime_t start = mstime();
     long sampled = 0, evicted = 0;
+
+    if (getMemoryWarningLevel() == 0) return;
 
     while (dictSize(server.queues) != 0) {
         dictEntry *de = dictGetRandomKey(server.queues);

@@ -260,12 +260,16 @@ Adds a job to the specified queue. Arguments are as follows:
 
 The command returns the Job ID of the added job, assuming ASYNC is specified, or if the job was replicated correctly to the specified number of nodes. Otherwise an error is returned.
 
-    GETJOB [TIMEOUT <ms-timeout>] [COUNT <count>] FROM queue1 queue2 ... queueN
+    GETJOB [NOHANG] [TIMEOUT <ms-timeout>] [COUNT <count>] FROM queue1 queue2 ... queueN
 
 Return jobs available in one of the specified queues, or return NULL
 if the timeout is reached. A single job per call is returned unless a count greater than 1 is specified. Jobs are returned as a three elements array containing the queue name, the Job ID, and the job body itself. If jobs are available into multiple queues, queues are processed left to right.
 
 If there are no jobs for the specified queues the command blocks, and messages are exchanged with other nodes, in order to move messages about these queues to this node, so that the client can be served.
+
+The `GETJOB` **NOHANG** option asks the command to don't block even if there are
+no jobs in all the specified queues. This way the caller can just check if there
+are available jobs without blocking at all.
 
     ACKJOB jobid1 jobid2 ... jobidN
 

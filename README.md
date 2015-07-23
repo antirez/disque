@@ -448,6 +448,7 @@ API on top of Disque:
 
 - [disque.js](https://www.npmjs.com/package/disque.js)
 - [thunk-disque](https://github.com/thunks/thunk-disque)
+- [disqueue-node](https://www.npmjs.com/package/disqueue-node)
 
 *Perl*
 

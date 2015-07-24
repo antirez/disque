@@ -144,6 +144,65 @@ If the network you are using is pretty reliable, you are very concerned with
 performances, and multiple deliveries in the context of your applications are
 a non issue, then `FASTACK` is probably the way to go.
 
+
+Dead letter queue
+---
+
+Many message queues implement a feature called *dead letter queue*. It is
+a special queue used in order to accumulate messages that cannot be processed
+for some reason. Common causes could be:
+
+1. The message was delivered too many times but never correctly processed.
+2. The message time to live reached zero before it was processed.
+3. Some worker explicitly asked the system to flag the message as having issues.
+
+The idea is that the administrator of the system checks (usually via automatic
+systems) if there is something in the dead letter queue in order to understand
+if there is some software error or other kind of error preventing messages
+to be processed as expected.
+
+Since Disque is an in memory system the message time to live is an important
+property. When it is reached, we want messages to go away, since the TTL should
+be choosen so that after such a time it is no longer meaningful to process
+the message. In such a system, to use memory and create a queue in response
+to an error or to messages timing out looks like a non optimal idea. Moreover
+for the distributed nature of Disque dead letters could end spawning multiple
+nodes and having duplicated entries inside.
+
+So Disque uses a different approach. Each node message representation has
+two counters: a **nacks counter** and an **additional deliveries** counter.
+The counters are not consistent among nodes having a copy of the same message,
+they are just best effort counters that may not increment in some node during
+network partitions.
+
+The idea of these two counters is that one is incremented every time a worker
+uses the `NACK` command to tell the queue the message was not processed correctly
+and should be put back on the queue ASAP. The other is incremented for every other condition (different than `NACK` call) that requires a message to be put back
+on the queue again. This includes messages that get lost and are enqueued again
+or messages that are enqueued in one side of the partition since the message
+was processed in the other side and so forth.
+
+Using the `GETJOB` command with the `WITHCOUNTERS` option, or using the
+`SHOW` command to inspect a job, it is possible to retrieve these two counters
+together with the other jobs information, so if a worker, before processing
+a message, sees the counters having too high values, it can notify operations
+people in multiple ways:
+
+1. It may send an email.
+2. Set a flag in a monitoring system.
+3. Put the message in a special queue (simulating the dead letter feature).
+4. Attempt to process the message and report the stack trace of the error if any.
+
+Basically the exact handling of the feature is up to the application using
+Disque. Note that the counters don't need to be consistent in the face of
+failures or network partitions: the idea is that eventually if a message has
+issues the counters will get incremented enough times to reach the limit
+selected by the application as a warning threshold.
+
+The reason for having two distinct counters is that applications may want
+to handle the case of explicit negative acknowledges via `NACK` differently
+than multiple deliveries because of timeouts or messages lost.
+
 Disque and disk persistence
 ---
 
@@ -285,16 +344,17 @@ Adds a job to the specified queue. Arguments are as follows:
 
 The command returns the Job ID of the added job, assuming ASYNC is specified, or if the job was replicated correctly to the specified number of nodes. Otherwise an error is returned.
 
-    GETJOB [NOHANG] [TIMEOUT <ms-timeout>] [COUNT <count>] FROM queue1 queue2 ... queueN
+    GETJOB [NOHANG] [TIMEOUT <ms-timeout>] [COUNT <count>] [WITHCOUNTERS] FROM queue1 queue2 ... queueN
 
 Return jobs available in one of the specified queues, or return NULL
 if the timeout is reached. A single job per call is returned unless a count greater than 1 is specified. Jobs are returned as a three elements array containing the queue name, the Job ID, and the job body itself. If jobs are available into multiple queues, queues are processed left to right.
 
 If there are no jobs for the specified queues the command blocks, and messages are exchanged with other nodes, in order to move messages about these queues to this node, so that the client can be served.
 
-The `GETJOB` **NOHANG** option asks the command to don't block even if there are
-no jobs in all the specified queues. This way the caller can just check if there
-are available jobs without blocking at all.
+Options:
+
+* **NOHANG**: Ask the command to don't block even if there are no jobs in all the specified queues. This way the caller can just check if there are available jobs without blocking at all.
+* **WITHCOUNTERS**: Return the best-effort count of NACKs (negative acknowledges) received by this job, and the number of additional deliveries performed for this ob. See the *Dead Letters* section for more information.
 
     ACKJOB jobid1 jobid2 ... jobidN
 
@@ -344,6 +404,14 @@ ASAP, like in the following example (in pseudo code):
             RESET timer
         END
     END
+
+    NACK <job-id> ... <job-id>
+
+The `NACK` command tells Disque to put back the job in the queue ASAP. It
+is very similar to `ENQUEUE` but if increments the job `nacks` counter
+instead of the `additional-deliveries` counter. The command should be used
+when the worker was not able to process a message and wants the message to
+be put back into the queue in order to be processed again.
 
 Other commands
 ===

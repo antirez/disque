@@ -322,13 +322,13 @@ is multi master. Also remember that you need to acknowledge jobs otherwise
 they'll never go away from the server memory (unless the time to live is
 reached).
 
-API
+Main API
 ===
 
 Disque API is composed of a small set of commands, since the system solves a
 single very specific problem. The three main commands are:
 
-    ADDJOB queue_name job <ms-timeout> [REPLICATE <count>] [DELAY <sec>] [RETRY <sec>] [TTL <sec>] [MAXLEN <count>] [ASYNC]
+## `ADDJOB queue_name job <ms-timeout> [REPLICATE <count>] [DELAY <sec>] [RETRY <sec>] [TTL <sec>] [MAXLEN <count>] [ASYNC]`
 
 Adds a job to the specified queue. Arguments are as follows:
 
@@ -344,7 +344,7 @@ Adds a job to the specified queue. Arguments are as follows:
 
 The command returns the Job ID of the added job, assuming ASYNC is specified, or if the job was replicated correctly to the specified number of nodes. Otherwise an error is returned.
 
-    GETJOB [NOHANG] [TIMEOUT <ms-timeout>] [COUNT <count>] [WITHCOUNTERS] FROM queue1 queue2 ... queueN
+## `GETJOB [NOHANG] [TIMEOUT <ms-timeout>] [COUNT <count>] [WITHCOUNTERS] FROM queue1 queue2 ... queueN`
 
 Return jobs available in one of the specified queues, or return NULL
 if the timeout is reached. A single job per call is returned unless a count greater than 1 is specified. Jobs are returned as a three elements array containing the queue name, the Job ID, and the job body itself. If jobs are available into multiple queues, queues are processed left to right.
@@ -356,11 +356,11 @@ Options:
 * **NOHANG**: Ask the command to don't block even if there are no jobs in all the specified queues. This way the caller can just check if there are available jobs without blocking at all.
 * **WITHCOUNTERS**: Return the best-effort count of NACKs (negative acknowledges) received by this job, and the number of additional deliveries performed for this ob. See the *Dead Letters* section for more information.
 
-    ACKJOB jobid1 jobid2 ... jobidN
+## `ACKJOB jobid1 jobid2 ... jobidN`
 
 Acknowledges the execution of one or more jobs via job IDs. The node receiving the ACK will replicate it to multiple nodes and will try to garbage collect both the job and the ACKs from the cluster so that memory can be freed.
 
-    FASTACK jobid1 jobid2 ... jobidN
+## `FASTACK jobid1 jobid2 ... jobidN`
 
 Performs a best effort cluster wide deletion of the specified job IDs. When the
 network is well connected and there are no node failures, this is equivalent to
@@ -368,7 +368,7 @@ network is well connected and there are no node failures, this is equivalent to
 is more likely that fast acknowledges will result into multiple deliveries of
 the same messages.
 
-    WORKING jobid
+## `WORKING jobid`
 
 Claims to be still working with the specified job, and asks Disque to postpone
 the next time it will deliver again the job. The next delivery is postponed
@@ -405,7 +405,7 @@ ASAP, like in the following example (in pseudo code):
         END
     END
 
-    NACK <job-id> ... <job-id>
+## `NACK <job-id> ... <job-id>`
 
 The `NACK` command tells Disque to put back the job in the queue ASAP. It
 is very similar to `ENQUEUE` but if increments the job `nacks` counter
@@ -416,46 +416,53 @@ be put back into the queue in order to be processed again.
 Other commands
 ===
 
-Note: not everything implemented yet.
+## `INFO`
 
-    INFO
 Generic server information / stats.
 
-    HELLO
+## `HELLO`
+
 Returns hello format version, this node ID, all the nodes IDs, IP addresses,
 ports, and priority (lower is better, means node more available).
 Clients should use this as an handshake command when connecting with a
 Disque node.
 
-    QLEN <qname>
-Length of queue
+## `QLEN <qname>`
 
-    QSTAT <qname> (TODO)
+Return the length of the queue.
+
+## `QSTAT <qname> (TODO)`
+
 Return produced ... consumed ... idle ... sources [...] ctime ...
 
-    QPEEK <qname> <count>
+## `QPEEK <qname> <count>`
+
 Return, without consuming from queue, *count* jobs. If *count* is positive
 the specified number of jobs are returned from the oldest to the newest
 (in the same best-effort FIFO order as GETJOB). If *count* is negative the
 commands changes behavior and shows the *count* newest jobs, from the newest
 from the oldest.
 
-    ENQUEUE <job-id> ... <job-id>
+## `ENQUEUE <job-id> ... <job-id>`
+
 Queue jobs if not already queued.
 
-    DEQUEUE <job-id> ... <job-id>
+## `DEQUEUE <job-id> ... <job-id>`
+
 Remove the job from the queue.
 
-    DELJOB <job-id> ... <job-id>
+## `DELJOB <job-id> ... <job-id>`
+
 Completely delete a job from a node.
 Note that this is similar to `FASTACK`, but limited to a single node since
 no `DELJOB` cluster bus message is sent to other nodes.
 
-    SHOW <job-id>
+## `SHOW <job-id>`
+
 Describe the job.
 
-    QSCAN [COUNT <count>] [BUSYLOOP] [MINLEN <len>]
-          [MAXLEN <len>] [IMPORTRATE <rate>]
+## `QSCAN [COUNT <count>] [BUSYLOOP] [MINLEN <len>] [MAXLEN <len>] [IMPORTRATE <rate>]`
+
 The command provides an interface to iterate all the existing queues in
 the local node, providing a cursor in the form of an integer that is passed
 to the next command invocation. During the first call cursor must be 0,
@@ -475,9 +482,8 @@ The cursor argument can be in any place, the first non matching option
 that has valid cursor form of an usigned number will be sensed as a valid
 cursor.
 
-    JSCAN [<cursor>] [COUNT <count>] [BLOCKING] [QUEUE <queue>]
-          [STATE <state1> STATE <state2> ... STATE <stateN>]
-          [REPLY all|id]
+## `JSCAN [<cursor>] [COUNT <count>] [BLOCKING] [QUEUE <queue>] [STATE <state1> STATE <state2> ... STATE <stateN>] [REPLY all|id]`
+
 The command provides an interface to iterate all the existing jobs in
 the local node, providing a cursor in the form of an integer that is passed
 to the next command invocation. During the first call cursor must be 0,

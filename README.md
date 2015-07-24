@@ -408,7 +408,7 @@ ASAP, like in the following example (in pseudo code):
 ## `NACK <job-id> ... <job-id>`
 
 The `NACK` command tells Disque to put back the job in the queue ASAP. It
-is very similar to `ENQUEUE` but if increments the job `nacks` counter
+is very similar to `ENQUEUE` but it increments the job `nacks` counter
 instead of the `additional-deliveries` counter. The command should be used
 when the worker was not able to process a message and wants the message to
 be put back into the queue in order to be processed again.

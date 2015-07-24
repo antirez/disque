@@ -136,7 +136,7 @@ void processUnblockedClients(void) {
 void unblockClient(client *c) {
     if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
         unblockClientWaitingJobRepl(c);
-    } else if (c->btype == DISQUE_BLOCKED_QUEUES) {
+    } else if (c->btype == DISQUE_BLOCKED_GETJOB) {
         unblockClientBlockedForJobs(c);
     } else {
         serverPanic("Unknown btype in unblockClient().");
@@ -162,7 +162,7 @@ void replyToBlockedClientTimedOut(client *c) {
             sdsnew("-NOREPL Timeout reached before replicating to "
                    "the requested number of nodes\r\n"));
         return;
-    } else if (c->btype == DISQUE_BLOCKED_QUEUES) {
+    } else if (c->btype == DISQUE_BLOCKED_GETJOB) {
         addReply(c,shared.nullmultibulk);
     } else {
         serverPanic("Unknown btype in replyToBlockedClientTimedOut().");

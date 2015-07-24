@@ -536,7 +536,7 @@ void flushServerData(void) {
     listRewind(server.clients,&li);
     while((ln = listNext(&li))) {
         client *c = ln->value;
-        if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_QUEUES) {
+        if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_GETJOB) {
             /* We send the same reply we send on timeout, in order to avoid
              * for the client to be aware of a different error to handle. */
             addReply(c,shared.nullmultibulk);

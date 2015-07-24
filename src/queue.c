@@ -114,11 +114,23 @@ int destroyQueue(robj *name) {
 /* Send a job as a return value of a command. This is about jobs but inside
  * queue.c since this is the format used in order to return a job from a
  * queue, as an array [queue_name,id,body]. */
-void addReplyJob(client *c, job *j) {
-    addReplyMultiBulkLen(c,3);
+void addReplyJob(client *c, job *j, int flags) {
+    int bulklen = 3;
+
+    if (flags & GETJOB_FLAG_WITHCOUNTERS) bulklen += 4;
+    addReplyMultiBulkLen(c,bulklen);
+
     addReplyBulk(c,j->queue);
     addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
     addReplyBulkCBuffer(c,j->body,sdslen(j->body));
+    /* Job additional information is returned as key-value pairs. */
+    if (flags & GETJOB_FLAG_WITHCOUNTERS) {
+        addReplyBulkCString(c,"nacks");
+        addReplyLongLong(c,j->num_nacks);
+
+        addReplyBulkCString(c,"additional-deliveries");
+        addReplyLongLong(c,j->num_deliv);
+    }
 }
 
 /* ------------------------ Queue higher level API -------------------------- */
@@ -273,10 +285,12 @@ void queueCron(void) {
  * 4) Before returning into the event loop, handleClientsBlockedOnQueues()
  *    is called, that iterate the list of ready queues, and unblock clients
  *    serving elements from the queue. */
-void blockForJobs(client *c, robj **queues, int numqueues, mstime_t timeout) {
+
+void blockForJobs(client *c, robj **queues, int numqueues, mstime_t timeout, uint64_t flags) {
     int j;
 
     c->bpop.timeout = timeout;
+    c->bpop.flags = flags;
     for (j = 0; j < numqueues; j++) {
         queue *q = lookupQueue(queues[j]);
         if (!q) q = createQueue(queues[j]);
@@ -289,7 +303,7 @@ void blockForJobs(client *c, robj **queues, int numqueues, mstime_t timeout) {
         if (q->clients == NULL) q->clients = listCreate();
         listAddNodeTail(q->clients,c);
     }
-    blockClient(c,DISQUE_BLOCKED_QUEUES);
+    blockClient(c,DISQUE_BLOCKED_GETJOB);
 }
 
 /* Unblock client waiting for jobs in queues. Never call this directly,
@@ -346,7 +360,7 @@ void handleClientsBlockedOnQueues(void) {
             if (!j) break; /* No longer elements, try next queue. */
             if (qlen == 0) needJobsForQueue(q,NEEDJOBS_REACHED_ZERO);
             addReplyMultiBulkLen(c,1);
-            addReplyJob(c,j);
+            addReplyJob(c,j,c->bpop.flags);
             unblockClient(c); /* This will remove it from q->clients. */
         }
     }
@@ -358,7 +372,7 @@ void handleClientsBlockedOnQueues(void) {
  * data, we should periodically call needJobsForQueue() with the
  * queues name in order to send NEEDJOBS messages from time to time. */
 int clientsCronSendNeedJobs(client *c) {
-    if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_QUEUES) {
+    if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_GETJOB) {
         dictForeach(c->bpop.queues,de)
             robj *qname = dictGetKey(de);
             needJobsForQueueName(qname,NEEDJOBS_CLIENTS_WAITING);
@@ -638,6 +652,7 @@ void getjobCommand(client *c) {
     mstime_t timeout = 0; /* Block forever by default. */
     long long count = 1, emitted_jobs = 0;
     int nohang = 0; /* Don't block even if all the queues are empty. */
+    int withcounters = 0; /* Also return NACKs and deliveries counters. */
     robj **queues = NULL;
     int j, numqueues = 0;
 
@@ -647,6 +662,8 @@ void getjobCommand(client *c) {
         int lastarg = j == c->argc-1;
         if (!strcasecmp(opt,"nohang")) {
             nohang = 1;
+        } else if (!strcasecmp(opt,"withcounters")) {
+            withcounters = 1;
         } else if (!strcasecmp(opt,"timeout") && !lastarg) {
             if (getTimeoutFromObjectOrReply(c,c->argv[j+1],&timeout,
                 UNIT_MILLISECONDS) != DISQUE_OK) return;
@@ -696,7 +713,8 @@ void getjobCommand(client *c) {
                 needJobsForQueue(q,NEEDJOBS_REACHED_ZERO);
             }
             if (!mbulk) mbulk = addDeferredMultiBulkLength(c);
-            addReplyJob(c,job);
+            addReplyJob(c,job,withcounters ? GETJOB_FLAG_WITHCOUNTERS :
+                                             GETJOB_FLAG_NONE);
             count--;
             emitted_jobs++;
             if (count == 0) break;
@@ -718,7 +736,8 @@ void getjobCommand(client *c) {
     }
 
     /* If we reached this point, we need to block. */
-    blockForJobs(c,queues,numqueues,timeout);
+    blockForJobs(c,queues,numqueues,timeout,
+            withcounters ? GETJOB_FLAG_WITHCOUNTERS : GETJOB_FLAG_NONE);
 }
 
 /* ENQUEUE job-id-1 job-id-2 ... job-id-N
@@ -822,7 +841,7 @@ void qpeekCommand(client *c) {
     void *deflen = addDeferredMultiBulkLength(c);
     while(count-- && sn) {
         job *j = sn->obj;
-        addReplyJob(c, j);
+        addReplyJob(c, j, GETJOB_FLAG_NONE);
         returned++;
         if (newjobs)
             sn = sn->backward;

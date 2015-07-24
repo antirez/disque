@@ -105,6 +105,7 @@ client *createClient(int fd) {
     listSetDupMethod(c->reply,dupClientReplyValue);
     c->btype = DISQUE_BLOCKED_NONE;
     c->bpop.timeout = 0;
+    c->bpop.flags = 0;
     c->bpop.job = NULL;
     c->bpop.queues = dictCreate(&setDictType,NULL);
     c->peerid = NULL;

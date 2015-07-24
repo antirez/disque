@@ -207,7 +207,7 @@ typedef long long mstime_t; /* millisecond time type. */
  * if DISQUE_BLOCKED flag is set. */
 #define DISQUE_BLOCKED_NONE 0    /* Not blocked, no DISQUE_BLOCKED flag set. */
 #define DISQUE_BLOCKED_JOB_REPL 1 /* Wait job synchronous replication. */
-#define DISQUE_BLOCKED_QUEUES 2   /* Wait for new jobs in a set of queues. */
+#define DISQUE_BLOCKED_GETJOB 2   /* Wait for new jobs in a set of queues. */
 
 /* Client request types */
 #define DISQUE_REQ_INLINE 1
@@ -315,12 +315,16 @@ typedef struct blockingState {
     /* Generic fields. */
     mstime_t timeout;       /* Blocking operation timeout. If UNIX current time
                              * is > timeout then the operation timed out. */
+    uint64_t flags;         /* Generic flags different blocking operations can
+                               use in different ways. For example in order to
+                               remember command options altering the return
+                               value. */
 
     /* DISQUE_BLOCKED_JOB_REPL */
     struct job *job;        /* Job we are trying to replicate. */
     mstime_t added_node_time; /* Last time we added a new node. */
 
-    /* DISQUE_BLOCKED_QUEUES */
+    /* DISQUE_BLOCKED_GETJOB */
     dict *queues;           /* Queues we are waiting for. */
 } blockingState;
 

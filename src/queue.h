@@ -75,6 +75,12 @@ typedef struct queue {
 
 struct clusterNode;
 
+#define GETJOB_FLAG_NONE 0
+#define GETJOB_FLAG_WITHCOUNTERS (1<<0)
+
+#define NEEDJOBS_CLIENTS_WAITING 0 /* Called because clients are waiting. */
+#define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
+
 int destroyQueue(robj *name);
 int enqueueJob(job *job, int nack);
 int dequeueJob(job *job);
@@ -84,9 +90,6 @@ unsigned long queueLength(queue *q);
 unsigned long queueNameLength(robj *qname);
 void unblockClientBlockedForJobs(client *c);
 void handleClientsBlockedOnQueues(void);
-
-#define NEEDJOBS_CLIENTS_WAITING 0 /* Called because clients are waiting. */
-#define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
 void needJobsForQueue(queue *q, int type);
 void needJobsForQueueName(robj *qname, int type);
 void receiveYourJobs(struct clusterNode *node, uint32_t numjobs, unsigned char *serializedjobs, uint32_t serializedlen);

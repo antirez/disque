@@ -15,6 +15,31 @@ Currently (27 April 2015) the project is just an alpha quality preview, that was
 
 **WARNING: This is alpha code NOT suitable for production. The implementation and API will likely change in significant ways during the next months. The code and algorithms are not tested enough. A lot more work is needed.**
 
+What is a message queue?
+---
+
+*Hint: skip this section if you are familiar with message queues.*
+
+Do you know how humans use text messages to communicate right? I could write
+my wife "please get the milk at the store", and she maybe will reply "Ok message
+received, I'll get two bottles on my way home".
+
+A message queue is the same as human text messages, but for computer programs.
+For example a web application, when an user subscribes, may send another
+process that handles sending emails "please send the confirmation email
+to tom@example.net".
+
+Message systems like Disque allow communication between processes using
+different queues. So a process can send a message into a queue with a given
+name, and only processes fetching messages from this queue will return those
+messages. Moreover multiple processes can listen for messages in a given
+queue, and multiple processes can send messages to the same queue.
+
+The important part of a message queue is to be able to provide guarantees so
+that messages are eventually delivered even in the face of failures. So even
+if in theory implementing a message queue is very easy, to write a very
+robust and scalable one is harder than it may appear.
+
 Give me the details!
 ---
 

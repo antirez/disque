@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.org/antirez/disque.svg)](https://travis-ci.org/antirez/disque)
-
 Disque, an in-memory, distributed job queue
 ===
 

@@ -67,7 +67,7 @@ void clusterDelNode(clusterNode *delnode);
 void clusterShuffleReachableNodes(void);
 void clusterSendGotJob(clusterNode *node, job *j);
 void clusterSendGotAck(clusterNode *node, char *jobid, int known);
-void clusterBroadcastQueued(job *j) ;
+void clusterBroadcastQueued(job *j, unsigned char flags);
 void clusterBroadcastDelJob(job *j);
 sds representDisqueNodeFlags(sds ci, uint16_t flags);
 
@@ -1394,13 +1394,13 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state < JOB_STATE_QUEUED) {
-            /* We received a QUEUEJOB message: consider this node as the
+            /* We received an ENQUEUE message: consider this node as the
              * first to queue the job, so no need to broadcast a QUEUED
              * message the first time we queue it. */
             j->flags &= ~JOB_FLAG_BCAST_QUEUED;
             serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
             if (delay == 0) {
-                enqueueJob(j);
+                enqueueJob(j,0);
             } else {
                 updateJobRequeueTime(j,server.mstime+delay*1000);
             }
@@ -1426,11 +1426,22 @@ int clusterProcessPacket(clusterLink *link) {
             {
                 dequeueJob(j);
             }
+
+            /* Update the time at which this node will attempt to enqueue
+             * the message again. */
             if (j->retry) {
                 j->flags |= JOB_FLAG_BCAST_WILLQUEUE;
                 updateJobRequeueTime(j,server.mstime+
                                        j->retry*1000+
                                        randomTimeError(DISQUE_TIME_ERR));
+            }
+
+            /* Update multiple deliveries counters. */
+            if (type == CLUSTERMSG_TYPE_QUEUED) {
+                if (hdr->mflags[0] & CLUSTERMSG_FLAG0_INCR_NACKS)
+                    j->num_nacks++;
+                if (hdr->mflags[0] & CLUSTERMSG_FLAG0_INCR_DELIV)
+                    j->num_deliv++;
             }
         } else if (j && j->state == JOB_STATE_ACKED) {
             /* Some other node queued a message that we have as
@@ -1447,7 +1458,8 @@ int clusterProcessPacket(clusterLink *link) {
             {
                 dictAdd(j->nodes_delivered,sender->name,sender);
             }
-            if (j->state == JOB_STATE_QUEUED) clusterBroadcastQueued(j);
+            if (j->state == JOB_STATE_QUEUED)
+                clusterBroadcastQueued(j,CLUSTERMSG_NOFLAGS);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }
     } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
@@ -1866,7 +1878,7 @@ void clusterSendJobIDMessage(int type, clusterNode *node, char *id, int aux) {
 
 /* Like clusterSendJobIDMessage(), but sends the message to the specified set
  * of nodes (excluding myself if included in the set of nodes). */
-void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux) {
+void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux, unsigned char flags) {
     dictIterator *di = dictGetIterator(nodes);
     dictEntry *de;
     unsigned char buf[sizeof(clusterMsg)];
@@ -1876,6 +1888,7 @@ void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux)
     clusterBuildMessageHdr(hdr,type);
     memcpy(hdr->data.jobid.job.id,id,JOB_ID_LEN);
     hdr->data.jobid.job.aux = htonl(aux);
+    hdr->mflags[0] = flags;
 
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
@@ -1909,24 +1922,24 @@ void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay) {
  *
  * This message is sent to all the nodes we believe may have a copy
  * of the message and are reachable. */
-void clusterBroadcastQueued(job *j) {
+void clusterBroadcastQueued(job *j, unsigned char flags) {
     serverLog(DISQUE_VERBOSE,"BCAST QUEUED: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
-                                 CLUSTERMSG_TYPE_QUEUED,0);
+                                 CLUSTERMSG_TYPE_QUEUED,0,flags);
 }
 
 /* WORKING is like QUEUED, but will always force the receiver to dequeue. */
 void clusterBroadcastWorking(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST WORKING: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
-                                 CLUSTERMSG_TYPE_WORKING,0);
+                                 CLUSTERMSG_TYPE_WORKING,0,CLUSTERMSG_NOFLAGS);
 }
 
 /* Send a DELJOB message to all the nodes that may have a copy. */
 void clusterBroadcastDelJob(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST DELJOB: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
-                                 CLUSTERMSG_TYPE_DELJOB,0);
+                                 CLUSTERMSG_TYPE_DELJOB,0,CLUSTERMSG_NOFLAGS);
 }
 
 /* Tell the receiver to reply with a QUEUED message if it has the job
@@ -1935,7 +1948,7 @@ void clusterBroadcastDelJob(job *j) {
 void clusterSendWillQueue(job *j) {
     serverLog(DISQUE_VERBOSE,"BCAST WILLQUEUE: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
-                                 CLUSTERMSG_TYPE_WILLQUEUE,0);
+                                 CLUSTERMSG_TYPE_WILLQUEUE,0,CLUSTERMSG_NOFLAGS);
 }
 
 /* Force the receiver to acknowledge the job as delivered. */

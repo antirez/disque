@@ -111,6 +111,8 @@ typedef struct job {
                                node gets prev job ctime + 1. */
     uint32_t delay;         /* Delay before to queue this job for 1st time. */
     uint32_t retry;         /* Job re-queue time: re-queue period in seconds. */
+    uint16_t num_nacks;     /* Number of NACKs this node observed. */
+    uint16_t num_deliv;     /* Number of deliveries this node observed. */
 
     /* --------------------------------------------------------------------
      * Up to this point we use the structure for on-wire serialization,
@@ -142,7 +144,7 @@ typedef struct job {
 } job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
-#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4)
+#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4+4)
 
 /* Serialization types for serializeJob() deserializejob(). */
 #define SER_MESSAGE 0

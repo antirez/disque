@@ -125,8 +125,11 @@ void addReplyJob(client *c, job *j) {
 
 /* Queue the job and change its state accordingly. If the job is already
  * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
- * and the operation succeeds. */
-int enqueueJob(job *job) {
+ * and the operation succeeds.
+ *
+ * The nack argument is set to 1 if the enqueue is the result of a client
+ * negative acknowledge. */
+int enqueueJob(job *job, int nack) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
         return DISQUE_ERR;
 
@@ -148,10 +151,20 @@ int enqueueJob(job *job) {
      * message, to save bandwidth. But the next times, when the job is
      * re-queued for lack of acknowledge, this is useful to (best effort)
      * avoid multiple nodes to re-queue the same job. */
-    if (job->flags & JOB_FLAG_BCAST_QUEUED)
-        clusterBroadcastQueued(job);
-    else
+    if (job->flags & JOB_FLAG_BCAST_QUEUED) {
+        unsigned char flags = nack ? CLUSTERMSG_FLAG0_INCR_NACKS :
+                                     CLUSTERMSG_FLAG0_INCR_DELIV;
+        clusterBroadcastQueued(job, flags);
+        /* Other nodes will increment their NACKs / additional deliveries
+         * counters when they'll receive the QUEUED message. We need to
+         * do teh same for the local copy of the job. */
+        if (nack)
+            job->num_nacks++;
+        else
+            job->num_deliv++;
+    } else {
         job->flags |= JOB_FLAG_BCAST_QUEUED; /* Next time, broadcast. */
+    }
 
     updateJobAwakeTime(job,0);
     queue *q = lookupQueue(job->queue);
@@ -554,7 +567,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
         if (job->retry == 0)
             job->qtime = server.mstime; /* Any value will do. */
 
-        if (enqueueJob(job) == DISQUE_ERR) continue;
+        if (enqueueJob(job,0) == DISQUE_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */
         q = lookupQueue(job->queue);
@@ -709,6 +722,7 @@ void getjobCommand(client *c) {
 }
 
 /* ENQUEUE job-id-1 job-id-2 ... job-id-N
+ * NACK job-id-1 job-id-2 ... job-id-N
  *
  * If the job is active, queue it if job retry != 0.
  * If the job is in any other state, do nothing.
@@ -717,8 +731,12 @@ void getjobCommand(client *c) {
  * NOTE: Even jobs with retry set to 0 are enqueued! Be aware that
  * using this command may violate the at-most-once contract.
  *
- * Return the number of jobs actually move from active to queued state. */
-void enqueueCommand(client *c) {
+ * Return the number of jobs actually move from active to queued state.
+ *
+ * The difference between ENQUEUE and NACK is that the latter will propagate
+ * cluster messages in a way that makes the nacks counter in the receiver
+ * to increment. */
+void enqueueGenericCommand(client *c, int nack) {
     int j, enqueued = 0;
 
     if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
@@ -728,10 +746,20 @@ void enqueueCommand(client *c) {
         job *job = lookupJob(c->argv[j]->ptr);
         if (job == NULL) continue;
 
-        if (job->state == JOB_STATE_ACTIVE && enqueueJob(job) == DISQUE_OK)
+        if (job->state == JOB_STATE_ACTIVE && enqueueJob(job,nack) == DISQUE_OK)
             enqueued++;
     }
     addReplyLongLong(c,enqueued);
+}
+
+/* See enqueueGenericCommand(). */
+void enqueueCommand(client *c) {
+    enqueueGenericCommand(c,0);
+}
+
+/* See enqueueGenericCommand(). */
+void nackCommand(client *c) {
+    enqueueGenericCommand(c,1);
 }
 
 /* DEQUEUE job-id-1 job-id-2 ... job-id-N

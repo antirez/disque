@@ -857,6 +857,7 @@ void showCommand(client *c);
 void ackjobCommand(client *c);
 void fastackCommand(client *c);
 void enqueueCommand(client *c);
+void nackCommand(client *c);
 void dequeueCommand(client *c);
 void loadjobCommand(client *c);
 void deljobCommand(client *c);

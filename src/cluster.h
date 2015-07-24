@@ -210,7 +210,10 @@ typedef struct {
 
 /* Message flags better specify the packet content or are used to
  * provide some information about the node state. */
+#define CLUSTERMSG_NOFLAGS 0
 #define CLUSTERMSG_FLAG0_NOREPLY (1<<0) /* Don't reply to this message. */
+#define CLUSTERMSG_FLAG0_INCR_NACKS (1<<1) /* Increment job nacks counter. */
+#define CLUSTERMSG_FLAG0_INCR_DELIV (1<<2) /* Increment job delivers counter. */
 
 /*-----------------------------------------------------------------------------
  * Exported API.
@@ -222,13 +225,13 @@ clusterNode *clusterLookupNode(char *name);
 void clusterUpdateReachableNodes(void);
 int clusterReplicateJob(job *j, int repl, int noreply);
 void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay);
-void clusterBroadcastQueued(job *j);
+void clusterBroadcastQueued(job *j, unsigned char flags);
 void clusterBroadcastWorking(job *j);
 void clusterBroadcastDelJob(job *j);
 void clusterSendWillQueue(job *j);
 void clusterSendSetAck(clusterNode *node, job *j);
 void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes);
 void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count);
-void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux);
+void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux, unsigned char flags);
 
 #endif /* __DISQUE_CLUSTER_H */

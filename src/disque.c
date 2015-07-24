@@ -141,6 +141,7 @@ struct serverCommand serverCommandTable[] = {
     {"qscan",qscanCommand,-1,"r",0,NULL,0,0,0,0,0},
     {"jscan",jscanCommand,-1,"r",0,NULL,0,0,0,0,0},
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
+    {"nack",nackCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
     {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0}
 };

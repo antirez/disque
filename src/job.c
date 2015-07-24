@@ -183,6 +183,10 @@ job *createJob(char *id, int state, int ttl) {
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     j->nodes_confirmed = NULL; /* Only created later on-demand. */
     j->awakeme = 0; /* Not yet registered in awakeme skiplist. */
+    /* Number of NACKs and additiona deliveries start at zero and
+     * are incremented as QUEUED messages are received or sent. */
+    j->num_nacks = 0;
+    j->num_deliv = 0;
     return j;
 }
 
@@ -413,7 +417,7 @@ void processJob(job *j) {
 
     /* Requeue job if needed. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
-        enqueueJob(j);
+        enqueueJob(j,0);
     }
 
     /* Update job re-queue time if job is already queued. */
@@ -604,6 +608,8 @@ sds serializeJob(sds jobs, job *j, int sertype) {
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->delay);
     memrev32ifbe(&sj->retry);
+    memrev16ifbe(&sj->num_nacks);
+    memrev16ifbe(&sj->num_deliv);
 
     /* p now points to the start of the variable part of the serialization. */
     p = msg + 4 + JOB_STRUCT_SER_LEN;
@@ -684,6 +690,8 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next, int sert
     }
     memrev32ifbe(j->delay);
     memrev32ifbe(j->retry);
+    memrev16ifbe(&sj->num_nacks);
+    memrev16ifbe(&sj->num_deliv);
     p += JOB_STRUCT_SER_LEN;
     len -= JOB_STRUCT_SER_LEN;
 
@@ -890,7 +898,7 @@ void loadjobCommand(client *c) {
      * queues only if enqueue-jobs-at-next-restart option is set, that is,
      * when a controlled restart happens. */
     if (registerJob(job) == DISQUE_OK && enqueue_job)
-        enqueueJob(job);
+        enqueueJob(job,0);
 }
 
 /* --------------------------  Jobs related commands ------------------------ */
@@ -971,7 +979,7 @@ int jobReplicationAchieved(job *j) {
 
     /* Queue the job locally. */
     if (j->delay == 0)
-        enqueueJob(j); /* Will change the job state. */
+        enqueueJob(j,0); /* Will change the job state. */
     else
         updateJobAwakeTime(j,0); /* Queue with delay. */
 
@@ -1207,7 +1215,7 @@ void addjobCommand(client *c) {
         if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
         if (job->delay == 0) {
-            if (!extrepl) enqueueJob(job); /* Will change the job state. */
+            if (!extrepl) enqueueJob(job,0); /* Will change the job state. */
         } else {
             /* Delayed jobs that don't wait for replication can move
              * forward to ACTIVE state ASAP, and get scheduled for
@@ -1241,7 +1249,7 @@ void addjobCommand(client *c) {
 
 /* Client reply function for SHOW and JSCAN. */
 void addReplyJobInfo(client *c, job *j) {
-    addReplyMultiBulkLen(c,26);
+    addReplyMultiBulkLen(c,30);
 
     addReplyBulkCString(c,"id");
     addReplyBulkCBuffer(c,j->id,JOB_ID_LEN);
@@ -1271,6 +1279,12 @@ void addReplyJobInfo(client *c, job *j) {
 
     addReplyBulkCString(c,"retry");
     addReplyLongLong(c,j->retry);
+
+    addReplyBulkCString(c,"nacks");
+    addReplyLongLong(c,j->num_nacks);
+
+    addReplyBulkCString(c,"additional-deliveries");
+    addReplyLongLong(c,j->num_deliv);
 
     addReplyBulkCString(c,"nodes-delivered");
     if (j->nodes_delivered) {

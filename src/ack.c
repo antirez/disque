@@ -257,7 +257,8 @@ void fastackCommand(client *c) {
         if (job == NULL) {
             /* Job not known, just broadcast the DELJOB message to everybody. */
             clusterBroadcastJobIDMessage(server.cluster->nodes,c->argv[j]->ptr,
-                                         CLUSTERMSG_TYPE_DELJOB,0);
+                                         CLUSTERMSG_TYPE_DELJOB,0,
+                                         CLUSTERMSG_NOFLAGS);
         } else {
             clusterBroadcastDelJob(job);
             unregisterJob(job);

@@ -163,7 +163,7 @@ endif
 
 # disque-server
 $(DISQUE_SERVER_NAME): $(DISQUE_SERVER_OBJ)
-	$(DISQUE_LD) -o $@ $^ ../deps/hiredis/libhiredis.a $(FINAL_LIBS)
+	$(DISQUE_LD) -o $@ $^ $(FINAL_LIBS)
 
 # disque-cli
 $(DISQUE_CLI_NAME): $(DISQUE_CLI_OBJ)

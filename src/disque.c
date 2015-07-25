@@ -2180,16 +2180,30 @@ int freeMemoryIfNeeded(void) {
          * to free jobs. */
         de = dictGetRandomKey(server.jobs);
         delta = (long long) zmalloc_used_memory();
-        job *job = dictGetKey(de);
-        if (job->state == JOB_STATE_ACKED) {
-            unregisterJob(job);
-            freeJob(job);
-            not_freed = 0;
+        /* If disque starts without any jobs in memory, it could happen, that
+         * dictGetRandomKey returns NULL.
+         */
+        if (de) {
+            job *job = dictGetKey(de);
+            if (job->state == JOB_STATE_ACKED) {
+                unregisterJob(job);
+                freeJob(job);
+                not_freed = 0;
+            } else {
+                not_freed++;
+            }
+            delta -= (long long) zmalloc_used_memory();
+            mem_freed += delta;
         } else {
+            /* The jobs dictionary has no available jobs, so we can stop the
+             * iterations at this point. */
+            if (dictSize(server.jobs) == 0) {
+              latencyEndMonitor(latency);
+              latencyAddSampleIfNeeded("eviction-cycle",latency);
+              return DISQUE_ERR;
+            }
             not_freed++;
         }
-        delta -= (long long) zmalloc_used_memory();
-        mem_freed += delta;
 
         /* If no object was freed in the latest N iterations or we are here
          * for more than 1 or 2 milliseconds, return to the caller with a

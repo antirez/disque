@@ -288,12 +288,11 @@ int main(void) {
     /* The following should fail. */
     printf("\nInsert %s again: %p\n\n", words[2], skiplistInsert(sl,words[2]));
 
-    skiplistNode *x;
-    x = sl->header;
-    x = x->level[0].forward;
-    while(x) {
-        printf("%s\n", x->obj);
-        x = x->level[0].forward;
+    skiplistIter skiplist_iter;
+    skiplistNode *node;
+    skiplistRewind(sl, &skiplist_iter);
+    while ((node = skiplistNext(&skiplist_iter)) != NULL) {
+        printf("%s\n", node->obj);
     }
 
     printf("Searching for 'hello': %p\n", skiplistFind(sl,"hello"));

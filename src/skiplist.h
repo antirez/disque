@@ -51,6 +51,11 @@ typedef struct skiplist {
     int level;
 } skiplist;
 
+typedef struct skiplistIter {
+    skiplistNode *next;
+    int direction;
+} skiplistIter;
+
 skiplist *skiplistCreate(int (*compare)(const void *, const void *));
 void skiplistFree(skiplist *sl);
 skiplistNode *skiplistInsert(skiplist *sl, void *obj);
@@ -59,5 +64,31 @@ void *skiplistFind(skiplist *sl, void *obj);
 void *skiplistPopHead(skiplist *sl);
 void *skiplistPopTail(skiplist *sl);
 unsigned long skiplistLength(skiplist *sl);
+
+/* Directions for iterators */
+#define SL_START_HEAD 0
+#define SL_START_TAIL 1
+
+/* Create an iterator in the skiplist private iterator structure
+ * skiplistIter should be a pointer point to the struct.
+ * */
+#define skiplistRewind(skiplist, skiplistIter) do { \
+    (skiplistIter)->next = (skiplist)->header->level[0].forward; \
+    (skiplistIter)->direction = SL_START_HEAD; \
+} while(0)
+
+#define skiplistRewindTail(skiplist, skiplistIter) do { \
+    (skiplistIter)->next = (skiplist)->tail; \
+    (skiplistIter)->direction = SL_START_TAIL; \
+} while(0)
+
+inline skiplistNode *skiplistNext(skiplistIter *iter) {
+    skiplistNode *current = iter->next;
+    if (current != NULL) {
+        iter->next = iter->direction == SL_START_HEAD ?
+            current->level[0].forward : current->backward;
+    }
+    return current;
+}
 
 #endif

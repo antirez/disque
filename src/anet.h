@@ -11,7 +11,7 @@
  *   * Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *   * Neither the name of Disque nor the names of its contributors may be used
+ *   * Neither the name of Redis nor the names of its contributors may be used
  *     to endorse or promote products derived from this software without
  *     specific prior written permission.
  *
@@ -50,6 +50,7 @@
 int anetTcpConnect(char *err, char *addr, int port);
 int anetTcpNonBlockConnect(char *err, char *addr, int port);
 int anetTcpNonBlockBindConnect(char *err, char *addr, int port, char *source_addr);
+int anetTcpNonBlockBestEffortBindConnect(char *err, char *addr, int port, char *source_addr);
 int anetUnixConnect(char *err, char *path);
 int anetUnixNonBlockConnect(char *err, char *path);
 int anetRead(int fd, char *buf, int count);
@@ -70,5 +71,8 @@ int anetSendTimeout(char *err, int fd, long long ms);
 int anetPeerToString(int fd, char *ip, size_t ip_len, int *port);
 int anetKeepAlive(char *err, int fd, int interval);
 int anetSockName(int fd, char *ip, size_t ip_len, int *port);
+int anetFormatAddr(char *fmt, size_t fmt_len, char *ip, int port);
+int anetFormatPeer(int fd, char *fmt, size_t fmt_len);
+int anetFormatSock(int fd, char *fmt, size_t fmt_len);
 
 #endif

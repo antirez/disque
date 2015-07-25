@@ -11,7 +11,7 @@
  *   * Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *   * Neither the name of Disque nor the names of its contributors may be used
+ *   * Neither the name of Redis nor the names of its contributors may be used
  *     to endorse or promote products derived from this software without
  *     specific prior written permission.
  *
@@ -80,6 +80,9 @@ sds sdsnewlen(const void *init, size_t initlen) {
     void *sh;
     sds s;
     char type = sdsReqType(initlen);
+    /* Empty strings are usually created in order to append. Use type 8
+     * since type 5 is not good at this. */
+    if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
     int hdrlen = sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
 
@@ -135,7 +138,7 @@ sds sdsempty(void) {
     return sdsnewlen("",0);
 }
 
-/* Create a new sds string starting from a null termined C string. */
+/* Create a new sds string starting from a null terminated C string. */
 sds sdsnew(const char *init) {
     size_t initlen = (init == NULL) ? 0 : strlen(init);
     return sdsnewlen(init, initlen);
@@ -193,7 +196,9 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     char type, oldtype = s[-1] & SDS_TYPE_MASK;
     int hdrlen;
 
+    /* Return ASAP if there is enough space left. */
     if (avail >= addlen) return s;
+
     len = sdslen(s);
     sh = (char*)s-sdsHdrSize(oldtype);
     newlen = (len+addlen);
@@ -203,6 +208,12 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
         newlen += SDS_MAX_PREALLOC;
 
     type = sdsReqType(newlen);
+
+    /* Don't use type 5: the user is appending to the string and type 5 is
+     * not able to remember empty space, so sdsMakeRoomFor() must be called
+     * at every appending operation. */
+    if (type == SDS_TYPE_5) type = SDS_TYPE_8;
+
     hdrlen = sdsHdrSize(type);
     if (oldtype==type) {
         newsh = zrealloc(sh, hdrlen+newlen+1);
@@ -305,8 +316,8 @@ void sdsIncrLen(sds s, int incr) {
             unsigned char *fp = ((unsigned char*)s)-1;
             unsigned char oldlen = SDS_TYPE_5_LEN(flags);
             assert((incr > 0 && oldlen+incr < 32) || (incr < 0 && oldlen >= (unsigned int)(-incr)));
-            *fp = SDS_TYPE_5 | ((oldlen+1) << SDS_TYPE_BITS);
-            len = oldlen+1;
+            *fp = SDS_TYPE_5 | ((oldlen+incr) << SDS_TYPE_BITS);
+            len = oldlen+incr;
             break;
         }
         case SDS_TYPE_8: {
@@ -333,6 +344,7 @@ void sdsIncrLen(sds s, int incr) {
             len = (sh->len += incr);
             break;
         }
+        default: len = 0; /* Just to avoid compilation warnings. */
     }
     s[len] = '\0';
 }
@@ -410,7 +422,7 @@ sds sdscpy(sds s, const char *t) {
  * conversion. 's' must point to a string with room for at least
  * SDS_LLSTR_SIZE bytes.
  *
- * The function returns the lenght of the null-terminated string
+ * The function returns the length of the null-terminated string
  * representation stored at 's'. */
 #define SDS_LLSTR_SIZE 21
 int sdsll2str(char *s, long long value) {
@@ -484,7 +496,7 @@ sds sdsfromlonglong(long long value) {
     return sdsnewlen(buf,len);
 }
 
-/* Like sdscatpritf() but gets va_list instead of being variadic. */
+/* Like sdscatprintf() but gets va_list instead of being variadic. */
 sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
     va_list cpy;
     char staticbuf[1024], *buf = staticbuf, *t;
@@ -505,7 +517,7 @@ sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
         buf[buflen-2] = '\0';
         va_copy(cpy,ap);
         vsnprintf(buf, buflen, fmt, cpy);
-        va_end(ap);
+        va_end(cpy);
         if (buf[buflen-2] != '\0') {
             if (buf != staticbuf) zfree(buf);
             buflen *= 2;
@@ -530,7 +542,7 @@ sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
  *
  * Example:
  *
- * s = sdsempty("Sum is: ");
+ * s = sdsnew("Sum is: ");
  * s = sdscatprintf(s,"%d+%d = %d",a,b,a+b).
  *
  * Often you need to create a string from scratch with the printf-alike
@@ -662,7 +674,7 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
  * Example:
  *
  * s = sdsnew("AA...AA.a.aa.aHelloWorld     :::");
- * s = sdstrim(s,"A. :");
+ * s = sdstrim(s,"Aa. :");
  * printf("%s\n", s);
  *
  * Output will be just "Hello World".
@@ -674,7 +686,7 @@ sds sdstrim(sds s, const char *cset) {
     sp = start = s;
     ep = end = s+sdslen(s)-1;
     while(sp <= end && strchr(cset, *sp)) sp++;
-    while(ep > start && strchr(cset, *ep)) ep--;
+    while(ep > sp && strchr(cset, *ep)) ep--;
     len = (sp > ep) ? 0 : ((ep-sp)+1);
     if (s != sp) memmove(s, sp, len);
     s[len] = '\0';
@@ -744,8 +756,8 @@ void sdstoupper(sds s) {
  *
  * Return value:
  *
- *     1 if s1 > s2.
- *    -1 if s1 < s2.
+ *     positive if s1 > s2.
+ *     negative if s1 < s2.
  *     0 if s1 and s2 are exactly the same binary string.
  *
  * If two strings share exactly the same prefix, but one of the two has
@@ -1063,7 +1075,7 @@ sds sdsjoin(char **argv, int argc, char *sep) {
     return join;
 }
 
-#ifdef SDS_TEST_MAIN
+#if defined(REDIS_TEST) || defined(SDS_TEST_MAIN)
 #include <stdio.h>
 #include "testhelp.h"
 #include "limits.h"
@@ -1114,6 +1126,18 @@ int sdsTest(void) {
         test_cond("sdscatfmt() seems working with unsigned numbers",
             sdslen(x) == 35 &&
             memcmp(x,"--4294967295,18446744073709551615--",35) == 0)
+
+        sdsfree(x);
+        x = sdsnew(" x ");
+        sdstrim(x," x");
+        test_cond("sdstrim() works when all chars match",
+            sdslen(x) == 0)
+
+        sdsfree(x);
+        x = sdsnew(" x ");
+        sdstrim(x," ");
+        test_cond("sdstrim() works when a single char remains",
+            sdslen(x) == 1 && x[0] == 'x')
 
         sdsfree(x);
         x = sdsnew("xxciaoyyy");
@@ -1181,27 +1205,48 @@ int sdsTest(void) {
         test_cond("sdscatrepr(...data...)",
             memcmp(y,"\"\\a\\n\\x00foo\\r\"",15) == 0)
 
-#if 0
         {
-            int oldfree;
+            unsigned int oldfree;
+            char *p;
+            int step = 10, j, i;
 
             sdsfree(x);
+            sdsfree(y);
             x = sdsnew("0");
-            sh = (void*) (x-(sizeof(struct sdshdr)));
-            test_cond("sdsnew() free/len buffers", sh->len == 1 && sh->free == 0);
-            x = sdsMakeRoomFor(x,1);
-            sh = (void*) (x-(sizeof(struct sdshdr)));
-            test_cond("sdsMakeRoomFor()", sh->len == 1 && sh->free > 0);
-            oldfree = sh->free;
-            x[1] = '1';
-            sdsIncrLen(x,1);
-            test_cond("sdsIncrLen() -- content", x[0] == '0' && x[1] == '1');
-            test_cond("sdsIncrLen() -- len", sh->len == 2);
-            test_cond("sdsIncrLen() -- free", sh->free == oldfree-1);
+            test_cond("sdsnew() free/len buffers", sdslen(x) == 1 && sdsavail(x) == 0);
+
+            /* Run the test a few times in order to hit the first two
+             * SDS header types. */
+            for (i = 0; i < 10; i++) {
+                int oldlen = sdslen(x);
+                x = sdsMakeRoomFor(x,step);
+                int type = x[-1]&SDS_TYPE_MASK;
+
+                test_cond("sdsMakeRoomFor() len", sdslen(x) == oldlen);
+                if (type != SDS_TYPE_5) {
+                    test_cond("sdsMakeRoomFor() free", sdsavail(x) >= step);
+                    oldfree = sdsavail(x);
+                }
+                p = x+oldlen;
+                for (j = 0; j < step; j++) {
+                    p[j] = 'A'+j;
+                }
+                sdsIncrLen(x,step);
+            }
+            test_cond("sdsMakeRoomFor() content",
+                memcmp("0ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ",x,101) == 0);
+            test_cond("sdsMakeRoomFor() final length",sdslen(x)==101);
+
+            sdsfree(x);
         }
-#endif
     }
     test_report()
     return 0;
+}
+#endif
+
+#ifdef SDS_TEST_MAIN
+int main(void) {
+    return sdsTest();
 }
 #endif

@@ -11,7 +11,7 @@
  *   * Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *   * Neither the name of Disque nor the names of its contributors may be used
+ *   * Neither the name of Redis nor the names of its contributors may be used
  *     to endorse or promote products derived from this software without
  *     specific prior written permission.
  *
@@ -254,5 +254,9 @@ void sdsIncrLen(sds s, int incr);
 sds sdsRemoveFreeSpace(sds s);
 size_t sdsAllocSize(sds s);
 size_t sdsZmallocSize(sds s);
+
+#ifdef REDIS_TEST
+int sdsTest(int argc, char *argv[]);
+#endif
 
 #endif

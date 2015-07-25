@@ -48,7 +48,7 @@ robj *createObject(int type, void *ptr) {
 
 /* Create a string object with encoding DISQUE_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
-robj *createRawStringObject(char *ptr, size_t len) {
+robj *createRawStringObject(const char *ptr, size_t len) {
     return createObject(DISQUE_STRING,sdsnewlen(ptr,len));
 }
 

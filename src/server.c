@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "disque.h"
+#include "server.h"
 #include "cluster.h"
 #include "slowlog.h"
 #include "bio.h"
@@ -950,31 +950,31 @@ void initServerConfig(void) {
     getRandomHexChars(server.runid,DISQUE_RUN_ID_SIZE);
     getRandomHexChars(server.jobid_seed,DISQUE_RUN_ID_SIZE);
     server.configfile = NULL;
-    server.hz = DISQUE_DEFAULT_HZ;
+    server.hz = CONFIG_DEFAULT_HZ;
     server.runid[DISQUE_RUN_ID_SIZE] = '\0';
     server.arch_bits = (sizeof(long) == 8) ? 64 : 32;
     server.port = DISQUE_SERVERPORT;
     server.tcp_backlog = DISQUE_TCP_BACKLOG;
     server.bindaddr_count = 0;
     server.unixsocket = NULL;
-    server.unixsocketperm = DISQUE_DEFAULT_UNIX_SOCKET_PERM;
+    server.unixsocketperm = CONFIG_DEFAULT_UNIX_SOCKET_PERM;
     server.ipfd_count = 0;
     server.sofd = -1;
-    server.dbnum = DISQUE_DEFAULT_DBNUM;
-    server.verbosity = DISQUE_DEFAULT_VERBOSITY;
+    server.dbnum = CONFIG_DEFAULT_DBNUM;
+    server.verbosity = CONFIG_DEFAULT_VERBOSITY;
     server.maxidletime = DISQUE_MAXIDLETIME;
-    server.tcpkeepalive = DISQUE_DEFAULT_TCP_KEEPALIVE;
+    server.tcpkeepalive = CONFIG_DEFAULT_TCP_KEEPALIVE;
     server.active_expire_enabled = 1;
     server.client_max_querybuf_len = DISQUE_MAX_QUERYBUF_LEN;
     server.loading = 0;
-    server.logfile = zstrdup(DISQUE_DEFAULT_LOGFILE);
-    server.syslog_enabled = DISQUE_DEFAULT_SYSLOG_ENABLED;
-    server.syslog_ident = zstrdup(DISQUE_DEFAULT_SYSLOG_IDENT);
+    server.logfile = zstrdup(CONFIG_DEFAULT_LOGFILE);
+    server.syslog_enabled = CONFIG_DEFAULT_SYSLOG_ENABLED;
+    server.syslog_ident = zstrdup(CONFIG_DEFAULT_SYSLOG_IDENT);
     server.syslog_facility = LOG_LOCAL0;
-    server.daemonize = DISQUE_DEFAULT_DAEMONIZE;
+    server.daemonize = CONFIG_DEFAULT_DAEMONIZE;
     server.aof_state = DISQUE_AOF_OFF;
-    server.aof_fsync = DISQUE_DEFAULT_AOF_FSYNC;
-    server.aof_no_fsync_on_rewrite = DISQUE_DEFAULT_AOF_NO_FSYNC_ON_REWRITE;
+    server.aof_fsync = CONFIG_DEFAULT_AOF_FSYNC;
+    server.aof_no_fsync_on_rewrite = CONFIG_DEFAULT_AOF_NO_FSYNC_ON_REWRITE;
     server.aof_rewrite_perc = DISQUE_AOF_REWRITE_PERC;
     server.aof_rewrite_min_size = DISQUE_AOF_REWRITE_MIN_SIZE;
     server.aof_rewrite_base_size = 0;
@@ -987,21 +987,21 @@ void initServerConfig(void) {
     server.aof_fd = -1;
     server.aof_selected_db = -1; /* Make sure the first time will not match */
     server.aof_flush_postponed_start = 0;
-    server.aof_rewrite_incremental_fsync = DISQUE_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC;
-    server.aof_load_truncated = DISQUE_DEFAULT_AOF_LOAD_TRUNCATED;
-    server.aof_enqueue_jobs_once = DISQUE_DEFAULT_AOF_ENQUEUE_JOBS_ONCE;
-    server.pidfile = zstrdup(DISQUE_DEFAULT_PID_FILE);
-    server.aof_filename = zstrdup(DISQUE_DEFAULT_AOF_FILENAME);
+    server.aof_rewrite_incremental_fsync = CONFIG_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC;
+    server.aof_load_truncated = CONFIG_DEFAULT_AOF_LOAD_TRUNCATED;
+    server.aof_enqueue_jobs_once = CONFIG_DEFAULT_AOF_ENQUEUE_JOBS_ONCE;
+    server.pidfile = zstrdup(CONFIG_DEFAULT_PID_FILE);
+    server.aof_filename = zstrdup(CONFIG_DEFAULT_AOF_FILENAME);
     server.requirepass = NULL;
-    server.activerehashing = DISQUE_DEFAULT_ACTIVE_REHASHING;
-    server.maxclients = DISQUE_MAX_CLIENTS;
+    server.activerehashing = CONFIG_DEFAULT_ACTIVE_REHASHING;
+    server.maxclients = CONFIG_DEFAULT_MAX_CLIENTS;
     server.bpop_blocked_clients = 0;
-    server.maxmemory = DISQUE_DEFAULT_MAXMEMORY;
-    server.maxmemory_policy = DISQUE_DEFAULT_MAXMEMORY_POLICY;
-    server.maxmemory_samples = DISQUE_DEFAULT_MAXMEMORY_SAMPLES;
+    server.maxmemory = CONFIG_DEFAULT_MAXMEMORY;
+    server.maxmemory_policy = CONFIG_DEFAULT_MAXMEMORY_POLICY;
+    server.maxmemory_samples = CONFIG_DEFAULT_MAXMEMORY_SAMPLES;
     server.shutdown_asap = 0;
     server.cluster_node_timeout = DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT;
-    server.cluster_configfile = zstrdup(DISQUE_DEFAULT_CLUSTER_CONFIG_FILE);
+    server.cluster_configfile = zstrdup(CONFIG_DEFAULT_CLUSTER_CONFIG_FILE);
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
     server.loading_process_events_interval_bytes = (1024*1024*2);
 
@@ -1032,7 +1032,7 @@ void initServerConfig(void) {
     server.slowlog_max_len = DISQUE_SLOWLOG_MAX_LEN;
 
     /* Latency monitor */
-    server.latency_monitor_threshold = DISQUE_DEFAULT_LATENCY_MONITOR_THRESHOLD;
+    server.latency_monitor_threshold = CONFIG_DEFAULT_LATENCY_MONITOR_THRESHOLD;
 
     /* Debugging */
     server.assert_failed = "<no assertion failed>";

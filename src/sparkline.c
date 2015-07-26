@@ -30,7 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "disque.h"
+#include "server.h"
 
 #include <math.h>
 

@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "disque.h"
+#include "server.h"
 #include "cluster.h"
 #include "endianconv.h"
 #include "ack.h"

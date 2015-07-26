@@ -61,7 +61,7 @@
  * to handle the btype-specific behavior of this two functions.
  */
 
-#include "disque.h"
+#include "server.h"
 #include "job.h"
 #include "queue.h"
 

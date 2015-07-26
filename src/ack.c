@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "disque.h"
+#include "server.h"
 #include "cluster.h"
 #include "job.h"
 #include "queue.h"

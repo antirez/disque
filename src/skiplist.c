@@ -40,7 +40,7 @@
  * This implementation originates from the Redis code base but was modified
  * in different ways. */
 
-#include "disque.h"
+#include "server.h"
 #include "zmalloc.h"
 #include "skiplist.h"
 

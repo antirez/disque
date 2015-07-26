@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "disque.h"
+#include "server.h"
 #include <sys/uio.h>
 #include <math.h>
 

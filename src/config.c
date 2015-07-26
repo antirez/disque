@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "disque.h"
+#include "server.h"
 #include "cluster.h"
 
 #include <fcntl.h>
@@ -1305,54 +1305,54 @@ int rewriteConfig(char *path) {
      * the rewrite state. */
 
     rewriteConfigYesNoOption(state,"daemonize",server.daemonize,0);
-    rewriteConfigStringOption(state,"pidfile",server.pidfile,DISQUE_DEFAULT_PID_FILE);
+    rewriteConfigStringOption(state,"pidfile",server.pidfile,CONFIG_DEFAULT_PID_FILE);
     rewriteConfigNumericalOption(state,"port",server.port,DISQUE_SERVERPORT);
     rewriteConfigNumericalOption(state,"tcp-backlog",server.tcp_backlog,DISQUE_TCP_BACKLOG);
     rewriteConfigBindOption(state);
     rewriteConfigStringOption(state,"unixsocket",server.unixsocket,NULL);
-    rewriteConfigOctalOption(state,"unixsocketperm",server.unixsocketperm,DISQUE_DEFAULT_UNIX_SOCKET_PERM);
+    rewriteConfigOctalOption(state,"unixsocketperm",server.unixsocketperm,CONFIG_DEFAULT_UNIX_SOCKET_PERM);
     rewriteConfigNumericalOption(state,"timeout",server.maxidletime,DISQUE_MAXIDLETIME);
-    rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,DISQUE_DEFAULT_TCP_KEEPALIVE);
+    rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,CONFIG_DEFAULT_TCP_KEEPALIVE);
     rewriteConfigEnumOption(state,"loglevel",server.verbosity,
         "debug", DISQUE_DEBUG,
         "verbose", DISQUE_VERBOSE,
         "notice", DISQUE_NOTICE,
         "warning", DISQUE_WARNING,
-        NULL, DISQUE_DEFAULT_VERBOSITY);
-    rewriteConfigStringOption(state,"logfile",server.logfile,DISQUE_DEFAULT_LOGFILE);
-    rewriteConfigYesNoOption(state,"syslog-enabled",server.syslog_enabled,DISQUE_DEFAULT_SYSLOG_ENABLED);
-    rewriteConfigStringOption(state,"syslog-ident",server.syslog_ident,DISQUE_DEFAULT_SYSLOG_IDENT);
+        NULL, CONFIG_DEFAULT_VERBOSITY);
+    rewriteConfigStringOption(state,"logfile",server.logfile,CONFIG_DEFAULT_LOGFILE);
+    rewriteConfigYesNoOption(state,"syslog-enabled",server.syslog_enabled,CONFIG_DEFAULT_SYSLOG_ENABLED);
+    rewriteConfigStringOption(state,"syslog-ident",server.syslog_ident,CONFIG_DEFAULT_SYSLOG_IDENT);
     rewriteConfigSyslogfacilityOption(state);
     rewriteConfigDirOption(state);
     rewriteConfigStringOption(state,"requirepass",server.requirepass,NULL);
-    rewriteConfigNumericalOption(state,"maxclients",server.maxclients,DISQUE_MAX_CLIENTS);
-    rewriteConfigBytesOption(state,"maxmemory",server.maxmemory,DISQUE_DEFAULT_MAXMEMORY);
+    rewriteConfigNumericalOption(state,"maxclients",server.maxclients,CONFIG_DEFAULT_MAX_CLIENTS);
+    rewriteConfigBytesOption(state,"maxmemory",server.maxmemory,CONFIG_DEFAULT_MAXMEMORY);
     rewriteConfigEnumOption(state,"maxmemory-policy",server.maxmemory_policy,
         "acks", DISQUE_MAXMEMORY_ACKS,
         "noeviction", DISQUE_MAXMEMORY_NO_EVICTION,
-        NULL, DISQUE_DEFAULT_MAXMEMORY_POLICY);
-    rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,DISQUE_DEFAULT_MAXMEMORY_SAMPLES);
+        NULL, CONFIG_DEFAULT_MAXMEMORY_POLICY);
+    rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,CONFIG_DEFAULT_MAXMEMORY_SAMPLES);
     rewriteConfigYesNoOption(state,"appendonly",server.aof_state != DISQUE_AOF_OFF,0);
-    rewriteConfigStringOption(state,"appendfilename",server.aof_filename,DISQUE_DEFAULT_AOF_FILENAME);
+    rewriteConfigStringOption(state,"appendfilename",server.aof_filename,CONFIG_DEFAULT_AOF_FILENAME);
     rewriteConfigEnumOption(state,"appendfsync",server.aof_fsync,
         "everysec", AOF_FSYNC_EVERYSEC,
         "always", AOF_FSYNC_ALWAYS,
         "no", AOF_FSYNC_NO,
-        NULL, DISQUE_DEFAULT_AOF_FSYNC);
-    rewriteConfigYesNoOption(state,"no-appendfsync-on-rewrite",server.aof_no_fsync_on_rewrite,DISQUE_DEFAULT_AOF_NO_FSYNC_ON_REWRITE);
+        NULL, CONFIG_DEFAULT_AOF_FSYNC);
+    rewriteConfigYesNoOption(state,"no-appendfsync-on-rewrite",server.aof_no_fsync_on_rewrite,CONFIG_DEFAULT_AOF_NO_FSYNC_ON_REWRITE);
     rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",server.aof_rewrite_perc,DISQUE_AOF_REWRITE_PERC);
     rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",server.aof_rewrite_min_size,DISQUE_AOF_REWRITE_MIN_SIZE);
-    rewriteConfigStringOption(state,"cluster-config-file",server.cluster_configfile,DISQUE_DEFAULT_CLUSTER_CONFIG_FILE);
+    rewriteConfigStringOption(state,"cluster-config-file",server.cluster_configfile,CONFIG_DEFAULT_CLUSTER_CONFIG_FILE);
     rewriteConfigNumericalOption(state,"cluster-node-timeout",server.cluster_node_timeout,DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT);
     rewriteConfigNumericalOption(state,"slowlog-log-slower-than",server.slowlog_log_slower_than,DISQUE_SLOWLOG_LOG_SLOWER_THAN);
-    rewriteConfigNumericalOption(state,"latency-monitor-threshold",server.latency_monitor_threshold,DISQUE_DEFAULT_LATENCY_MONITOR_THRESHOLD);
+    rewriteConfigNumericalOption(state,"latency-monitor-threshold",server.latency_monitor_threshold,CONFIG_DEFAULT_LATENCY_MONITOR_THRESHOLD);
     rewriteConfigNumericalOption(state,"slowlog-max-len",server.slowlog_max_len,DISQUE_SLOWLOG_MAX_LEN);
-    rewriteConfigYesNoOption(state,"activerehashing",server.activerehashing,DISQUE_DEFAULT_ACTIVE_REHASHING);
+    rewriteConfigYesNoOption(state,"activerehashing",server.activerehashing,CONFIG_DEFAULT_ACTIVE_REHASHING);
     rewriteConfigClientoutputbufferlimitOption(state);
-    rewriteConfigNumericalOption(state,"hz",server.hz,DISQUE_DEFAULT_HZ);
-    rewriteConfigYesNoOption(state,"aof-rewrite-incremental-fsync",server.aof_rewrite_incremental_fsync,DISQUE_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC);
-    rewriteConfigYesNoOption(state,"aof-load-truncated",server.aof_load_truncated,DISQUE_DEFAULT_AOF_LOAD_TRUNCATED);
-    rewriteConfigYesNoOption(state,"aof-enqueue-jobs-once",server.aof_enqueue_jobs_once,DISQUE_DEFAULT_AOF_ENQUEUE_JOBS_ONCE);
+    rewriteConfigNumericalOption(state,"hz",server.hz,CONFIG_DEFAULT_HZ);
+    rewriteConfigYesNoOption(state,"aof-rewrite-incremental-fsync",server.aof_rewrite_incremental_fsync,CONFIG_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC);
+    rewriteConfigYesNoOption(state,"aof-load-truncated",server.aof_load_truncated,CONFIG_DEFAULT_AOF_LOAD_TRUNCATED);
+    rewriteConfigYesNoOption(state,"aof-enqueue-jobs-once",server.aof_enqueue_jobs_once,CONFIG_DEFAULT_AOF_ENQUEUE_JOBS_ONCE);
 
     /* Step 3: remove all the orphaned lines in the old file, that is, lines
      * that were used by a config option and are no longer used, like in case

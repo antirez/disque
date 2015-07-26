@@ -349,8 +349,8 @@ int dictEncObjKeyCompare(void *privdata, const void *key1,
     robj *o1 = (robj*) key1, *o2 = (robj*) key2;
     int cmp;
 
-    if (o1->encoding == DISQUE_ENCODING_INT &&
-        o2->encoding == DISQUE_ENCODING_INT)
+    if (o1->encoding == OBJ_ENCODING_INT &&
+        o2->encoding == OBJ_ENCODING_INT)
             return o1->ptr == o2->ptr;
 
     o1 = getDecodedObject(o1);
@@ -367,7 +367,7 @@ unsigned int dictEncObjHash(const void *key) {
     if (sdsEncodedObject(o)) {
         return dictGenHashFunction(o->ptr, sdslen((sds)o->ptr));
     } else {
-        if (o->encoding == DISQUE_ENCODING_INT) {
+        if (o->encoding == OBJ_ENCODING_INT) {
             char buf[32];
             int len;
 
@@ -871,53 +871,53 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 void createSharedObjects(void) {
     int j;
 
-    shared.crlf = createObject(DISQUE_STRING,sdsnew("\r\n"));
-    shared.ok = createObject(DISQUE_STRING,sdsnew("+OK\r\n"));
-    shared.err = createObject(DISQUE_STRING,sdsnew("-ERR\r\n"));
-    shared.emptybulk = createObject(DISQUE_STRING,sdsnew("$0\r\n\r\n"));
-    shared.czero = createObject(DISQUE_STRING,sdsnew(":0\r\n"));
-    shared.cone = createObject(DISQUE_STRING,sdsnew(":1\r\n"));
-    shared.cnegone = createObject(DISQUE_STRING,sdsnew(":-1\r\n"));
-    shared.nullbulk = createObject(DISQUE_STRING,sdsnew("$-1\r\n"));
-    shared.nullmultibulk = createObject(DISQUE_STRING,sdsnew("*-1\r\n"));
-    shared.emptymultibulk = createObject(DISQUE_STRING,sdsnew("*0\r\n"));
-    shared.pong = createObject(DISQUE_STRING,sdsnew("+PONG\r\n"));
-    shared.queued = createObject(DISQUE_STRING,sdsnew("+QUEUED\r\n"));
-    shared.wrongtypeerr = createObject(DISQUE_STRING,sdsnew(
+    shared.crlf = createObject(OBJ_STRING,sdsnew("\r\n"));
+    shared.ok = createObject(OBJ_STRING,sdsnew("+OK\r\n"));
+    shared.err = createObject(OBJ_STRING,sdsnew("-ERR\r\n"));
+    shared.emptybulk = createObject(OBJ_STRING,sdsnew("$0\r\n\r\n"));
+    shared.czero = createObject(OBJ_STRING,sdsnew(":0\r\n"));
+    shared.cone = createObject(OBJ_STRING,sdsnew(":1\r\n"));
+    shared.cnegone = createObject(OBJ_STRING,sdsnew(":-1\r\n"));
+    shared.nullbulk = createObject(OBJ_STRING,sdsnew("$-1\r\n"));
+    shared.nullmultibulk = createObject(OBJ_STRING,sdsnew("*-1\r\n"));
+    shared.emptymultibulk = createObject(OBJ_STRING,sdsnew("*0\r\n"));
+    shared.pong = createObject(OBJ_STRING,sdsnew("+PONG\r\n"));
+    shared.queued = createObject(OBJ_STRING,sdsnew("+QUEUED\r\n"));
+    shared.wrongtypeerr = createObject(OBJ_STRING,sdsnew(
         "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"));
-    shared.nokeyerr = createObject(DISQUE_STRING,sdsnew(
+    shared.nokeyerr = createObject(OBJ_STRING,sdsnew(
         "-ERR no such key\r\n"));
-    shared.syntaxerr = createObject(DISQUE_STRING,sdsnew(
+    shared.syntaxerr = createObject(OBJ_STRING,sdsnew(
         "-ERR syntax error\r\n"));
-    shared.sameobjecterr = createObject(DISQUE_STRING,sdsnew(
+    shared.sameobjecterr = createObject(OBJ_STRING,sdsnew(
         "-ERR source and destination objects are the same\r\n"));
-    shared.outofrangeerr = createObject(DISQUE_STRING,sdsnew(
+    shared.outofrangeerr = createObject(OBJ_STRING,sdsnew(
         "-ERR index out of range\r\n"));
-    shared.noscripterr = createObject(DISQUE_STRING,sdsnew(
+    shared.noscripterr = createObject(OBJ_STRING,sdsnew(
         "-NOSCRIPT No matching script. Please use EVAL.\r\n"));
-    shared.loadingerr = createObject(DISQUE_STRING,sdsnew(
+    shared.loadingerr = createObject(OBJ_STRING,sdsnew(
         "-LOADING Disque is loading the dataset in memory\r\n"));
-    shared.slowscripterr = createObject(DISQUE_STRING,sdsnew(
+    shared.slowscripterr = createObject(OBJ_STRING,sdsnew(
         "-BUSY Disque is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.\r\n"));
-    shared.masterdownerr = createObject(DISQUE_STRING,sdsnew(
+    shared.masterdownerr = createObject(OBJ_STRING,sdsnew(
         "-MASTERDOWN Link with MASTER is down and slave-serve-stale-data is set to 'no'.\r\n"));
-    shared.bgsaveerr = createObject(DISQUE_STRING,sdsnew(
+    shared.bgsaveerr = createObject(OBJ_STRING,sdsnew(
         "-MISCONF Disque is configured to save RDB snapshots, but is currently not able to persist on disk. Commands that may modify the data set are disabled. Please check Disque logs for details about the error.\r\n"));
-    shared.roslaveerr = createObject(DISQUE_STRING,sdsnew(
+    shared.roslaveerr = createObject(OBJ_STRING,sdsnew(
         "-READONLY You can't write against a read only slave.\r\n"));
-    shared.noautherr = createObject(DISQUE_STRING,sdsnew(
+    shared.noautherr = createObject(OBJ_STRING,sdsnew(
         "-NOAUTH Authentication required.\r\n"));
-    shared.oomerr = createObject(DISQUE_STRING,sdsnew(
+    shared.oomerr = createObject(OBJ_STRING,sdsnew(
         "-OOM command not allowed when used memory > 'maxmemory'.\r\n"));
-    shared.execaborterr = createObject(DISQUE_STRING,sdsnew(
+    shared.execaborterr = createObject(OBJ_STRING,sdsnew(
         "-EXECABORT Transaction discarded because of previous errors.\r\n"));
-    shared.noreplicaserr = createObject(DISQUE_STRING,sdsnew(
+    shared.noreplicaserr = createObject(OBJ_STRING,sdsnew(
         "-NOREPLICAS Not enough good slaves to write.\r\n"));
-    shared.busykeyerr = createObject(DISQUE_STRING,sdsnew(
+    shared.busykeyerr = createObject(OBJ_STRING,sdsnew(
         "-BUSYKEY Target key name already exists.\r\n"));
-    shared.space = createObject(DISQUE_STRING,sdsnew(" "));
-    shared.colon = createObject(DISQUE_STRING,sdsnew(":"));
-    shared.plus = createObject(DISQUE_STRING,sdsnew("+"));
+    shared.space = createObject(OBJ_STRING,sdsnew(" "));
+    shared.colon = createObject(OBJ_STRING,sdsnew(":"));
+    shared.plus = createObject(OBJ_STRING,sdsnew("+"));
     shared.messagebulk = createStringObject("$7\r\nmessage\r\n",13);
     shared.pmessagebulk = createStringObject("$8\r\npmessage\r\n",14);
     shared.subscribebulk = createStringObject("$9\r\nsubscribe\r\n",15);
@@ -927,13 +927,13 @@ void createSharedObjects(void) {
     shared.loadjob = createStringObject("LOADJOB",7);
     shared.deljob = createStringObject("DELJOB",6);
     for (j = 0; j < DISQUE_SHARED_INTEGERS; j++) {
-        shared.integers[j] = createObject(DISQUE_STRING,(void*)(long)j);
-        shared.integers[j]->encoding = DISQUE_ENCODING_INT;
+        shared.integers[j] = createObject(OBJ_STRING,(void*)(long)j);
+        shared.integers[j]->encoding = OBJ_ENCODING_INT;
     }
     for (j = 0; j < DISQUE_SHARED_BULKHDR_LEN; j++) {
-        shared.mbulkhdr[j] = createObject(DISQUE_STRING,
+        shared.mbulkhdr[j] = createObject(OBJ_STRING,
             sdscatprintf(sdsempty(),"*%d\r\n",j));
-        shared.bulkhdr[j] = createObject(DISQUE_STRING,
+        shared.bulkhdr[j] = createObject(OBJ_STRING,
             sdscatprintf(sdsempty(),"$%d\r\n",j));
     }
     /* The following two shared objects, minstring and maxstrings, are not
@@ -1438,7 +1438,7 @@ void replicationFeedMonitors(client *c, list *monitors, robj **argv, int argc) {
     }
 
     for (j = 0; j < argc; j++) {
-        if (argv[j]->encoding == DISQUE_ENCODING_INT) {
+        if (argv[j]->encoding == OBJ_ENCODING_INT) {
             cmdrepr = sdscatprintf(cmdrepr, "\"%ld\"", (long)argv[j]->ptr);
         } else {
             cmdrepr = sdscatrepr(cmdrepr,(char*)argv[j]->ptr,
@@ -1448,7 +1448,7 @@ void replicationFeedMonitors(client *c, list *monitors, robj **argv, int argc) {
             cmdrepr = sdscatlen(cmdrepr," ",1);
     }
     cmdrepr = sdscatlen(cmdrepr,"\r\n",2);
-    cmdobj = createObject(DISQUE_STRING,cmdrepr);
+    cmdobj = createObject(OBJ_STRING,cmdrepr);
 
     listRewind(monitors,&li);
     while((ln = listNext(&li))) {

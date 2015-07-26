@@ -2447,7 +2447,7 @@ void clusterCommand(client *c) {
         robj *o;
         sds ci = clusterGenNodesDescription(0);
 
-        o = createObject(DISQUE_STRING,ci);
+        o = createObject(OBJ_STRING,ci);
         addReplyBulk(c,o);
         decrRefCount(o);
     } else if (!strcasecmp(c->argv[1]->ptr,"info") && c->argc == 2) {

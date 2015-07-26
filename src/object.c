@@ -39,28 +39,28 @@
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
-    o->encoding = DISQUE_ENCODING_RAW;
+    o->encoding = OBJ_ENCODING_RAW;
     o->ptr = ptr;
     o->refcount = 1;
     o->notused = 0;
     return o;
 }
 
-/* Create a string object with encoding DISQUE_ENCODING_RAW, that is a plain
+/* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
 robj *createRawStringObject(const char *ptr, size_t len) {
-    return createObject(DISQUE_STRING,sdsnewlen(ptr,len));
+    return createObject(OBJ_STRING,sdsnewlen(ptr,len));
 }
 
-/* Create a string object with encoding DISQUE_ENCODING_EMBSTR, that is
+/* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
     struct sdshdr8 *sh = (void*)(o+1);
 
-    o->type = DISQUE_STRING;
-    o->encoding = DISQUE_ENCODING_EMBSTR;
+    o->type = OBJ_STRING;
+    o->encoding = OBJ_ENCODING_EMBSTR;
     o->ptr = sh+1;
     o->refcount = 1;
     o->notused = 0;
@@ -78,14 +78,14 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
 }
 
 /* Create a string object with EMBSTR encoding if it is smaller than
- * DISQUE_ENCODING_EMBSTR_SIZE_LIMIT, otherwise the RAW encoding is
+ * OBJ_ENCODING_EMBSTR_SIZE_LIMIT, otherwise the RAW encoding is
  * used.
  *
  * The current limit of 39 is chosen so that the biggest string object
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
-#define DISQUE_ENCODING_EMBSTR_SIZE_LIMIT 44
+#define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
 robj *createStringObject(const char *ptr, size_t len) {
-    if (len <= DISQUE_ENCODING_EMBSTR_SIZE_LIMIT)
+    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
         return createEmbeddedStringObject(ptr,len);
     else
         return createRawStringObject(ptr,len);
@@ -98,11 +98,11 @@ robj *createStringObjectFromLongLong(long long value) {
         o = shared.integers[value];
     } else {
         if (value >= LONG_MIN && value <= LONG_MAX) {
-            o = createObject(DISQUE_STRING, NULL);
-            o->encoding = DISQUE_ENCODING_INT;
+            o = createObject(OBJ_STRING, NULL);
+            o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*)((long)value);
         } else {
-            o = createObject(DISQUE_STRING,sdsfromlonglong(value));
+            o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }
     }
     return o;
@@ -143,16 +143,16 @@ robj *createStringObjectFromLongDouble(long double value) {
 robj *dupStringObject(robj *o) {
     robj *d;
 
-    serverAssert(o->type == DISQUE_STRING);
+    serverAssert(o->type == OBJ_STRING);
 
     switch(o->encoding) {
-    case DISQUE_ENCODING_RAW:
+    case OBJ_ENCODING_RAW:
         return createRawStringObject(o->ptr,sdslen(o->ptr));
-    case DISQUE_ENCODING_EMBSTR:
+    case OBJ_ENCODING_EMBSTR:
         return createEmbeddedStringObject(o->ptr,sdslen(o->ptr));
-    case DISQUE_ENCODING_INT:
-        d = createObject(DISQUE_STRING, NULL);
-        d->encoding = DISQUE_ENCODING_INT;
+    case OBJ_ENCODING_INT:
+        d = createObject(OBJ_STRING, NULL);
+        d->encoding = OBJ_ENCODING_INT;
         d->ptr = o->ptr;
         return d;
     default:
@@ -162,7 +162,7 @@ robj *dupStringObject(robj *o) {
 }
 
 void freeStringObject(robj *o) {
-    if (o->encoding == DISQUE_ENCODING_RAW) {
+    if (o->encoding == OBJ_ENCODING_RAW) {
         sdsfree(o->ptr);
     }
 }
@@ -175,7 +175,7 @@ void decrRefCount(robj *o) {
     if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
     if (o->refcount == 1) {
         switch(o->type) {
-        case DISQUE_STRING: freeStringObject(o); break;
+        case OBJ_STRING: freeStringObject(o); break;
         default: serverPanic("Unknown object type"); break;
         }
         zfree(o);
@@ -217,8 +217,8 @@ int checkType(client *c, robj *o, int type) {
 }
 
 int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
-    serverAssertWithInfo(NULL,o,o->type == DISQUE_STRING);
-    if (o->encoding == DISQUE_ENCODING_INT) {
+    serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
+    if (o->encoding == OBJ_ENCODING_INT) {
         if (llval) *llval = (long) o->ptr;
         return DISQUE_OK;
     } else {
@@ -236,7 +236,7 @@ robj *tryObjectEncoding(robj *o) {
      * in this function. Other types use encoded memory efficient
      * representations but are handled by the commands implementing
      * the type. */
-    serverAssertWithInfo(NULL,o,o->type == DISQUE_STRING);
+    serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
 
     /* We try some specialized encoding only for objects that are
      * RAW or EMBSTR encoded, in other words objects that are still
@@ -262,8 +262,8 @@ robj *tryObjectEncoding(robj *o) {
             incrRefCount(shared.integers[value]);
             return shared.integers[value];
         } else {
-            if (o->encoding == DISQUE_ENCODING_RAW) sdsfree(o->ptr);
-            o->encoding = DISQUE_ENCODING_INT;
+            if (o->encoding == OBJ_ENCODING_RAW) sdsfree(o->ptr);
+            o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*) value;
             return o;
         }
@@ -273,10 +273,10 @@ robj *tryObjectEncoding(robj *o) {
      * try the EMBSTR encoding which is more efficient.
      * In this representation the object and the SDS string are allocated
      * in the same chunk of memory to save space and cache misses. */
-    if (len <= DISQUE_ENCODING_EMBSTR_SIZE_LIMIT) {
+    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {
         robj *emb;
 
-        if (o->encoding == DISQUE_ENCODING_EMBSTR) return o;
+        if (o->encoding == OBJ_ENCODING_EMBSTR) return o;
         emb = createEmbeddedStringObject(s,sdslen(s));
         decrRefCount(o);
         return emb;
@@ -290,8 +290,8 @@ robj *tryObjectEncoding(robj *o) {
      *
      * We do that only for relatively large strings as this branch
      * is only entered if the length of the string is greater than
-     * DISQUE_ENCODING_EMBSTR_SIZE_LIMIT. */
-    if (o->encoding == DISQUE_ENCODING_RAW &&
+     * OBJ_ENCODING_EMBSTR_SIZE_LIMIT. */
+    if (o->encoding == OBJ_ENCODING_RAW &&
         sdsavail(s) > len/10)
     {
         o->ptr = sdsRemoveFreeSpace(o->ptr);
@@ -310,7 +310,7 @@ robj *getDecodedObject(robj *o) {
         incrRefCount(o);
         return o;
     }
-    if (o->type == DISQUE_STRING && o->encoding == DISQUE_ENCODING_INT) {
+    if (o->type == OBJ_STRING && o->encoding == OBJ_ENCODING_INT) {
         char buf[32];
 
         ll2string(buf,32,(long)o->ptr);
@@ -333,7 +333,7 @@ robj *getDecodedObject(robj *o) {
 #define DISQUE_COMPARE_COLL (1<<1)
 
 int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
-    serverAssertWithInfo(NULL,a,a->type == DISQUE_STRING && b->type == DISQUE_STRING);
+    serverAssertWithInfo(NULL,a,a->type == OBJ_STRING && b->type == OBJ_STRING);
     char bufa[128], bufb[128], *astr, *bstr;
     size_t alen, blen, minlen;
 
@@ -379,8 +379,8 @@ int collateStringObjects(robj *a, robj *b) {
  * this function is faster then checking for (compareStringObject(a,b) == 0)
  * because it can perform some more optimization. */
 int equalStringObjects(robj *a, robj *b) {
-    if (a->encoding == DISQUE_ENCODING_INT &&
-        b->encoding == DISQUE_ENCODING_INT){
+    if (a->encoding == OBJ_ENCODING_INT &&
+        b->encoding == OBJ_ENCODING_INT){
         /* If both strings are integer encoded just check if the stored
          * long is the same. */
         return a->ptr == b->ptr;
@@ -390,7 +390,7 @@ int equalStringObjects(robj *a, robj *b) {
 }
 
 size_t stringObjectLen(robj *o) {
-    serverAssertWithInfo(NULL,o,o->type == DISQUE_STRING);
+    serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (sdsEncodedObject(o)) {
         return sdslen(o->ptr);
     } else {
@@ -407,7 +407,7 @@ int getDoubleFromObject(robj *o, double *target) {
     if (o == NULL) {
         value = 0;
     } else {
-        serverAssertWithInfo(NULL,o,o->type == DISQUE_STRING);
+        serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
         if (sdsEncodedObject(o)) {
             errno = 0;
             value = strtod(o->ptr, &eptr);
@@ -418,7 +418,7 @@ int getDoubleFromObject(robj *o, double *target) {
                 errno == EINVAL ||
                 isnan(value))
                 return DISQUE_ERR;
-        } else if (o->encoding == DISQUE_ENCODING_INT) {
+        } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
@@ -449,14 +449,14 @@ int getLongDoubleFromObject(robj *o, long double *target) {
     if (o == NULL) {
         value = 0;
     } else {
-        serverAssertWithInfo(NULL,o,o->type == DISQUE_STRING);
+        serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
         if (sdsEncodedObject(o)) {
             errno = 0;
             value = strtold(o->ptr, &eptr);
             if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
                 errno == ERANGE || isnan(value))
                 return DISQUE_ERR;
-        } else if (o->encoding == DISQUE_ENCODING_INT) {
+        } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
@@ -487,14 +487,14 @@ int getLongLongFromObject(robj *o, long long *target) {
     if (o == NULL) {
         value = 0;
     } else {
-        serverAssertWithInfo(NULL,o,o->type == DISQUE_STRING);
+        serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
         if (sdsEncodedObject(o)) {
             errno = 0;
             value = strtoll(o->ptr, &eptr, 10);
             if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
                 errno == ERANGE)
                 return DISQUE_ERR;
-        } else if (o->encoding == DISQUE_ENCODING_INT) {
+        } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
@@ -557,9 +557,9 @@ int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor) {
 
 char *strEncoding(int encoding) {
     switch(encoding) {
-    case DISQUE_ENCODING_RAW: return "raw";
-    case DISQUE_ENCODING_INT: return "int";
-    case DISQUE_ENCODING_EMBSTR: return "embstr";
+    case OBJ_ENCODING_RAW: return "raw";
+    case OBJ_ENCODING_INT: return "int";
+    case OBJ_ENCODING_EMBSTR: return "embstr";
     default: return "unknown";
     }
 }

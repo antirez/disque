@@ -134,7 +134,7 @@ void _serverAssertPrintClientInfo(client *c) {
         char buf[128];
         char *arg;
 
-        if (c->argv[j]->type == DISQUE_STRING && sdsEncodedObject(c->argv[j])) {
+        if (c->argv[j]->type == OBJ_STRING && sdsEncodedObject(c->argv[j])) {
             arg = (char*) c->argv[j]->ptr;
         } else {
             snprintf(buf,sizeof(buf),"Object type: %d, encoding: %d",
@@ -156,7 +156,7 @@ void serverLogObjectDebugInfo(robj *o) {
     serverLog(DISQUE_WARNING,"Object type: %d", o->type);
     serverLog(DISQUE_WARNING,"Object encoding: %d", o->encoding);
     serverLog(DISQUE_WARNING,"Object refcount: %d", o->refcount);
-    if (o->type == DISQUE_STRING && sdsEncodedObject(o)) {
+    if (o->type == OBJ_STRING && sdsEncodedObject(o)) {
         serverLog(DISQUE_WARNING,"Object raw string len: %zu", sdslen(o->ptr));
         if (sdslen(o->ptr) < 4096) {
             sds repr = sdscatrepr(sdsempty(),o->ptr,sdslen(o->ptr));

@@ -174,18 +174,18 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_CMD_FAST         (1<<7)  /* "F" flag */
 
 /* Object types */
-#define DISQUE_STRING 0
-#define DISQUE_LIST 1
-#define DISQUE_SET 2
-#define DISQUE_ZSET 3
-#define DISQUE_HASH 4
+#define OBJ_STRING 0
+#define OBJ_LIST 1
+#define OBJ_SET 2
+#define OBJ_ZSET 3
+#define OBJ_HASH 4
 
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
-#define DISQUE_ENCODING_RAW 0     /* Raw representation */
-#define DISQUE_ENCODING_INT 1     /* Encoded as integer */
-#define DISQUE_ENCODING_EMBSTR 2  /* Embedded sds string encoding */
+#define OBJ_ENCODING_RAW 0     /* Raw representation */
+#define OBJ_ENCODING_INT 1     /* Encoded as integer */
+#define OBJ_ENCODING_EMBSTR 2  /* Embedded sds string encoding */
 
 /* AOF states */
 #define DISQUE_AOF_OFF 0             /* AOF is off */
@@ -302,8 +302,8 @@ typedef struct disqueObject {
  * bug #85 introduced exactly in this way. */
 #define initStaticStringObject(_var,_ptr) do { \
     _var.refcount = 1; \
-    _var.type = DISQUE_STRING; \
-    _var.encoding = DISQUE_ENCODING_RAW; \
+    _var.type = OBJ_STRING; \
+    _var.encoding = OBJ_ENCODING_RAW; \
     _var.ptr = _ptr; \
 } while(0);
 
@@ -629,8 +629,8 @@ typedef struct {
     dictEntry *de;
 } hashTypeIterator;
 
-#define DISQUE_HASH_KEY 1
-#define DISQUE_HASH_VALUE 2
+#define OBJ_HASH_KEY 1
+#define OBJ_HASH_VALUE 2
 
 /*-----------------------------------------------------------------------------
  * Extern declarations
@@ -755,7 +755,7 @@ int compareStringObjects(robj *a, robj *b);
 int collateStringObjects(robj *a, robj *b);
 int equalStringObjects(robj *a, robj *b);
 int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor);
-#define sdsEncodedObject(objptr) (objptr->encoding == DISQUE_ENCODING_RAW || objptr->encoding == DISQUE_ENCODING_EMBSTR)
+#define sdsEncodedObject(objptr) (objptr->encoding == OBJ_ENCODING_RAW || objptr->encoding == OBJ_ENCODING_EMBSTR)
 
 /* Synchronous I/O with timeout */
 ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout);

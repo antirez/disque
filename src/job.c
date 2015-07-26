@@ -827,7 +827,7 @@ void AOFLoadJob(job *job) {
     if (server.aof_state == DISQUE_AOF_OFF) return;
 
     sds serialized = serializeJob(sdsempty(),job,SER_STORAGE);
-    robj *serobj = createObject(DISQUE_STRING,serialized);
+    robj *serobj = createObject(OBJ_STRING,serialized);
     robj *argv[2] = {shared.loadjob, serobj};
     feedAppendOnlyFile(argv,2);
     decrRefCount(serobj);

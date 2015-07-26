@@ -117,23 +117,23 @@ client *createClient(int fd) {
  * to the client. The behavior is the following:
  *
  * If the client should receive new data (normal clients will) the function
- * returns DISQUE_OK, and make sure to install the write handler in our event
+ * returns C_OK, and make sure to install the write handler in our event
  * loop so that when the socket is writable new data gets written.
  *
  * If the client should not receive new data, because it is a fake client,
  * a master, a slave not yet online, or because the setup of the write handler
- * failed, the function returns DISQUE_ERR.
+ * failed, the function returns C_ERR.
  *
  * Typically gets called every time a reply is built, before adding more
- * data to the clients output buffers. If the function returns DISQUE_ERR no
+ * data to the clients output buffers. If the function returns C_ERR no
  * data should be appended to the output buffers. */
 int prepareClientToWrite(client *c) {
-    if (c->flags & DISQUE_AOF_CLIENT) return DISQUE_ERR;
-    if (c->fd <= 0) return DISQUE_ERR; /* Fake client */
+    if (c->flags & DISQUE_AOF_CLIENT) return C_ERR;
+    if (c->fd <= 0) return C_ERR; /* Fake client */
     if (c->bufpos == 0 && listLength(c->reply) == 0 &&
         aeCreateFileEvent(server.el, c->fd, AE_WRITABLE,
-        sendReplyToClient, c) == AE_ERR) return DISQUE_ERR;
-    return DISQUE_OK;
+        sendReplyToClient, c) == AE_ERR) return C_ERR;
+    return C_OK;
 }
 
 /* Create a duplicate of the last object in the reply list when
@@ -159,18 +159,18 @@ robj *dupLastObjectIfNeeded(list *reply) {
 int _addReplyToBuffer(client *c, char *s, size_t len) {
     size_t available = sizeof(c->buf)-c->bufpos;
 
-    if (c->flags & DISQUE_CLOSE_AFTER_REPLY) return DISQUE_OK;
+    if (c->flags & DISQUE_CLOSE_AFTER_REPLY) return C_OK;
 
     /* If there already are entries in the reply list, we cannot
      * add anything more to the static buffer. */
-    if (listLength(c->reply) > 0) return DISQUE_ERR;
+    if (listLength(c->reply) > 0) return C_ERR;
 
     /* Check that the buffer has enough space available for this string. */
-    if (len > available) return DISQUE_ERR;
+    if (len > available) return C_ERR;
 
     memcpy(c->buf+c->bufpos,s,len);
     c->bufpos+=len;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 void _addReplyObjectToList(client *c, robj *o) {
@@ -273,7 +273,7 @@ void _addReplyStringToList(client *c, char *s, size_t len) {
  * -------------------------------------------------------------------------- */
 
 void addReply(client *c, robj *obj) {
-    if (prepareClientToWrite(c) != DISQUE_OK) return;
+    if (prepareClientToWrite(c) != C_OK) return;
 
     /* This is an important place where we can avoid copy-on-write
      * when there is a saving child running, avoiding touching the
@@ -283,7 +283,7 @@ void addReply(client *c, robj *obj) {
      * we'll be able to send the object to the client without
      * messing with its page. */
     if (sdsEncodedObject(obj)) {
-        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != DISQUE_OK)
+        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)
             _addReplyObjectToList(c,obj);
     } else if (obj->encoding == OBJ_ENCODING_INT) {
         /* Optimization: if there is room in the static buffer for 32 bytes
@@ -294,13 +294,13 @@ void addReply(client *c, robj *obj) {
             int len;
 
             len = ll2string(buf,sizeof(buf),(long)obj->ptr);
-            if (_addReplyToBuffer(c,buf,len) == DISQUE_OK)
+            if (_addReplyToBuffer(c,buf,len) == C_OK)
                 return;
             /* else... continue with the normal code path, but should never
              * happen actually since we verified there is room. */
         }
         obj = getDecodedObject(obj);
-        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != DISQUE_OK)
+        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)
             _addReplyObjectToList(c,obj);
         decrRefCount(obj);
     } else {
@@ -309,12 +309,12 @@ void addReply(client *c, robj *obj) {
 }
 
 void addReplySds(client *c, sds s) {
-    if (prepareClientToWrite(c) != DISQUE_OK) {
+    if (prepareClientToWrite(c) != C_OK) {
         /* The caller expects the sds to be free'd. */
         sdsfree(s);
         return;
     }
-    if (_addReplyToBuffer(c,s,sdslen(s)) == DISQUE_OK) {
+    if (_addReplyToBuffer(c,s,sdslen(s)) == C_OK) {
         sdsfree(s);
     } else {
         /* This method free's the sds when it is no longer needed. */
@@ -323,8 +323,8 @@ void addReplySds(client *c, sds s) {
 }
 
 void addReplyString(client *c, char *s, size_t len) {
-    if (prepareClientToWrite(c) != DISQUE_OK) return;
-    if (_addReplyToBuffer(c,s,len) != DISQUE_OK)
+    if (prepareClientToWrite(c) != C_OK) return;
+    if (_addReplyToBuffer(c,s,len) != C_OK)
         _addReplyStringToList(c,s,len);
 }
 
@@ -379,7 +379,7 @@ void *addDeferredMultiBulkLength(client *c) {
     /* Note that we install the write event here even if the object is not
      * ready to be sent, since we are sure that before returning to the
      * event loop setDeferredMultiBulkLength() will be called. */
-    if (prepareClientToWrite(c) != DISQUE_OK) return NULL;
+    if (prepareClientToWrite(c) != C_OK) return NULL;
     listAddNodeTail(c->reply,createObject(OBJ_STRING,NULL));
     return listLast(c->reply);
 }
@@ -802,7 +802,7 @@ int processInlineBuffer(client *c) {
             addReplyError(c,"Protocol error: too big inline request");
             setProtocolError(c,0);
         }
-        return DISQUE_ERR;
+        return C_ERR;
     }
 
     /* Handle the \r\n case. */
@@ -817,7 +817,7 @@ int processInlineBuffer(client *c) {
     if (argv == NULL) {
         addReplyError(c,"Protocol error: unbalanced quotes in request");
         setProtocolError(c,0);
-        return DISQUE_ERR;
+        return C_ERR;
     }
 
     /* Leave data after the first line of the query in the buffer */
@@ -837,7 +837,7 @@ int processInlineBuffer(client *c) {
         }
     }
     zfree(argv);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Helper function. Trims query buffer to make the function that processes
@@ -869,12 +869,12 @@ int processMultibulkBuffer(client *c) {
                 addReplyError(c,"Protocol error: too big mbulk count string");
                 setProtocolError(c,0);
             }
-            return DISQUE_ERR;
+            return C_ERR;
         }
 
         /* Buffer should also contain \n */
         if (newline-(c->querybuf) > ((signed)sdslen(c->querybuf)-2))
-            return DISQUE_ERR;
+            return C_ERR;
 
         /* We know for sure there is a whole line since newline != NULL,
          * so go ahead and find out the multi bulk length. */
@@ -883,13 +883,13 @@ int processMultibulkBuffer(client *c) {
         if (!ok || ll > 1024*1024) {
             addReplyError(c,"Protocol error: invalid multibulk length");
             setProtocolError(c,pos);
-            return DISQUE_ERR;
+            return C_ERR;
         }
 
         pos = (newline-c->querybuf)+2;
         if (ll <= 0) {
             sdsrange(c->querybuf,pos,-1);
-            return DISQUE_OK;
+            return C_OK;
         }
 
         c->multibulklen = ll;
@@ -909,7 +909,7 @@ int processMultibulkBuffer(client *c) {
                     addReplyError(c,
                         "Protocol error: too big bulk count string");
                     setProtocolError(c,0);
-                    return DISQUE_ERR;
+                    return C_ERR;
                 }
                 break;
             }
@@ -923,14 +923,14 @@ int processMultibulkBuffer(client *c) {
                     "Protocol error: expected '$', got '%c'",
                     c->querybuf[pos]);
                 setProtocolError(c,pos);
-                return DISQUE_ERR;
+                return C_ERR;
             }
 
             ok = string2ll(c->querybuf+pos+1,newline-(c->querybuf+pos+1),&ll);
             if (!ok || ll < 0 || ll > 512*1024*1024) {
                 addReplyError(c,"Protocol error: invalid bulk length");
                 setProtocolError(c,pos);
-                return DISQUE_ERR;
+                return C_ERR;
             }
 
             pos += newline-(c->querybuf+pos)+2;
@@ -985,10 +985,10 @@ int processMultibulkBuffer(client *c) {
     if (pos) sdsrange(c->querybuf,pos,-1);
 
     /* We're done when c->multibulk == 0 */
-    if (c->multibulklen == 0) return DISQUE_OK;
+    if (c->multibulklen == 0) return C_OK;
 
     /* Still not read to process the command */
-    return DISQUE_ERR;
+    return C_ERR;
 }
 
 void processInputBuffer(client *c) {
@@ -1016,9 +1016,9 @@ void processInputBuffer(client *c) {
         }
 
         if (c->reqtype == DISQUE_REQ_INLINE) {
-            if (processInlineBuffer(c) != DISQUE_OK) break;
+            if (processInlineBuffer(c) != C_OK) break;
         } else if (c->reqtype == DISQUE_REQ_MULTIBULK) {
-            if (processMultibulkBuffer(c) != DISQUE_OK) break;
+            if (processMultibulkBuffer(c) != C_OK) break;
         } else {
             serverPanic("Unknown request type");
         }
@@ -1028,7 +1028,7 @@ void processInputBuffer(client *c) {
             resetClient(c);
         } else {
             /* Only reset the client when the command was executed. */
-            if (processCommand(c) == DISQUE_OK)
+            if (processCommand(c) == C_OK)
                 resetClient(c);
         }
     }
@@ -1128,7 +1128,7 @@ void formatPeerId(char *peerid, size_t peerid_len, char *ip, int port) {
  * A Peer ID always fits inside a buffer of DISQUE_PEER_ID_LEN bytes, including
  * the null term.
  *
- * The function returns DISQUE_OK on succcess, and DISQUE_ERR on failure.
+ * The function returns C_OK on succcess, and C_ERR on failure.
  *
  * On failure the function still populates 'peerid' with the "?:0" string
  * in case you want to relax error checking or need to display something
@@ -1140,12 +1140,12 @@ int genClientPeerId(client *client, char *peerid, size_t peerid_len) {
     if (client->flags & DISQUE_UNIX_SOCKET) {
         /* Unix socket client. */
         snprintf(peerid,peerid_len,"%s:0",server.unixsocket);
-        return DISQUE_OK;
+        return C_OK;
     } else {
         /* TCP client. */
         int retval = anetPeerToString(client->fd,ip,sizeof(ip),&port);
         formatPeerId(peerid,peerid_len,ip,port);
-        return (retval == -1) ? DISQUE_ERR : DISQUE_OK;
+        return (retval == -1) ? C_ERR : C_OK;
     }
 }
 
@@ -1253,7 +1253,7 @@ void clientCommand(client *c) {
                     long long tmp;
 
                     if (getLongLongFromObjectOrReply(c,c->argv[i+1],&tmp,NULL)
-                        != DISQUE_OK) return;
+                        != C_OK) return;
                     id = tmp;
                 } else if (!strcasecmp(c->argv[i]->ptr,"type") && moreargs) {
                     type = getClientTypeByName(c->argv[i+1]->ptr);
@@ -1353,7 +1353,7 @@ void clientCommand(client *c) {
         long long duration;
 
         if (getTimeoutFromObjectOrReply(c,c->argv[2],&duration,UNIT_MILLISECONDS)
-                                        != DISQUE_OK) return;
+                                        != C_OK) return;
         pauseClients(duration);
         addReply(c,shared.ok);
     } else {

@@ -749,7 +749,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
-        if (prepareForShutdown(DISQUE_SHUTDOWN_NOFLAGS) == DISQUE_OK) exit(0);
+        if (prepareForShutdown(DISQUE_SHUTDOWN_NOFLAGS) == C_OK) exit(0);
         serverLog(DISQUE_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
         server.shutdown_asap = 0;
     }
@@ -825,7 +825,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * however to try every second is enough in case of 'hz' is set to
      * an higher frequency. */
     run_with_period(1000) {
-        if (server.aof_last_write_status == DISQUE_ERR)
+        if (server.aof_last_write_status == C_ERR)
             flushAppendOnlyFile(0);
     }
 
@@ -982,7 +982,7 @@ void initServerConfig(void) {
     server.aof_last_fsync = time(NULL);
     server.aof_rewrite_time_last = -1;
     server.aof_rewrite_time_start = -1;
-    server.aof_lastbgrewrite_status = DISQUE_OK;
+    server.aof_lastbgrewrite_status = C_OK;
     server.aof_delayed_fsync = 0;
     server.aof_fd = -1;
     server.aof_selected_db = -1; /* Make sure the first time will not match */
@@ -1150,9 +1150,9 @@ void checkTcpBacklogSettings(void) {
  * contains no specific addresses to bind, this function will try to
  * bind * (all addresses) for both the IPv4 and IPv6 protocols.
  *
- * On success the function returns DISQUE_OK.
+ * On success the function returns C_OK.
  *
- * On error the function returns DISQUE_ERR. For the function to be on
+ * On error the function returns C_ERR. For the function to be on
  * error, at least one of the server.bindaddr addresses was
  * impossible to bind, or no bind addresses were specified in the server
  * configuration but the function is not able to bind * for at least
@@ -1197,12 +1197,12 @@ int listenToPort(int port, int *fds, int *count) {
                 "Creating Server TCP listening socket %s:%d: %s",
                 server.bindaddr[j] ? server.bindaddr[j] : "*",
                 port, server.neterr);
-            return DISQUE_ERR;
+            return C_ERR;
         }
         anetNonBlock(NULL,fds[*count]);
         (*count)++;
     }
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Resets the stats that we expose via INFO or other means that we want
@@ -1257,7 +1257,7 @@ void initServer(void) {
     server.el = aeCreateEventLoop(server.maxclients+DISQUE_EVENTLOOP_FDSET_INCR);
     /* Open the TCP listening socket for the user commands. */
     if (server.port != 0 &&
-        listenToPort(server.port,server.ipfd,&server.ipfd_count) == DISQUE_ERR)
+        listenToPort(server.port,server.ipfd,&server.ipfd_count) == C_ERR)
         exit(1);
 
     /* Open the listening Unix domain socket. */
@@ -1293,7 +1293,7 @@ void initServer(void) {
     server.stat_starttime = time(NULL);
     server.stat_peak_memory = 0;
     server.resident_set_size = 0;
-    server.aof_last_write_status = DISQUE_OK;
+    server.aof_last_write_status = C_OK;
     server.aof_last_write_errno = 0;
     updateCachedTime();
 
@@ -1507,7 +1507,7 @@ int processCommand(client *c) {
     if (!strcasecmp(c->argv[0]->ptr,"quit")) {
         addReply(c,shared.ok);
         c->flags |= DISQUE_CLOSE_AFTER_REPLY;
-        return DISQUE_ERR;
+        return C_ERR;
     }
 
     /* Now lookup the command and check ASAP about trivial error conditions
@@ -1516,19 +1516,19 @@ int processCommand(client *c) {
     if (!c->cmd) {
         addReplyErrorFormat(c,"unknown command '%s'",
             (char*)c->argv[0]->ptr);
-        return DISQUE_OK;
+        return C_OK;
     } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
                (c->argc < -c->cmd->arity)) {
         addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
             c->cmd->name);
-        return DISQUE_OK;
+        return C_OK;
     }
 
     /* Check if the user is authenticated */
     if (server.requirepass && !c->authenticated && c->cmd->proc != authCommand)
     {
         addReply(c,shared.noautherr);
-        return DISQUE_OK;
+        return C_OK;
     }
 
     /* Handle the maxmemory directive.
@@ -1538,14 +1538,14 @@ int processCommand(client *c) {
      * is returning an error. */
     if (server.maxmemory) {
         int retval = freeMemoryIfNeeded();
-        if ((c->cmd->flags & DISQUE_CMD_DENYOOM) && retval == DISQUE_ERR) {
+        if ((c->cmd->flags & DISQUE_CMD_DENYOOM) && retval == C_ERR) {
             addReply(c, shared.oomerr);
-            return DISQUE_OK;
+            return C_OK;
         }
     }
 
     /* Don't accept write commands if there are problems persisting on disk. */
-    if (server.aof_last_write_status == DISQUE_ERR &&
+    if (server.aof_last_write_status == C_ERR &&
          (c->cmd->flags & DISQUE_CMD_WRITE ||
           c->cmd->proc == pingCommand))
     {
@@ -1553,19 +1553,19 @@ int processCommand(client *c) {
             sdscatprintf(sdsempty(),
             "-MISCONF Errors writing to the AOF file: %s\r\n",
             strerror(server.aof_last_write_errno)));
-        return DISQUE_OK;
+        return C_OK;
     }
 
     /* Loading DB? Return an error if the command has not the
      * DISQUE_CMD_LOADING flag. */
     if (server.loading && !(c->cmd->flags & DISQUE_CMD_LOADING)) {
         addReply(c, shared.loadingerr);
-        return DISQUE_OK;
+        return C_OK;
     }
 
     call(c,DISQUE_CALL_FULL);
     handleClientsBlockedOnQueues();
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /*================================== Shutdown =============================== */
@@ -1601,7 +1601,7 @@ int prepareForShutdown(int flags) {
              * shutdown or else the dataset will be lost. */
             if (server.aof_state == DISQUE_AOF_WAIT_REWRITE) {
                 serverLog(DISQUE_WARNING, "Writing initial AOF, can't exit.");
-                return DISQUE_ERR;
+                return C_ERR;
             }
             serverLog(DISQUE_WARNING,
                 "There is a child rewriting the AOF. Killing it!");
@@ -1614,8 +1614,8 @@ int prepareForShutdown(int flags) {
 
     /* Perform a synchronous AOF rewrite if requested. */
     if (rewrite) {
-        if (rewriteAppendOnlyFile(server.aof_filename,0) == DISQUE_ERR)
-            return DISQUE_ERR;
+        if (rewriteAppendOnlyFile(server.aof_filename,0) == C_ERR)
+            return C_ERR;
     }
 
     if (server.daemonize) {
@@ -1626,7 +1626,7 @@ int prepareForShutdown(int flags) {
     /* Close the listening sockets. Apparently this allows faster restarts. */
     closeListeningSockets(1);
     serverLog(DISQUE_WARNING,"Disque is now ready to exit, bye bye...");
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /*================================== Commands =============================== */
@@ -1736,7 +1736,7 @@ void shutdownCommand(client *c) {
      * with half-read data). */
     if (server.loading)
         flags = (flags & ~DISQUE_SHUTDOWN_REWRITE_AOF);
-    if (prepareForShutdown(flags) == DISQUE_OK) exit(0);
+    if (prepareForShutdown(flags) == C_OK) exit(0);
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
 
@@ -1993,8 +1993,8 @@ sds genDisqueInfoString(char *section) {
             (intmax_t)server.aof_rewrite_time_last,
             (intmax_t)((server.aof_child_pid == -1) ?
                 -1 : time(NULL)-server.aof_rewrite_time_start),
-            (server.aof_lastbgrewrite_status == DISQUE_OK) ? "ok" : "err",
-            (server.aof_last_write_status == DISQUE_OK) ? "ok" : "err");
+            (server.aof_lastbgrewrite_status == C_OK) ? "ok" : "err",
+            (server.aof_last_write_status == C_OK) ? "ok" : "err");
 
         if (server.aof_state != DISQUE_AOF_OFF) {
             info = sdscatprintf(info,
@@ -2138,7 +2138,7 @@ void monitorCommand(client *c) {
  * evict accordingly to the configured policy.
  *
  * If all the bytes needed to return back under the limit were freed the
- * function returns DISQUE_OK, otherwise DISQUE_ERR is returned, and the caller
+ * function returns C_OK, otherwise C_ERR is returned, and the caller
  * should block the execution of commands that will result in more memory
  * used by the server. */
 
@@ -2149,10 +2149,10 @@ int freeMemoryIfNeeded(void) {
 
     /* We start to reclaim memory only at memory warning 2 or greater, that is
      * when 95% of maxmemory is reached. */
-    if (getMemoryWarningLevel() < 2) return DISQUE_OK;
+    if (getMemoryWarningLevel() < 2) return C_OK;
 
     if (server.maxmemory_policy == DISQUE_MAXMEMORY_NO_EVICTION)
-        return DISQUE_ERR; /* We need to free memory, but policy forbids. */
+        return C_ERR; /* We need to free memory, but policy forbids. */
 
     /* Compute how much memory we need to free. */
     mem_used = zmalloc_used_memory();
@@ -2162,7 +2162,7 @@ int freeMemoryIfNeeded(void) {
      * that getMemoryWarningLevel() returned 2 or greater, but it is safer
      * to have given that we are workign with unsigned integers to compute
      * mem_tofree. */
-    if (mem_used <= mem_target) return DISQUE_OK;
+    if (mem_used <= mem_target) return C_OK;
 
     /* The eviction loop: for up to 2 milliseconds we try to reclaim memory
      * as long we are able to make progresses, otherwise we just stop ASAP. */
@@ -2197,12 +2197,12 @@ int freeMemoryIfNeeded(void) {
         if (not_freed > DISQUE_NOT_FREED_MAX_LEN || (mstime() - latency) > 1) {
             latencyEndMonitor(latency);
             latencyAddSampleIfNeeded("eviction-cycle",latency);
-            return DISQUE_ERR; /* nothing to free... */
+            return C_ERR; /* nothing to free... */
         }
     }
     latencyEndMonitor(latency);
     latencyAddSampleIfNeeded("eviction-cycle",latency);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Get the memory warning level:
@@ -2387,7 +2387,7 @@ void memtest(size_t megabytes, int passes);
 void loadDataFromDisk(void) {
     long long start = ustime();
     if (server.aof_state == DISQUE_AOF_ON || server.aof_enqueue_jobs_once) {
-        if (loadAppendOnlyFile(server.aof_filename) == DISQUE_OK)
+        if (loadAppendOnlyFile(server.aof_filename) == C_OK)
             serverLog(DISQUE_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
 
         /* Rewrite aof-enqueue-jobs-once setting it to no if enabled: this

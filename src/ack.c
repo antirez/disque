@@ -207,7 +207,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
 void ackjobCommand(client *c) {
     int j, known = 0;
 
-    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == C_ERR) return;
 
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {
@@ -216,7 +216,7 @@ void ackjobCommand(client *c) {
         if (job == NULL) {
             job = createJob(c->argv[j]->ptr,JOB_STATE_ACKED,0);
             setJobTtlFromId(job);
-            serverAssert(registerJob(job) == DISQUE_OK);
+            serverAssert(registerJob(job) == C_OK);
         }
         /* Case 2: Job exists and is not acknowledged. Change state. */
         if (job && job->state != JOB_STATE_ACKED) {
@@ -249,7 +249,7 @@ void ackjobCommand(client *c) {
 void fastackCommand(client *c) {
     int j, known = 0;
 
-    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == C_ERR) return;
 
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {

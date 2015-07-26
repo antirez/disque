@@ -144,19 +144,19 @@ void setJobTtlFromId(job *job) {
  * It's pretty pointless to use more CPU to validate it better since anyway
  * the lookup will fail. */
 int validateJobId(char *id, size_t len) {
-    if (len != JOB_ID_LEN) return DISQUE_ERR;
+    if (len != JOB_ID_LEN) return C_ERR;
     if (id[0] != 'D' ||
         id[1] != 'I' ||
         id[JOB_ID_LEN-2] != 'S' ||
-        id[JOB_ID_LEN-1] != 'Q') return DISQUE_ERR;
-    return DISQUE_OK;
+        id[JOB_ID_LEN-1] != 'Q') return C_ERR;
+    return C_OK;
 }
 
 /* Like validateJobId() but if the ID is invalid an error message is sent
  * to the client 'c' if not NULL. */
 int validateJobIdOrReply(client *c, char *id, size_t len) {
     int retval = validateJobId(id,len);
-    if (retval == DISQUE_ERR && c)
+    if (retval == C_ERR && c)
         addReplySds(c,sdsnew("-BADID Invalid Job ID format.\r\n"));
     return retval;
 }
@@ -204,15 +204,15 @@ void freeJob(job *j) {
  * (by job ID) later. If a node knows about a job, the job must be registered
  * and can be retrieved via lookupJob(), regardless of is state.
  *
- * On success DISQUE_OK is returned. If there is already a job with the
+ * On success C_OK is returned. If there is already a job with the
  * specified ID, no operation is performed and the function returns
- * DISQUE_ERR. */
+ * C_ERR. */
 int registerJob(job *j) {
     int retval = dictAdd(server.jobs, j->id, NULL);
-    if (retval == DICT_ERR) return DISQUE_ERR;
+    if (retval == DICT_ERR) return C_ERR;
 
     updateJobAwakeTime(j,0);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Lookup a job by ID. */
@@ -222,11 +222,11 @@ job *lookupJob(char *id) {
 }
 
 /* Remove job references from the system, without freeing the job itself.
- * If the job was already unregistered, DISQUE_ERR is returned, otherwise
- * DISQUE_OK is returned. */
+ * If the job was already unregistered, C_ERR is returned, otherwise
+ * C_OK is returned. */
 int unregisterJob(job *j) {
     j = lookupJob(j->id);
-    if (!j) return DISQUE_ERR;
+    if (!j) return C_ERR;
 
     /* Emit a DELJOB command for all the job states but WAITREPL (no
      * ADDJOB emitted yer), and ACKED (DELJOB already emitted). */
@@ -257,7 +257,7 @@ int unregisterJob(job *j) {
 
     /* Remove the job from the jobs hash table. */
     dictDelete(server.jobs, j->id);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* We use the server.jobs hash table in a space efficient way by storing the
@@ -802,10 +802,10 @@ void deleteJobFromCluster(job *j) {
 
 /* ----------------------------  Utility functions -------------------------- */
 
-/* Validate a set of job IDs. Return DISQUE_OK if all the IDs are valid,
- * otherwise DISQUE_ERR is returned.
+/* Validate a set of job IDs. Return C_OK if all the IDs are valid,
+ * otherwise C_ERR is returned.
  *
- * When DISQUE_ERR is returned, an error is send to the client 'c' if not
+ * When C_ERR is returned, an error is send to the client 'c' if not
  * NULL. */
 int validateJobIDs(client *c, robj **ids, int count) {
     int j;
@@ -814,9 +814,9 @@ int validateJobIDs(client *c, robj **ids, int count) {
      * at all is processed. */
     for (j = 0; j < count; j++) {
         if (validateJobIdOrReply(c,ids[j]->ptr,sdslen(ids[j]->ptr))
-            == DISQUE_ERR) return DISQUE_ERR;
+            == C_ERR) return C_ERR;
     }
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* ----------------------------------  AOF ---------------------------------- */
@@ -897,7 +897,7 @@ void loadjobCommand(client *c) {
     /* Register the job, and if needed enqueue it: we put jobs back into
      * queues only if enqueue-jobs-at-next-restart option is set, that is,
      * when a controlled restart happens. */
-    if (registerJob(job) == DISQUE_OK && enqueue_job)
+    if (registerJob(job) == C_OK && enqueue_job)
         enqueueJob(job,0);
 }
 
@@ -939,9 +939,9 @@ void addReplyJobID(client *c, job *j) {
  * when possible.
  *
  * Return value: if the job is retained after the function is called
- * (normal replication) then DISQUE_OK is returned. Otherwise if the
+ * (normal replication) then C_OK is returned. Otherwise if the
  * function removes the job from the node, since the job is externally
- * replicated, DISQUE_ERR is returned, in order to signal the client further
+ * replicated, C_ERR is returned, in order to signal the client further
  * accesses to the job are not allowed. */
 int jobReplicationAchieved(job *j) {
     serverLog(DISQUE_VERBOSE,"Replication ACHIEVED %.48s",j->id);
@@ -974,7 +974,7 @@ int jobReplicationAchieved(job *j) {
         }
         unregisterJob(j);
         freeJob(j);
-        return DISQUE_ERR;
+        return C_ERR;
     }
 
     /* Queue the job locally. */
@@ -984,7 +984,7 @@ int jobReplicationAchieved(job *j) {
         updateJobAwakeTime(j,0); /* Queue with delay. */
 
     AOFLoadJob(j);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* This function is called periodically by clientsCron(). Its goal is to
@@ -1046,35 +1046,35 @@ void addjobCommand(client *c) {
         int lastarg = j == c->argc-1;
         if (!strcasecmp(opt,"replicate") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&replicate);
-            if (retval != DISQUE_OK || replicate <= 0 || replicate > 65535) {
+            if (retval != C_OK || replicate <= 0 || replicate > 65535) {
                 addReplyError(c,"REPLICATE must be between 1 and 65535");
                 return;
             }
             j++;
         } else if (!strcasecmp(opt,"ttl") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&ttl);
-            if (retval != DISQUE_OK || ttl <= 0) {
+            if (retval != C_OK || ttl <= 0) {
                 addReplyError(c,"TTL must be a number > 0");
                 return;
             }
             j++;
         } else if (!strcasecmp(opt,"retry") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&retry);
-            if (retval != DISQUE_OK || retry < 0) {
+            if (retval != C_OK || retry < 0) {
                 addReplyError(c,"RETRY time must be a non negative number");
                 return;
             }
             j++;
         } else if (!strcasecmp(opt,"delay") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&delay);
-            if (retval != DISQUE_OK || delay < 0) {
+            if (retval != C_OK || delay < 0) {
                 addReplyError(c,"DELAY time must be a non negative number");
                 return;
             }
             j++;
         } else if (!strcasecmp(opt,"maxlen") && !lastarg) {
             retval = getLongLongFromObject(c->argv[j+1],&maxlen);
-            if (retval != DISQUE_OK || maxlen <= 0) {
+            if (retval != C_OK || maxlen <= 0) {
                 addReplyError(c,"MAXLEN must be a positive number");
                 return;
             }
@@ -1089,7 +1089,7 @@ void addjobCommand(client *c) {
 
     /* Parse the timeout argument. */
     if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,UNIT_MILLISECONDS)
-        != DISQUE_OK) return;
+        != C_OK) return;
 
     /* REPLICATE > 1 and RETRY set to 0 does not make sense, why to replicate
      * the job if it will never try to be re-queued if case the job processing
@@ -1184,7 +1184,7 @@ void addjobCommand(client *c) {
     }
 
     /* Register the job locally, unless we are going to remove it locally. */
-    if (!discard_local_copy && registerJob(job) == DISQUE_ERR) {
+    if (!discard_local_copy && registerJob(job) == C_ERR) {
         /* A job ID with the same name? Practically impossible but
          * let's handle it to trap possible bugs in a cleaner way. */
         serverLog(DISQUE_WARNING,"ID already existing in ADDJOB command!");
@@ -1332,7 +1332,7 @@ void addReplyJobInfo(client *c, job *j) {
 /* SHOW <job-id> */
 void showCommand(client *c) {
     if (validateJobIdOrReply(c,c->argv[1]->ptr,sdslen(c->argv[1]->ptr))
-        == DISQUE_ERR) return;
+        == C_ERR) return;
 
     job *j = lookupJob(c->argv[1]->ptr);
     if (!j) {
@@ -1354,7 +1354,7 @@ void showCommand(client *c) {
 void deljobCommand(client *c) {
     int j, evicted = 0;
 
-    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == C_ERR) return;
 
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {
@@ -1440,7 +1440,7 @@ void jscanCommand(client *c) {
 
         if (!strcasecmp(opt,"count") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1], &count, NULL) !=
-                DISQUE_OK) return;
+                C_OK) return;
             j++;
         } else if (!strcasecmp(opt,"busyloop")) {
             busyloop = 1;
@@ -1471,7 +1471,7 @@ void jscanCommand(client *c) {
                 addReply(c,shared.syntaxerr);
                 return;
             }
-            if (parseScanCursorOrReply(c,c->argv[j],&cursor) == DISQUE_ERR)
+            if (parseScanCursorOrReply(c,c->argv[j],&cursor) == C_ERR)
                 return;
             cursor_set = 1;
         }

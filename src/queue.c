@@ -92,12 +92,12 @@ queue *lookupQueue(robj *name) {
     return q;
 }
 
-/* Destroy a queue and unregisters it. On success DISQUE_OK is returned,
- * otherwise if no queue exists with the specified name, DISQUE_ERR is
+/* Destroy a queue and unregisters it. On success C_OK is returned,
+ * otherwise if no queue exists with the specified name, C_ERR is
  * returned. */
 int destroyQueue(robj *name) {
     queue *q = lookupQueue(name);
-    if (!q) return DISQUE_ERR;
+    if (!q) return C_ERR;
 
     dictDelete(server.queues,name);
     decrRefCount(q->name);
@@ -108,7 +108,7 @@ int destroyQueue(robj *name) {
         listRelease(q->clients);
     }
     zfree(q);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Send a job as a return value of a command. This is about jobs but inside
@@ -136,14 +136,14 @@ void addReplyJob(client *c, job *j, int flags) {
 /* ------------------------ Queue higher level API -------------------------- */
 
 /* Queue the job and change its state accordingly. If the job is already
- * in QUEUED state, DISQUE_ERR is returned, otherwise DISQUE_OK is returned
+ * in QUEUED state, C_ERR is returned, otherwise C_OK is returned
  * and the operation succeeds.
  *
  * The nack argument is set to 1 if the enqueue is the result of a client
  * negative acknowledge. */
 int enqueueJob(job *job, int nack) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
-        return DISQUE_ERR;
+        return C_ERR;
 
     serverLog(DISQUE_VERBOSE,"QUEUED %.48s", job->id);
 
@@ -184,20 +184,20 @@ int enqueueJob(job *job, int nack) {
     serverAssert(skiplistInsert(q->sl,job) != NULL);
     q->atime = server.unixtime;
     signalQueueAsReady(q);
-    return DISQUE_OK;
+    return C_OK;
 }
 
-/* Remove a job from the queue. Returns DISQUE_OK if the job was there and
+/* Remove a job from the queue. Returns C_OK if the job was there and
  * is now removed (updating the job state back to ACTIVE), otherwise
- * DISQUE_ERR is returned. */
+ * C_ERR is returned. */
 int dequeueJob(job *job) {
-    if (job->state != JOB_STATE_QUEUED) return DISQUE_ERR;
+    if (job->state != JOB_STATE_QUEUED) return C_ERR;
     queue *q = lookupQueue(job->queue);
-    if (!q) return DISQUE_ERR;
+    if (!q) return C_ERR;
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
     serverLog(DISQUE_VERBOSE,"DE-QUEUED %.48s", job->id);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Fetch a job from the specified queue if any, updating the job state
@@ -237,16 +237,16 @@ unsigned long queueNameLength(robj *qname) {
 }
 
 /* Remove a queue that was not accessed for enough time, has no clients
- * blocked, has no jobs inside. If the queue is removed DISQUE_OK is
- * returned, otherwise DISQUE_ERR is returned. */
+ * blocked, has no jobs inside. If the queue is removed C_OK is
+ * returned, otherwise C_ERR is returned. */
 #define QUEUE_MAX_IDLE_TIME (60*5)
 int GCQueue(queue *q) {
     time_t elapsed = server.unixtime - q->atime;
-    if (elapsed < QUEUE_MAX_IDLE_TIME) return DISQUE_ERR;
-    if (q->clients && listLength(q->clients) != 0) return DISQUE_ERR;
-    if (skiplistLength(q->sl)) return DISQUE_ERR;
+    if (elapsed < QUEUE_MAX_IDLE_TIME) return C_ERR;
+    if (q->clients && listLength(q->clients) != 0) return C_ERR;
+    if (skiplistLength(q->sl)) return C_ERR;
     destroyQueue(q->name);
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* This function is called form serverCron() in order to incrementally remove
@@ -260,7 +260,7 @@ void queueCron(void) {
         queue *q = dictGetVal(de);
 
         sampled++;
-        if (GCQueue(q) == DISQUE_OK) evicted++;
+        if (GCQueue(q) == C_OK) evicted++;
 
         /* First exit condition: we are able to expire less than 10% of
          * entries. */
@@ -581,7 +581,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
         if (job->retry == 0)
             job->qtime = server.mstime; /* Any value will do. */
 
-        if (enqueueJob(job,0) == DISQUE_ERR) continue;
+        if (enqueueJob(job,0) == C_ERR) continue;
 
         /* Update queue stats needed to optimize nodes federation. */
         q = lookupQueue(job->queue);
@@ -666,11 +666,11 @@ void getjobCommand(client *c) {
             withcounters = 1;
         } else if (!strcasecmp(opt,"timeout") && !lastarg) {
             if (getTimeoutFromObjectOrReply(c,c->argv[j+1],&timeout,
-                UNIT_MILLISECONDS) != DISQUE_OK) return;
+                UNIT_MILLISECONDS) != C_OK) return;
             j++;
         } else if (!strcasecmp(opt,"count") && !lastarg) {
             int retval = getLongLongFromObject(c->argv[j+1],&count);
-            if (retval != DISQUE_OK || count <= 0) {
+            if (retval != C_OK || count <= 0) {
                 addReplyError(c,"COUNT must be a number greater than zero");
                 return;
             }
@@ -758,14 +758,14 @@ void getjobCommand(client *c) {
 void enqueueGenericCommand(client *c, int nack) {
     int j, enqueued = 0;
 
-    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == C_ERR) return;
 
     /* Enqueue all the jobs in active state. */
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
         if (job == NULL) continue;
 
-        if (job->state == JOB_STATE_ACTIVE && enqueueJob(job,nack) == DISQUE_OK)
+        if (job->state == JOB_STATE_ACTIVE && enqueueJob(job,nack) == C_OK)
             enqueued++;
     }
     addReplyLongLong(c,enqueued);
@@ -791,14 +791,14 @@ void nackCommand(client *c) {
 void dequeueCommand(client *c) {
     int j, dequeued = 0;
 
-    if (validateJobIDs(c,c->argv+1,c->argc-1) == DISQUE_ERR) return;
+    if (validateJobIDs(c,c->argv+1,c->argc-1) == C_ERR) return;
 
     /* Enqueue all the jobs in active state. */
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
         if (job == NULL) continue;
 
-        if (job->state == JOB_STATE_QUEUED && dequeueJob(job) == DISQUE_OK)
+        if (job->state == JOB_STATE_QUEUED && dequeueJob(job) == C_OK)
             dequeued++;
     }
     addReplyLongLong(c,dequeued);
@@ -819,7 +819,7 @@ void qpeekCommand(client *c) {
     int newjobs = 0; /* Return from newest to oldest if true. */
     long long count, returned = 0;
 
-    if (getLongLongFromObjectOrReply(c,c->argv[2],&count,NULL) != DISQUE_OK)
+    if (getLongLongFromObjectOrReply(c,c->argv[2],&count,NULL) != C_OK)
         return;
 
     if (count < 0) {
@@ -918,28 +918,28 @@ void qscanCommand(client *c) {
 
         if (!strcasecmp(opt,"count") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1], &count, NULL) !=
-                DISQUE_OK) return;
+                C_OK) return;
             j++;
         } else if (!strcasecmp(opt,"busyloop")) {
             busyloop = 1;
         } else if (!strcasecmp(opt,"minlen") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1],&filter.minlen,NULL) !=
-                DISQUE_OK) return;
+                C_OK) return;
             j++;
         } else if (!strcasecmp(opt,"maxlen") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1],&filter.maxlen,NULL) !=
-                DISQUE_OK) return;
+                C_OK) return;
             j++;
         } else if (!strcasecmp(opt,"importrate") && remaining) {
             if (getLongFromObjectOrReply(c, c->argv[j+1],
-                &filter.importrate,NULL) != DISQUE_OK) return;
+                &filter.importrate,NULL) != C_OK) return;
             j++;
         } else {
             if (cursor_set != 0) {
                 addReply(c,shared.syntaxerr);
                 return;
             }
-            if (parseScanCursorOrReply(c,c->argv[j],&cursor) == DISQUE_ERR)
+            if (parseScanCursorOrReply(c,c->argv[j],&cursor) == C_ERR)
                 return;
             cursor_set = 1;
         }
@@ -995,7 +995,7 @@ void qscanCommand(client *c) {
  *            delay it.
  */
 void workingCommand(client *c) {
-    if (validateJobIDs(c,c->argv+1,1) == DISQUE_ERR) return;
+    if (validateJobIDs(c,c->argv+1,1) == C_ERR) return;
 
     job *job = lookupJob(c->argv[1]->ptr);
     if (job == NULL) {

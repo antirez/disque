@@ -220,9 +220,9 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (o->encoding == OBJ_ENCODING_INT) {
         if (llval) *llval = (long) o->ptr;
-        return DISQUE_OK;
+        return C_OK;
     } else {
-        return string2ll(o->ptr,sdslen(o->ptr),llval) ? DISQUE_OK : DISQUE_ERR;
+        return string2ll(o->ptr,sdslen(o->ptr),llval) ? C_OK : C_ERR;
     }
 }
 
@@ -417,7 +417,7 @@ int getDoubleFromObject(robj *o, double *target) {
                     (value == HUGE_VAL || value == -HUGE_VAL || value == 0)) ||
                 errno == EINVAL ||
                 isnan(value))
-                return DISQUE_ERR;
+                return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
@@ -425,21 +425,21 @@ int getDoubleFromObject(robj *o, double *target) {
         }
     }
     *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 int getDoubleFromObjectOrReply(client *c, robj *o, double *target, const char *msg) {
     double value;
-    if (getDoubleFromObject(o, &value) != DISQUE_OK) {
+    if (getDoubleFromObject(o, &value) != C_OK) {
         if (msg != NULL) {
             addReplyError(c,(char*)msg);
         } else {
             addReplyError(c,"value is not a valid float");
         }
-        return DISQUE_ERR;
+        return C_ERR;
     }
     *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 int getLongDoubleFromObject(robj *o, long double *target) {
@@ -455,7 +455,7 @@ int getLongDoubleFromObject(robj *o, long double *target) {
             value = strtold(o->ptr, &eptr);
             if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
                 errno == ERANGE || isnan(value))
-                return DISQUE_ERR;
+                return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
@@ -463,21 +463,21 @@ int getLongDoubleFromObject(robj *o, long double *target) {
         }
     }
     *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, const char *msg) {
     long double value;
-    if (getLongDoubleFromObject(o, &value) != DISQUE_OK) {
+    if (getLongDoubleFromObject(o, &value) != C_OK) {
         if (msg != NULL) {
             addReplyError(c,(char*)msg);
         } else {
             addReplyError(c,"value is not a valid float");
         }
-        return DISQUE_ERR;
+        return C_ERR;
     }
     *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 int getLongLongFromObject(robj *o, long long *target) {
@@ -493,7 +493,7 @@ int getLongLongFromObject(robj *o, long long *target) {
             value = strtoll(o->ptr, &eptr, 10);
             if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
                 errno == ERANGE)
-                return DISQUE_ERR;
+                return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
@@ -501,42 +501,42 @@ int getLongLongFromObject(robj *o, long long *target) {
         }
     }
     if (target) *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg) {
     long long value;
-    if (getLongLongFromObject(o, &value) != DISQUE_OK) {
+    if (getLongLongFromObject(o, &value) != C_OK) {
         if (msg != NULL) {
             addReplyError(c,(char*)msg);
         } else {
             addReplyError(c,"value is not an integer or out of range");
         }
-        return DISQUE_ERR;
+        return C_ERR;
     }
     *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) {
     long long value;
 
-    if (getLongLongFromObjectOrReply(c, o, &value, msg) != DISQUE_OK) return DISQUE_ERR;
+    if (getLongLongFromObjectOrReply(c, o, &value, msg) != C_OK) return C_ERR;
     if (value < LONG_MIN || value > LONG_MAX) {
         if (msg != NULL) {
             addReplyError(c,(char*)msg);
         } else {
             addReplyError(c,"value is out of range");
         }
-        return DISQUE_ERR;
+        return C_ERR;
     }
     *target = value;
-    return DISQUE_OK;
+    return C_OK;
 }
 
 /* Try to parse a SCAN-like cursor stored at object 'o':
  * if the cursor is valid, store it as unsigned integer into *cursor and
- * returns DISQUE_OK. Otherwise return DISQUE_ERR and send an error to the
+ * returns C_OK. Otherwise return C_ERR and send an error to the
  * client.
  *
  * Used by QSCAN & JSCAN. */
@@ -550,9 +550,9 @@ int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor) {
     if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' || errno == ERANGE)
     {
         addReplyError(c, "invalid cursor or option name");
-        return DISQUE_ERR;
+        return C_ERR;
     }
-    return DISQUE_OK;
+    return C_OK;
 }
 
 char *strEncoding(int encoding) {

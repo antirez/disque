@@ -66,8 +66,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #include "rio.h"     /* Abstract I/O. */
 
 /* Error codes */
-#define DISQUE_OK                0
-#define DISQUE_ERR               -1
+#define C_OK                0
+#define C_ERR               -1
 
 /* Static server configuration */
 #define CONFIG_DEFAULT_HZ        10      /* Time interrupt calls/sec. */
@@ -517,10 +517,10 @@ struct disqueServer {
     time_t aof_last_fsync;            /* UNIX time of last fsync() */
     time_t aof_rewrite_time_last;   /* Time used by last AOF rewrite run. */
     time_t aof_rewrite_time_start;  /* Current AOF rewrite start time. */
-    int aof_lastbgrewrite_status;   /* DISQUE_OK or DISQUE_ERR */
+    int aof_lastbgrewrite_status;   /* C_OK or C_ERR */
     unsigned long aof_delayed_fsync;  /* delayed AOF fsync() counter */
     int aof_rewrite_incremental_fsync;/* fsync incrementally while rewriting? */
-    int aof_last_write_status;      /* DISQUE_OK or DISQUE_ERR */
+    int aof_last_write_status;      /* C_OK or C_ERR */
     int aof_last_write_errno;       /* Valid if aof_last_write_status is ERR */
     int aof_load_truncated;         /* Don't stop on unexpected AOF EOF. */
     int aof_enqueue_jobs_once;      /* Enqueue jobs loading AOF, once. */

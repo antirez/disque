@@ -79,8 +79,8 @@ sds representDisqueNodeFlags(sds ci, uint16_t flags);
  *
  * If the file does not exist or is zero-length (this may happen because
  * when we lock the nodes.conf file, we create a zero-length one for the
- * sake of locking if it does not already exist), DISQUE_ERR is returned.
- * If the configuration was loaded from the file, DISQUE_OK is returned. */
+ * sake of locking if it does not already exist), C_ERR is returned.
+ * If the configuration was loaded from the file, C_OK is returned. */
 int clusterLoadConfig(char *filename) {
     FILE *fp = fopen(filename,"r");
     struct stat sb;
@@ -89,7 +89,7 @@ int clusterLoadConfig(char *filename) {
 
     if (fp == NULL) {
         if (errno == ENOENT) {
-            return DISQUE_ERR;
+            return C_ERR;
         } else {
             serverLog(DISQUE_WARNING,
                 "Loading the cluster node config from %s: %s",
@@ -98,11 +98,11 @@ int clusterLoadConfig(char *filename) {
         }
     }
 
-    /* Check if the file is zero-length: if so return DISQUE_ERR to signal
+    /* Check if the file is zero-length: if so return C_ERR to signal
      * we have to write the config. */
     if (fstat(fileno(fp),&sb) != -1 && sb.st_size == 0) {
         fclose(fp);
-        return DISQUE_ERR;
+        return C_ERR;
     }
 
     /* Parse the file. */
@@ -194,7 +194,7 @@ int clusterLoadConfig(char *filename) {
     fclose(fp);
 
     serverLog(DISQUE_NOTICE,"Node configuration loaded, I'm %.40s", myself->name);
-    return DISQUE_OK;
+    return C_OK;
 
 fmterr:
     serverLog(DISQUE_WARNING,
@@ -279,8 +279,8 @@ void clusterSaveConfigOrDie(int do_fsync) {
  * in-place, reopening the file, and writing to it in place (later adjusting
  * the length with ftruncate()).
  *
- * On success DISQUE_OK is returned, otherwise an error is logged and
- * the function returns DISQUE_ERR to signal a lock was not acquired. */
+ * On success C_OK is returned, otherwise an error is logged and
+ * the function returns C_ERR to signal a lock was not acquired. */
 int clusterLockConfig(char *filename) {
 /* flock() does not exist on Solaris
  * and a fcntl-based solution won't help, as we constantly re-open that file,
@@ -295,7 +295,7 @@ int clusterLockConfig(char *filename) {
         serverLog(DISQUE_WARNING,
             "Can't open %s in order to acquire a lock: %s",
             filename, strerror(errno));
-        return DISQUE_ERR;
+        return C_ERR;
     }
 
     if (flock(fd,LOCK_EX|LOCK_NB) == -1) {
@@ -310,13 +310,13 @@ int clusterLockConfig(char *filename) {
                 "Impossible to lock %s: %s", filename, strerror(errno));
         }
         close(fd);
-        return DISQUE_ERR;
+        return C_ERR;
     }
     /* Lock acquired: leak the 'fd' by not closing it, so that we'll retain the
      * lock to the file as long as the process exists. */
 #endif /* __sun */
 
-    return DISQUE_OK;
+    return C_OK;
 }
 
 void clusterInit(void) {
@@ -338,11 +338,11 @@ void clusterInit(void) {
 
     /* Lock the cluster config file to make sure every node uses
      * its own nodes.conf. */
-    if (clusterLockConfig(server.cluster_configfile) == DISQUE_ERR)
+    if (clusterLockConfig(server.cluster_configfile) == C_ERR)
         exit(1);
 
     /* Load or create a new nodes configuration. */
-    if (clusterLoadConfig(server.cluster_configfile) == DISQUE_ERR) {
+    if (clusterLoadConfig(server.cluster_configfile) == C_ERR) {
         /* No configuration found. We will just use the random name provided
          * by the createClusterNode() function. */
         myself = server.cluster->myself =
@@ -370,7 +370,7 @@ void clusterInit(void) {
     }
 
     if (listenToPort(server.port+DISQUE_CLUSTER_PORT_INCR,
-        server.cfd,&server.cfd_count) == DISQUE_ERR)
+        server.cfd,&server.cfd_count) == C_ERR)
     {
         exit(1);
     } else {
@@ -690,7 +690,7 @@ int clusterAddNode(clusterNode *node) {
     int retval;
 
     retval = dictAdd(server.cluster->nodes, node->name, node);
-    return (retval == DICT_OK) ? DISQUE_OK : DISQUE_ERR;
+    return (retval == DICT_OK) ? C_OK : C_ERR;
 }
 
 /* Remove a node from the cluster:
@@ -1307,7 +1307,7 @@ int clusterProcessPacket(clusterLink *link) {
         } else {
             j->flags |= JOB_FLAG_BCAST_QUEUED;
             j->state = JOB_STATE_ACTIVE;
-            if (registerJob(j) == DISQUE_ERR) {
+            if (registerJob(j) == C_ERR) {
                 /* The job already exists. Just update the list of nodes
                  * that may have a copy. */
                 updateJobNodes(j);
@@ -1349,7 +1349,7 @@ int clusterProcessPacket(clusterLink *link) {
                 /* The job was acknowledged before ADDJOB achieved the
                  * replication level requested! Unblock the client and
                  * change the job state to active. */
-                if (jobReplicationAchieved(j) == DISQUE_ERR) {
+                if (jobReplicationAchieved(j) == C_ERR) {
                     /* The job was externally replicated and deleted from
                      * this node. Nothing to do... */
                     return 1;
@@ -2428,7 +2428,7 @@ void clusterCommand(client *c) {
     if (!strcasecmp(c->argv[1]->ptr,"meet") && c->argc == 4) {
         long long port;
 
-        if (getLongLongFromObject(c->argv[3], &port) != DISQUE_OK) {
+        if (getLongLongFromObject(c->argv[3], &port) != C_OK) {
             addReplyErrorFormat(c,"Invalid TCP port specified: %s",
                                 (char*)c->argv[3]->ptr);
             return;

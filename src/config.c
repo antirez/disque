@@ -432,7 +432,7 @@ void configSetCommand(client *c) {
         zfree(server.requirepass);
         server.requirepass = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll <= 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll <= 0) goto badfmt;
         server.maxmemory = ll;
         if (server.maxmemory < zmalloc_used_memory()) {
             serverLog(DISQUE_WARNING,"WARNING: the new maxmemory value set via CONFIG SET is smaller than the current memory usage. The new limit may not be enforced, or the Resident Set Size of the process may not be reduced anyway. Moreover this may result in the inability to accept new jobs and jobs ACKs evictions.");
@@ -441,7 +441,7 @@ void configSetCommand(client *c) {
     } else if (!strcasecmp(c->argv[2]->ptr,"maxclients")) {
         int orig_value = server.maxclients;
 
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 1) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 1) goto badfmt;
 
         /* Try to check if the OS is capable of supporting so many FDs. */
         server.maxclients = ll;
@@ -465,7 +465,7 @@ void configSetCommand(client *c) {
             }
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"hz")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.hz = ll;
         if (server.hz < DISQUE_MIN_HZ) server.hz = DISQUE_MIN_HZ;
         if (server.hz > DISQUE_MAX_HZ) server.hz = DISQUE_MAX_HZ;
@@ -478,15 +478,15 @@ void configSetCommand(client *c) {
             goto badfmt;
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-samples")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR ||
+        if (getLongLongFromObject(o,&ll) == C_ERR ||
             ll <= 0) goto badfmt;
         server.maxmemory_samples = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"timeout")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR ||
+        if (getLongLongFromObject(o,&ll) == C_ERR ||
             ll < 0 || ll > LONG_MAX) goto badfmt;
         server.maxidletime = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"tcp-keepalive")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR ||
+        if (getLongLongFromObject(o,&ll) == C_ERR ||
             ll < 0 || ll > INT_MAX) goto badfmt;
         server.tcpkeepalive = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"appendfsync")) {
@@ -511,17 +511,17 @@ void configSetCommand(client *c) {
         if (enable == 0 && server.aof_state != DISQUE_AOF_OFF) {
             stopAppendOnly();
         } else if (enable && server.aof_state == DISQUE_AOF_OFF) {
-            if (startAppendOnly() == DISQUE_ERR) {
+            if (startAppendOnly() == C_ERR) {
                 addReplyError(c,
                     "Unable to turn on AOF. Check server logs.");
                 return;
             }
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"auto-aof-rewrite-percentage")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.aof_rewrite_perc = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"auto-aof-rewrite-min-size")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.aof_rewrite_min_size = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"aof-rewrite-incremental-fsync")) {
         int yn = yesnotoi(o->ptr);
@@ -544,13 +544,13 @@ void configSetCommand(client *c) {
             return;
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-log-slower-than")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR) goto badfmt;
         server.slowlog_log_slower_than = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-max-len")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.slowlog_max_len = (unsigned)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"latency-monitor-threshold")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.latency_monitor_threshold = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"loglevel")) {
         if (!strcasecmp(o->ptr,"warning")) {
@@ -611,13 +611,13 @@ void configSetCommand(client *c) {
         }
         sdsfreesplitres(v,vlen);
     } else if (!strcasecmp(c->argv[2]->ptr,"watchdog-period")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR || ll < 0) goto badfmt;
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         if (ll)
             enableWatchdog(ll);
         else
             disableWatchdog();
     } else if (!strcasecmp(c->argv[2]->ptr,"cluster-node-timeout")) {
-        if (getLongLongFromObject(o,&ll) == DISQUE_ERR ||
+        if (getLongLongFromObject(o,&ll) == C_ERR ||
             ll <= 0) goto badfmt;
         server.cluster_node_timeout = ll;
     } else {

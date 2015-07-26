@@ -66,7 +66,7 @@ void debugCommand(client *c) {
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"loadaof")) {
         flushServerData();
-        if (loadAppendOnlyFile(server.aof_filename) != DISQUE_OK) {
+        if (loadAppendOnlyFile(server.aof_filename) != C_OK) {
             addReply(c,shared.err);
             return;
         }

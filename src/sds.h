@@ -1,6 +1,8 @@
-/* SDSLib, A C dynamic strings library
+/* SDSLib 2.0 -- A C dynamic strings library
  *
- * Copyright (c) 2006-2010, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2006-2015, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2015, Oran Agra
+ * Copyright (c) 2015, Redis Labs, Inc
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -247,13 +249,14 @@ sds sdscatrepr(sds s, const char *p, size_t len);
 sds *sdssplitargs(const char *line, int *argc);
 sds sdsmapchars(sds s, const char *from, const char *to, size_t setlen);
 sds sdsjoin(char **argv, int argc, char *sep);
+sds sdsjoinsds(sds *argv, int argc, const char *sep, size_t seplen);
 
 /* Low level functions exposed to the user API */
 sds sdsMakeRoomFor(sds s, size_t addlen);
 void sdsIncrLen(sds s, int incr);
 sds sdsRemoveFreeSpace(sds s);
 size_t sdsAllocSize(sds s);
-size_t sdsZmallocSize(sds s);
+void *sdsAllocPtr(sds s);
 
 #ifdef REDIS_TEST
 int sdsTest(int argc, char *argv[]);

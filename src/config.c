@@ -135,7 +135,7 @@ void loadServerConfigFromString(char *config) {
             }
         } else if (!strcasecmp(argv[0],"dir") && argc == 2) {
             if (chdir(argv[1]) == -1) {
-                serverLog(DISQUE_WARNING,"Can't chdir to '%s': %s",
+                serverLog(LL_WARNING,"Can't chdir to '%s': %s",
                     argv[1], strerror(errno));
                 exit(1);
             }
@@ -143,7 +143,7 @@ void loadServerConfigFromString(char *config) {
             if (!strcasecmp(argv[1],"debug")) server.verbosity = LL_DEBUG;
             else if (!strcasecmp(argv[1],"verbose")) server.verbosity = LL_VERBOSE;
             else if (!strcasecmp(argv[1],"notice")) server.verbosity = LL_NOTICE;
-            else if (!strcasecmp(argv[1],"warning")) server.verbosity = DISQUE_WARNING;
+            else if (!strcasecmp(argv[1],"warning")) server.verbosity = LL_WARNING;
             else {
                 err = "Invalid log level. Must be one of debug, notice, warning";
                 goto loaderr;
@@ -235,7 +235,7 @@ void loadServerConfigFromString(char *config) {
             if ((yes = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
-            server.aof_state = yes ? DISQUE_AOF_ON : DISQUE_AOF_OFF;
+            server.aof_state = yes ? AOF_ON : AOF_OFF;
         } else if (!strcasecmp(argv[0],"appendfilename") && argc == 2) {
             if (!pathIsBaseName(argv[1])) {
                 err = "appendfilename can't be a path, just a filename";
@@ -398,7 +398,7 @@ void loadServerConfig(char *filename, char *options) {
             fp = stdin;
         } else {
             if ((fp = fopen(filename,"r")) == NULL) {
-                serverLog(DISQUE_WARNING,
+                serverLog(LL_WARNING,
                     "Fatal error, can't open config file '%s'", filename);
                 exit(1);
             }
@@ -435,7 +435,7 @@ void configSetCommand(client *c) {
         if (getLongLongFromObject(o,&ll) == C_ERR || ll <= 0) goto badfmt;
         server.maxmemory = ll;
         if (server.maxmemory < zmalloc_used_memory()) {
-            serverLog(DISQUE_WARNING,"WARNING: the new maxmemory value set via CONFIG SET is smaller than the current memory usage. The new limit may not be enforced, or the Resident Set Size of the process may not be reduced anyway. Moreover this may result in the inability to accept new jobs and jobs ACKs evictions.");
+            serverLog(LL_WARNING,"WARNING: the new maxmemory value set via CONFIG SET is smaller than the current memory usage. The new limit may not be enforced, or the Resident Set Size of the process may not be reduced anyway. Moreover this may result in the inability to accept new jobs and jobs ACKs evictions.");
         }
         freeMemoryIfNeeded();
     } else if (!strcasecmp(c->argv[2]->ptr,"maxclients")) {
@@ -508,9 +508,9 @@ void configSetCommand(client *c) {
         int enable = yesnotoi(o->ptr);
 
         if (enable == -1) goto badfmt;
-        if (enable == 0 && server.aof_state != DISQUE_AOF_OFF) {
+        if (enable == 0 && server.aof_state != AOF_OFF) {
             stopAppendOnly();
-        } else if (enable && server.aof_state == DISQUE_AOF_OFF) {
+        } else if (enable && server.aof_state == AOF_OFF) {
             if (startAppendOnly() == C_ERR) {
                 addReplyError(c,
                     "Unable to turn on AOF. Check server logs.");
@@ -554,7 +554,7 @@ void configSetCommand(client *c) {
         server.latency_monitor_threshold = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"loglevel")) {
         if (!strcasecmp(o->ptr,"warning")) {
-            server.verbosity = DISQUE_WARNING;
+            server.verbosity = LL_WARNING;
         } else if (!strcasecmp(o->ptr,"notice")) {
             server.verbosity = LL_NOTICE;
         } else if (!strcasecmp(o->ptr,"verbose")) {
@@ -716,7 +716,7 @@ void configGetCommand(client *c) {
 
     if (stringmatch(pattern,"appendonly",0)) {
         addReplyBulkCString(c,"appendonly");
-        addReplyBulkCString(c,server.aof_state == DISQUE_AOF_OFF ? "no" : "yes");
+        addReplyBulkCString(c,server.aof_state == AOF_OFF ? "no" : "yes");
         matches++;
     }
     if (stringmatch(pattern,"dir",0)) {
@@ -758,7 +758,7 @@ void configGetCommand(client *c) {
         char *s;
 
         switch(server.verbosity) {
-        case DISQUE_WARNING: s = "warning"; break;
+        case LL_WARNING: s = "warning"; break;
         case LL_VERBOSE: s = "verbose"; break;
         case LL_NOTICE: s = "notice"; break;
         case LL_DEBUG: s = "debug"; break;
@@ -1317,7 +1317,7 @@ int rewriteConfig(char *path) {
         "debug", LL_DEBUG,
         "verbose", LL_VERBOSE,
         "notice", LL_NOTICE,
-        "warning", DISQUE_WARNING,
+        "warning", LL_WARNING,
         NULL, CONFIG_DEFAULT_VERBOSITY);
     rewriteConfigStringOption(state,"logfile",server.logfile,CONFIG_DEFAULT_LOGFILE);
     rewriteConfigYesNoOption(state,"syslog-enabled",server.syslog_enabled,CONFIG_DEFAULT_SYSLOG_ENABLED);
@@ -1332,7 +1332,7 @@ int rewriteConfig(char *path) {
         "noeviction", MAXMEMORY_NO_EVICTION,
         NULL, CONFIG_DEFAULT_MAXMEMORY_POLICY);
     rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,CONFIG_DEFAULT_MAXMEMORY_SAMPLES);
-    rewriteConfigYesNoOption(state,"appendonly",server.aof_state != DISQUE_AOF_OFF,0);
+    rewriteConfigYesNoOption(state,"appendonly",server.aof_state != AOF_OFF,0);
     rewriteConfigStringOption(state,"appendfilename",server.aof_filename,CONFIG_DEFAULT_AOF_FILENAME);
     rewriteConfigEnumOption(state,"appendfsync",server.aof_fsync,
         "everysec", AOF_FSYNC_EVERYSEC,
@@ -1343,7 +1343,7 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",server.aof_rewrite_perc,AOF_REWRITE_PERC);
     rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",server.aof_rewrite_min_size,AOF_REWRITE_MIN_SIZE);
     rewriteConfigStringOption(state,"cluster-config-file",server.cluster_configfile,CONFIG_DEFAULT_CLUSTER_CONFIG_FILE);
-    rewriteConfigNumericalOption(state,"cluster-node-timeout",server.cluster_node_timeout,DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT);
+    rewriteConfigNumericalOption(state,"cluster-node-timeout",server.cluster_node_timeout,CLUSTER_DEFAULT_NODE_TIMEOUT);
     rewriteConfigNumericalOption(state,"slowlog-log-slower-than",server.slowlog_log_slower_than,CONFIG_DEFAULT_SLOWLOG_LOG_SLOWER_THAN);
     rewriteConfigNumericalOption(state,"latency-monitor-threshold",server.latency_monitor_threshold,CONFIG_DEFAULT_LATENCY_MONITOR_THRESHOLD);
     rewriteConfigNumericalOption(state,"slowlog-max-len",server.slowlog_max_len,CONFIG_DEFAULT_SLOWLOG_MAX_LEN);
@@ -1392,10 +1392,10 @@ void configCommand(client *c) {
             return;
         }
         if (rewriteConfig(server.configfile) == -1) {
-            serverLog(DISQUE_WARNING,"CONFIG REWRITE failed: %s", strerror(errno));
+            serverLog(LL_WARNING,"CONFIG REWRITE failed: %s", strerror(errno));
             addReplyErrorFormat(c,"Rewriting config file: %s", strerror(errno));
         } else {
-            serverLog(DISQUE_WARNING,"CONFIG REWRITE executed with success.");
+            serverLog(LL_WARNING,"CONFIG REWRITE executed with success.");
             addReply(c,shared.ok);
         }
     } else {

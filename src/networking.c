@@ -547,7 +547,7 @@ void copyClientOutputBuffer(client *dst, client *src) {
 static void acceptCommonHandler(int fd, int flags) {
     client *c;
     if ((c = createClient(fd)) == NULL) {
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "Error registering fd event for the new client: %s (fd=%d)",
             strerror(errno),fd);
         close(fd); /* May be already closed, just ignore errors */
@@ -583,7 +583,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
-                serverLog(DISQUE_WARNING,
+                serverLog(LL_WARNING,
                     "Accepting client connection: %s", server.neterr);
             return;
         }
@@ -602,7 +602,7 @@ void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         cfd = anetUnixAccept(server.neterr, fd);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
-                serverLog(DISQUE_WARNING,
+                serverLog(LL_WARNING,
                     "Accepting client connection: %s", server.neterr);
             return;
         }
@@ -1082,7 +1082,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
 
         bytes = sdscatrepr(bytes,c->querybuf,64);
-        serverLog(DISQUE_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
+        serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
         sdsfree(ci);
         sdsfree(bytes);
         freeClient(c);
@@ -1504,7 +1504,7 @@ void asyncCloseClientOnOutputBufferLimitReached(client *c) {
         sds client = catClientInfoString(sdsempty(),c);
 
         freeClientAsync(c);
-        serverLog(DISQUE_WARNING,"Client %s scheduled to be closed ASAP for overcoming of output buffer limits.", client);
+        serverLog(LL_WARNING,"Client %s scheduled to be closed ASAP for overcoming of output buffer limits.", client);
         sdsfree(client);
     }
 }

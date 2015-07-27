@@ -407,14 +407,14 @@ dictType commandTableDictType = {
 /* Cluster nodes hash table, mapping nodes addresses 1.2.3.4:7711 to
  * clusterNode structures. */
 unsigned int dictClusterNodeHash(const void *key) {
-    return dictGenHashFunction(key,DISQUE_CLUSTER_NAMELEN);
+    return dictGenHashFunction(key,CLUSTER_NAMELEN);
 }
 
 int dictClusterNodeKeyCompare(void *privdata, const void *key1,
                       const void *key2)
 {
     DICT_NOTUSED(privdata);
-    return memcmp(key1, key2, DISQUE_CLUSTER_NAMELEN) == 0;
+    return memcmp(key1, key2, CLUSTER_NAMELEN) == 0;
 }
 
 dictType clusterNodesDictType = {
@@ -750,7 +750,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
         if (prepareForShutdown(SHUTDOWN_NOFLAGS) == C_OK) exit(0);
-        serverLog(DISQUE_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
+        serverLog(LL_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
         server.shutdown_asap = 0;
     }
 
@@ -788,7 +788,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             if (pid == server.aof_child_pid) {
                 backgroundRewriteDoneHandler(exitcode,bysignal);
             } else {
-                serverLog(DISQUE_WARNING,
+                serverLog(LL_WARNING,
                     "Warning, detected child with unmatched pid: %ld",
                     (long)pid);
             }
@@ -972,7 +972,7 @@ void initServerConfig(void) {
     server.syslog_ident = zstrdup(CONFIG_DEFAULT_SYSLOG_IDENT);
     server.syslog_facility = LOG_LOCAL0;
     server.daemonize = CONFIG_DEFAULT_DAEMONIZE;
-    server.aof_state = DISQUE_AOF_OFF;
+    server.aof_state = AOF_OFF;
     server.aof_fsync = CONFIG_DEFAULT_AOF_FSYNC;
     server.aof_no_fsync_on_rewrite = CONFIG_DEFAULT_AOF_NO_FSYNC_ON_REWRITE;
     server.aof_rewrite_perc = AOF_REWRITE_PERC;
@@ -1000,7 +1000,7 @@ void initServerConfig(void) {
     server.maxmemory_policy = CONFIG_DEFAULT_MAXMEMORY_POLICY;
     server.maxmemory_samples = CONFIG_DEFAULT_MAXMEMORY_SAMPLES;
     server.shutdown_asap = 0;
-    server.cluster_node_timeout = DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT;
+    server.cluster_node_timeout = CLUSTER_DEFAULT_NODE_TIMEOUT;
     server.cluster_configfile = zstrdup(CONFIG_DEFAULT_CLUSTER_CONFIG_FILE);
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
     server.loading_process_events_interval_bytes = (1024*1024*2);
@@ -1055,7 +1055,7 @@ void adjustOpenFilesLimit(void) {
     struct rlimit limit;
 
     if (getrlimit(RLIMIT_NOFILE,&limit) == -1) {
-        serverLog(DISQUE_WARNING,"Unable to obtain the current NOFILE limit (%s), assuming 1024 and setting the max clients configuration accordingly.",
+        serverLog(LL_WARNING,"Unable to obtain the current NOFILE limit (%s), assuming 1024 and setting the max clients configuration accordingly.",
             strerror(errno));
         server.maxclients = 1024-CONFIG_MIN_RESERVED_FDS;
     } else {
@@ -1092,7 +1092,7 @@ void adjustOpenFilesLimit(void) {
                 int old_maxclients = server.maxclients;
                 server.maxclients = f-CONFIG_MIN_RESERVED_FDS;
                 if (server.maxclients < 1) {
-                    serverLog(DISQUE_WARNING,"Your current 'ulimit -n' "
+                    serverLog(LL_WARNING,"Your current 'ulimit -n' "
                         "of %llu is not enough for Disque to start. "
                         "Please increase your open file limit to at least "
                         "%llu. Exiting.",
@@ -1100,14 +1100,14 @@ void adjustOpenFilesLimit(void) {
                         (unsigned long long) maxfiles);
                     exit(1);
                 }
-                serverLog(DISQUE_WARNING,"You requested maxclients of %d "
+                serverLog(LL_WARNING,"You requested maxclients of %d "
                     "requiring at least %llu max file descriptors.",
                     old_maxclients,
                     (unsigned long long) maxfiles);
-                serverLog(DISQUE_WARNING,"Disque can't set maximum open files "
+                serverLog(LL_WARNING,"Disque can't set maximum open files "
                     "to %llu because of OS error: %s.",
                     (unsigned long long) maxfiles, strerror(setrlimit_error));
-                serverLog(DISQUE_WARNING,"Current maximum open files is %llu. "
+                serverLog(LL_WARNING,"Current maximum open files is %llu. "
                     "maxclients has been reduced to %d to compensate for "
                     "low ulimit. "
                     "If you need higher maxclients increase 'ulimit -n'.",
@@ -1132,7 +1132,7 @@ void checkTcpBacklogSettings(void) {
     if (fgets(buf,sizeof(buf),fp) != NULL) {
         int somaxconn = atoi(buf);
         if (somaxconn > 0 && somaxconn < server.tcp_backlog) {
-            serverLog(DISQUE_WARNING,"WARNING: The TCP backlog setting of %d cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of %d.", server.tcp_backlog, somaxconn);
+            serverLog(LL_WARNING,"WARNING: The TCP backlog setting of %d cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of %d.", server.tcp_backlog, somaxconn);
         }
     }
     fclose(fp);
@@ -1193,7 +1193,7 @@ int listenToPort(int port, int *fds, int *count) {
                 server.tcp_backlog);
         }
         if (fds[*count] == ANET_ERR) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Creating Server TCP listening socket %s:%d: %s",
                 server.bindaddr[j] ? server.bindaddr[j] : "*",
                 port, server.neterr);
@@ -1266,7 +1266,7 @@ void initServer(void) {
         server.sofd = anetUnixServer(server.neterr,server.unixsocket,
             server.unixsocketperm, server.tcp_backlog);
         if (server.sofd == ANET_ERR) {
-            serverLog(DISQUE_WARNING, "Opening socket: %s", server.neterr);
+            serverLog(LL_WARNING, "Opening socket: %s", server.neterr);
             exit(1);
         }
         anetNonBlock(NULL,server.sofd);
@@ -1274,7 +1274,7 @@ void initServer(void) {
 
     /* Abort if there are no listening sockets at all. */
     if (server.ipfd_count == 0 && server.sofd < 0) {
-        serverLog(DISQUE_WARNING, "Configured to not listen anywhere, exiting.");
+        serverLog(LL_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
 
@@ -1320,11 +1320,11 @@ void initServer(void) {
         acceptUnixHandler,NULL) == AE_ERR) serverPanic("Unrecoverable error creating server.sofd file event.");
 
     /* Open the AOF file if needed. */
-    if (server.aof_state == DISQUE_AOF_ON) {
+    if (server.aof_state == AOF_ON) {
         server.aof_fd = open(server.aof_filename,
                                O_WRONLY|O_APPEND|O_CREAT,0644);
         if (server.aof_fd == -1) {
-            serverLog(DISQUE_WARNING, "Can't open the append-only file: %s",
+            serverLog(LL_WARNING, "Can't open the append-only file: %s",
                 strerror(errno));
             exit(1);
         }
@@ -1335,7 +1335,7 @@ void initServer(void) {
      * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
      * useless crashes of the Disque instance for out of memory. */
     if (server.arch_bits == 32 && server.maxmemory == 0) {
-        serverLog(DISQUE_WARNING,"Warning: 32 bit instance detected but no memory limit set. Setting 3 GB maxmemory limit with 'noeviction' policy now.");
+        serverLog(LL_WARNING,"Warning: 32 bit instance detected but no memory limit set. Setting 3 GB maxmemory limit with 'noeviction' policy now.");
         server.maxmemory = 3072LL*(1024*1024); /* 3 GB */
         server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
@@ -1589,21 +1589,21 @@ void closeListeningSockets(int unlink_unix_socket) {
 int prepareForShutdown(int flags) {
     int rewrite = flags & SHUTDOWN_REWRITE_AOF;
 
-    serverLog(DISQUE_WARNING,"User requested shutdown...");
+    serverLog(LL_WARNING,"User requested shutdown...");
     /* Kill the saving child if there is a background saving in progress.
        We want to avoid race conditions, for instance our saving child may
        overwrite the synchronous saving did by SHUTDOWN. */
-    if (server.aof_state != DISQUE_AOF_OFF) {
+    if (server.aof_state != AOF_OFF) {
         /* Kill the AOF saving child as the AOF we already have may be longer
          * but contains the full dataset anyway. */
         if (server.aof_child_pid != -1) {
             /* If we have AOF enabled but haven't written the AOF yet, don't
              * shutdown or else the dataset will be lost. */
-            if (server.aof_state == DISQUE_AOF_WAIT_REWRITE) {
-                serverLog(DISQUE_WARNING, "Writing initial AOF, can't exit.");
+            if (server.aof_state == AOF_WAIT_REWRITE) {
+                serverLog(LL_WARNING, "Writing initial AOF, can't exit.");
                 return C_ERR;
             }
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "There is a child rewriting the AOF. Killing it!");
             kill(server.aof_child_pid,SIGUSR1);
         }
@@ -1625,7 +1625,7 @@ int prepareForShutdown(int flags) {
 
     /* Close the listening sockets. Apparently this allows faster restarts. */
     closeListeningSockets(1);
-    serverLog(DISQUE_WARNING,"Disque is now ready to exit, bye bye...");
+    serverLog(LL_WARNING,"Disque is now ready to exit, bye bye...");
     return C_OK;
 }
 
@@ -1986,7 +1986,7 @@ sds genDisqueInfoString(char *section) {
             "aof_last_bgrewrite_status:%s\r\n"
             "aof_last_write_status:%s\r\n",
             server.loading,
-            server.aof_state != DISQUE_AOF_OFF,
+            server.aof_state != AOF_OFF,
             aofGetStateString(),
             server.aof_child_pid != -1,
             server.aof_rewrite_scheduled,
@@ -1996,7 +1996,7 @@ sds genDisqueInfoString(char *section) {
             (server.aof_lastbgrewrite_status == C_OK) ? "ok" : "err",
             (server.aof_last_write_status == C_OK) ? "ok" : "err");
 
-        if (server.aof_state != DISQUE_AOF_OFF) {
+        if (server.aof_state != AOF_OFF) {
             info = sdscatprintf(info,
                 "aof_current_size:%lld\r\n"
                 "aof_base_size:%lld\r\n"
@@ -2010,7 +2010,7 @@ sds genDisqueInfoString(char *section) {
                 server.aof_rewrite_scheduled,
                 sdslen(server.aof_buf),
                 aofRewriteBufferSize(),
-                bioPendingJobsOfType(DISQUE_BIO_AOF_FSYNC),
+                bioPendingJobsOfType(BIO_AOF_FSYNC),
                 server.aof_delayed_fsync);
         }
 
@@ -2244,7 +2244,7 @@ int linuxOvercommitMemoryValue(void) {
 
 void linuxOvercommitMemoryWarning(void) {
     if (linuxOvercommitMemoryValue() == 0) {
-        serverLog(DISQUE_WARNING,"WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
+        serverLog(LL_WARNING,"WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
     }
 }
 #endif /* __linux__ */
@@ -2348,13 +2348,13 @@ static void sigShutdownHandler(int sig) {
      * the user really wanting to quit ASAP without waiting to persist
      * on disk. */
     if (server.shutdown_asap && sig == SIGINT) {
-        serverLogFromHandler(DISQUE_WARNING, "You insist... exiting now.");
+        serverLogFromHandler(LL_WARNING, "You insist... exiting now.");
         exit(1); /* Exit with an error since this was not a clean shutdown. */
     } else if (server.loading) {
         exit(0);
     }
 
-    serverLogFromHandler(DISQUE_WARNING, msg);
+    serverLogFromHandler(LL_WARNING, msg);
     server.shutdown_asap = 1;
 }
 
@@ -2386,7 +2386,7 @@ void memtest(size_t megabytes, int passes);
 /* Function called at startup to load RDB or AOF file in memory. */
 void loadDataFromDisk(void) {
     long long start = ustime();
-    if (server.aof_state == DISQUE_AOF_ON || server.aof_enqueue_jobs_once) {
+    if (server.aof_state == AOF_ON || server.aof_enqueue_jobs_once) {
         if (loadAppendOnlyFile(server.aof_filename) == C_OK)
             serverLog(LL_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
 
@@ -2395,7 +2395,7 @@ void loadDataFromDisk(void) {
         if (server.aof_enqueue_jobs_once && server.configfile) {
             server.aof_enqueue_jobs_once = 0;
             if (rewriteConfig(server.configfile) == -1) {
-                serverLog(DISQUE_WARNING,
+                serverLog(LL_WARNING,
                     "CONFIG REWRITE failed "
                     "(executed to turn off aof-enqueue-jobs-once): %s",
                     strerror(errno));
@@ -2405,7 +2405,7 @@ void loadDataFromDisk(void) {
 }
 
 void serverOutOfMemoryHandler(size_t allocation_size) {
-    serverLog(DISQUE_WARNING,"Out Of Memory allocating %zu bytes!",
+    serverLog(LL_WARNING,"Out Of Memory allocating %zu bytes!",
         allocation_size);
     serverPanic("Disque aborting for OUT OF MEMORY");
 }
@@ -2481,7 +2481,7 @@ int main(int argc, char **argv) {
         loadServerConfig(configfile,options);
         sdsfree(options);
     } else {
-        serverLog(DISQUE_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
+        serverLog(LL_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
     }
     if (server.daemonize) daemonize();
     initServer();
@@ -2490,7 +2490,7 @@ int main(int argc, char **argv) {
     disqueAsciiArt();
 
     /* Things not needed when running in Sentinel mode. */
-    serverLog(DISQUE_WARNING,"Server started, Disque version " DISQUE_VERSION);
+    serverLog(LL_WARNING,"Server started, Disque version " DISQUE_VERSION);
 #ifdef __linux__
     linuxOvercommitMemoryWarning();
 #endif
@@ -2503,7 +2503,7 @@ int main(int argc, char **argv) {
 
     /* Warning the user about suspicious maxmemory setting. */
     if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {
-        serverLog(DISQUE_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
+        serverLog(LL_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
     aeSetBeforeSleepProc(server.el,beforeSleep);

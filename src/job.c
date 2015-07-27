@@ -438,7 +438,7 @@ void processJob(job *j) {
     }
 
     if (old_awakeme == j->awakeme)
-        serverLog(DISQUE_WARNING,"Warning: not processed job %.48s", j->id);
+        serverLog(LL_WARNING,"Warning: not processed job %.48s", j->id);
 }
 
 int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
@@ -579,7 +579,7 @@ sds serializeJob(sds jobs, job *j, int sertype) {
     len += 4;                   /* Body length field. */
     len += j->body ? sdslen(j->body) : 0; /* Body bytes. */
     len += 4;                   /* Node IDs (that may have a copy) count. */
-    len += dictSize(j->nodes_delivered) * DISQUE_CLUSTER_NAMELEN;
+    len += dictSize(j->nodes_delivered) * CLUSTER_NAMELEN;
 
     /* Make room at the end of the SDS buffer to hold our message. */
     jobs = sdsMakeRoomFor(jobs,len);
@@ -621,7 +621,7 @@ sds serializeJob(sds jobs, job *j, int sertype) {
     p = serializeSdsString(p,j->body);
 
     /* Node IDs that may have a copy of the message: 4 bytes count in little
-     * endian plus (count * DISQUE_CLUSTER_NAMELEN) bytes. */
+     * endian plus (count * CLUSTER_NAMELEN) bytes. */
     count = intrev32ifbe(dictSize(j->nodes_delivered));
     memcpy(p,&count,sizeof(count));
     p += sizeof(count);
@@ -630,8 +630,8 @@ sds serializeJob(sds jobs, job *j, int sertype) {
     dictEntry *de;
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
-        memcpy(p,node->name,DISQUE_CLUSTER_NAMELEN);
-        p += DISQUE_CLUSTER_NAMELEN;
+        memcpy(p,node->name,CLUSTER_NAMELEN);
+        p += CLUSTER_NAMELEN;
     }
     dictReleaseIterator(di);
 
@@ -741,13 +741,13 @@ job *deserializeJob(unsigned char *p, size_t len, unsigned char **next, int sert
     len -= sizeof(aux);
     aux = intrev32ifbe(aux);
 
-    if (len < aux*DISQUE_CLUSTER_NAMELEN) goto fmterr;
+    if (len < aux*CLUSTER_NAMELEN) goto fmterr;
     j->nodes_delivered = dictCreate(&clusterNodesDictType,NULL);
     while(aux--) {
         clusterNode *node = clusterLookupNode((char*)p);
         if (node) dictAdd(j->nodes_delivered,node->name,node);
-        p += DISQUE_CLUSTER_NAMELEN;
-        len -= DISQUE_CLUSTER_NAMELEN;
+        p += CLUSTER_NAMELEN;
+        len -= CLUSTER_NAMELEN;
     }
 
     if ((uint32_t)(p-start)-sizeof(joblen) != joblen) goto fmterr;
@@ -824,7 +824,7 @@ int validateJobIDs(client *c, robj **ids, int count) {
 /* Emit a LOADJOB command into the AOF. which is used explicitly to load
  * serialized jobs form disk: LOADJOB <serialize-job-string>. */
 void AOFLoadJob(job *job) {
-    if (server.aof_state == DISQUE_AOF_OFF) return;
+    if (server.aof_state == AOF_OFF) return;
 
     sds serialized = serializeJob(sdsempty(),job,SER_STORAGE);
     robj *serobj = createObject(OBJ_STRING,serialized);
@@ -843,7 +843,7 @@ void AOFLoadJob(job *job) {
  *    AOF so there is no need to send a DELJOB, while already acknowledged
  *    jobs are handled by point "1". */
 void AOFDelJob(job *job) {
-    if (server.aof_state == DISQUE_AOF_OFF) return;
+    if (server.aof_state == AOF_OFF) return;
 
     robj *jobid = createStringObject(job->id,JOB_ID_LEN);
     robj *argv[2] = {shared.deljob, jobid};
@@ -861,7 +861,7 @@ void AOFDelJob(job *job) {
  * However we keep the API separated, so it will be simple if we change our
  * mind or we want to have a feature to persist ACKs. */
 void AOFAckJob(job *job) {
-    if (server.aof_state == DISQUE_AOF_OFF) return;
+    if (server.aof_state == AOF_OFF) return;
     AOFDelJob(job);
 }
 
@@ -877,7 +877,7 @@ void loadjobCommand(client *c) {
 
     /* We expect to be able to read back what we serialized. */
     if (job == NULL) {
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "Unrecoverable error loading AOF: corrupted LOADJOB data.");
         exit(1);
     }
@@ -1187,7 +1187,7 @@ void addjobCommand(client *c) {
     if (!discard_local_copy && registerJob(job) == C_ERR) {
         /* A job ID with the same name? Practically impossible but
          * let's handle it to trap possible bugs in a cleaner way. */
-        serverLog(DISQUE_WARNING,"ID already existing in ADDJOB command!");
+        serverLog(LL_WARNING,"ID already existing in ADDJOB command!");
         freeJob(job);
         addReplyError(c,"Internal error creating the job, check server logs");
         return;
@@ -1290,7 +1290,7 @@ void addReplyJobInfo(client *c, job *j) {
     if (j->nodes_delivered) {
         addReplyMultiBulkLen(c,dictSize(j->nodes_delivered));
         dictForeach(j->nodes_delivered,de)
-            addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
+            addReplyBulkCBuffer(c,dictGetKey(de),CLUSTER_NAMELEN);
         dictEndForeach
     } else {
         addReplyMultiBulkLen(c,0);
@@ -1300,7 +1300,7 @@ void addReplyJobInfo(client *c, job *j) {
     if (j->nodes_confirmed) {
         addReplyMultiBulkLen(c,dictSize(j->nodes_confirmed));
         dictForeach(j->nodes_confirmed,de)
-            addReplyBulkCBuffer(c,dictGetKey(de),DISQUE_CLUSTER_NAMELEN);
+            addReplyBulkCBuffer(c,dictGetKey(de),CLUSTER_NAMELEN);
         dictEndForeach
     } else {
         addReplyMultiBulkLen(c,0);

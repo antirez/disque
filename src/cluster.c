@@ -91,7 +91,7 @@ int clusterLoadConfig(char *filename) {
         if (errno == ENOENT) {
             return C_ERR;
         } else {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Loading the cluster node config from %s: %s",
                 filename, strerror(errno));
             exit(1);
@@ -130,7 +130,7 @@ int clusterLoadConfig(char *filename) {
                 if (strcasecmp(argv[j],"someVarNameHere") == 0) {
                     /* TODO: currently not used. */
                 } else {
-                    serverLog(DISQUE_WARNING,
+                    serverLog(LL_WARNING,
                         "Skipping unknown cluster config variable '%s'",
                         argv[j]);
                 }
@@ -143,7 +143,7 @@ int clusterLoadConfig(char *filename) {
         if (argc != 6) goto fmterr;
 
         /* Create this node if it does not exist */
-        if (strlen(argv[0]) != DISQUE_CLUSTER_NAMELEN) goto fmterr;
+        if (strlen(argv[0]) != CLUSTER_NAMELEN) goto fmterr;
         n = clusterLookupNode(argv[0]);
         if (!n) {
             n = createClusterNode(argv[0],0);
@@ -163,16 +163,16 @@ int clusterLoadConfig(char *filename) {
             if (!strcasecmp(s,"myself")) {
                 serverAssert(server.cluster->myself == NULL);
                 myself = server.cluster->myself = n;
-                n->flags |= DISQUE_NODE_MYSELF;
+                n->flags |= CLUSTER_NODE_MYSELF;
             } else if (!strcasecmp(s,"fail?")) {
-                n->flags |= DISQUE_NODE_PFAIL;
+                n->flags |= CLUSTER_NODE_PFAIL;
             } else if (!strcasecmp(s,"fail")) {
-                n->flags |= DISQUE_NODE_FAIL;
+                n->flags |= CLUSTER_NODE_FAIL;
                 n->fail_time = mstime();
             } else if (!strcasecmp(s,"handshake")) {
-                n->flags |= DISQUE_NODE_HANDSHAKE;
+                n->flags |= CLUSTER_NODE_HANDSHAKE;
             } else if (!strcasecmp(s,"noaddr")) {
-                n->flags |= DISQUE_NODE_NOADDR;
+                n->flags |= CLUSTER_NODE_NOADDR;
             } else if (!strcasecmp(s,"noflags")) {
                 /* nothing to do */
             } else {
@@ -197,7 +197,7 @@ int clusterLoadConfig(char *filename) {
     return C_OK;
 
 fmterr:
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
         "Unrecoverable error: corrupted cluster config file.");
     zfree(line);
     if (fp) fclose(fp);
@@ -226,7 +226,7 @@ int clusterSaveConfig(int do_fsync) {
 
     /* Get the nodes description and concatenate our "vars" directive to
      * save other persistent state. */
-    ci = clusterGenNodesDescription(DISQUE_NODE_HANDSHAKE);
+    ci = clusterGenNodesDescription(CLUSTER_NODE_HANDSHAKE);
 #if 0 /* TODO: check if we are going to use persistent vars. */
     ci = sdscatprintf(ci,"vars currentEpoch %llu lastVoteEpoch %llu\n",
         (unsigned long long) server.cluster->currentEpoch,
@@ -267,7 +267,7 @@ err:
 
 void clusterSaveConfigOrDie(int do_fsync) {
     if (clusterSaveConfig(do_fsync) == -1) {
-        serverLog(DISQUE_WARNING,"Fatal: can't update cluster config file.");
+        serverLog(LL_WARNING,"Fatal: can't update cluster config file.");
         exit(1);
     }
 }
@@ -292,7 +292,7 @@ int clusterLockConfig(char *filename) {
      * processes. */
     int fd = open(filename,O_WRONLY|O_CREAT,0644);
     if (fd == -1) {
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "Can't open %s in order to acquire a lock: %s",
             filename, strerror(errno));
         return C_ERR;
@@ -300,13 +300,13 @@ int clusterLockConfig(char *filename) {
 
     if (flock(fd,LOCK_EX|LOCK_NB) == -1) {
         if (errno == EWOULDBLOCK) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                  "Sorry, the cluster configuration file %s is already used "
                  "by a different Disque node. Please make sure that "
                  "different nodes use different cluster configuration "
                  "files.", filename);
         } else {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Impossible to lock %s: %s", filename, strerror(errno));
         }
         close(fd);
@@ -324,7 +324,7 @@ void clusterInit(void) {
 
     server.cluster = zmalloc(sizeof(clusterState));
     server.cluster->myself = NULL;
-    server.cluster->state = DISQUE_CLUSTER_OK;
+    server.cluster->state = CLUSTER_OK;
     server.cluster->size = 1;
     server.cluster->todo_before_sleep = 0;
     server.cluster->nodes = dictCreate(&clusterNodesDictType,NULL);
@@ -346,7 +346,7 @@ void clusterInit(void) {
         /* No configuration found. We will just use the random name provided
          * by the createClusterNode() function. */
         myself = server.cluster->myself =
-            createClusterNode(NULL,DISQUE_NODE_MYSELF);
+            createClusterNode(NULL,CLUSTER_NODE_MYSELF);
         serverLog(LL_NOTICE,"No cluster configuration found, I'm %.40s",
             myself->name);
         clusterAddNode(myself);
@@ -360,8 +360,8 @@ void clusterInit(void) {
     /* Port sanity check II
      * The other handshake port check is triggered too late to stop
      * us from trying to use a too-high cluster port number. */
-    if (server.port > (65535-DISQUE_CLUSTER_PORT_INCR)) {
-        serverLog(DISQUE_WARNING, "Disque port number too high. "
+    if (server.port > (65535-CLUSTER_PORT_INCR)) {
+        serverLog(LL_WARNING, "Disque port number too high. "
                    "Cluster communication port is 10,000 port "
                    "numbers higher than your Disque node port. "
                    "Your Disque node port number must be "
@@ -369,7 +369,7 @@ void clusterInit(void) {
         exit(1);
     }
 
-    if (listenToPort(server.port+DISQUE_CLUSTER_PORT_INCR,
+    if (listenToPort(server.port+CLUSTER_PORT_INCR,
         server.cfd,&server.cfd_count) == C_ERR)
     {
         exit(1);
@@ -422,10 +422,10 @@ void clusterReset(int hard) {
 
         /* To change the Node ID we need to remove the old name from the
          * nodes table, change the ID, and re-add back with new name. */
-        oldname = sdsnewlen(myself->name, DISQUE_CLUSTER_NAMELEN);
+        oldname = sdsnewlen(myself->name, CLUSTER_NAMELEN);
         dictDelete(server.cluster->nodes,oldname);
         sdsfree(oldname);
-        getRandomHexChars(myself->name, DISQUE_CLUSTER_NAMELEN);
+        getRandomHexChars(myself->name, CLUSTER_NAMELEN);
         clusterAddNode(myself);
     }
 
@@ -520,9 +520,9 @@ clusterNode *createClusterNode(char *nodename, int flags) {
     clusterNode *node = zmalloc(sizeof(*node));
 
     if (nodename)
-        memcpy(node->name, nodename, DISQUE_CLUSTER_NAMELEN);
+        memcpy(node->name, nodename, CLUSTER_NAMELEN);
     else
-        getRandomHexChars(node->name, DISQUE_CLUSTER_NAMELEN);
+        getRandomHexChars(node->name, CLUSTER_NAMELEN);
     node->ctime = mstime();
     node->flags = flags;
     node->ping_sent = node->pong_received = 0;
@@ -581,7 +581,7 @@ void clusterNodeCleanupFailureReports(clusterNode *node) {
     listIter li;
     clusterNodeFailReport *fr;
     mstime_t maxtime = server.cluster_node_timeout *
-                     DISQUE_CLUSTER_FAIL_REPORT_VALIDITY_MULT;
+                     CLUSTER_FAIL_REPORT_VALIDITY_MULT;
     mstime_t now = mstime();
 
     listRewind(l,&li);
@@ -650,7 +650,7 @@ void freeClusterNode(clusterNode *n) {
         zfree(n);
     } else {
         dictAdd(server.cluster->deleted_nodes,n->name,n);
-        n->flags |= DISQUE_NODE_DELETED;
+        n->flags |= CLUSTER_NODE_DELETED;
     }
 }
 
@@ -697,14 +697,14 @@ clusterNode *clusterLookupNode(char *name) {
  * this function. */
 void clusterRenameNode(clusterNode *node, char *newname) {
     int retval;
-    sds s = sdsnewlen(node->name, DISQUE_CLUSTER_NAMELEN);
+    sds s = sdsnewlen(node->name, CLUSTER_NAMELEN);
 
     serverLog(LL_DEBUG,"Renaming node %.40s into %.40s",
         node->name, newname);
     retval = dictDelete(server.cluster->nodes, s);
     sdsfree(s);
     serverAssert(retval == DICT_OK);
-    memcpy(node->name, newname, DISQUE_CLUSTER_NAMELEN);
+    memcpy(node->name, newname, CLUSTER_NAMELEN);
     clusterAddNode(node);
 }
 
@@ -713,14 +713,14 @@ void clusterRenameNode(clusterNode *node, char *newname) {
  *
  * The nodes blacklist is just a way to ensure that a given node with a given
  * Node ID is not readded before some time elapsed (this time is specified
- * in seconds in DISQUE_CLUSTER_BLACKLIST_TTL).
+ * in seconds in CLUSTER_BLACKLIST_TTL).
  *
  * This is useful when we want to remove a node from the cluster completely:
  * when CLUSTER FORGET is called, it also puts the node into the blacklist so
  * that even if we receive gossip messages from other nodes that still remember
  * about the node we want to remove, we don't re-add it before some time.
  *
- * Currently the DISQUE_CLUSTER_BLACKLIST_TTL is set to 1 minute, this means
+ * Currently the CLUSTER_BLACKLIST_TTL is set to 1 minute, this means
  * that disque-trib has 60 seconds to send CLUSTER FORGET messages to nodes
  * in the cluster without dealing with the problem of other nodes re-adding
  * back the node to nodes we already sent the FORGET command to.
@@ -730,7 +730,7 @@ void clusterRenameNode(clusterNode *node, char *newname) {
  * value.
  * -------------------------------------------------------------------------- */
 
-#define DISQUE_CLUSTER_BLACKLIST_TTL 60      /* 1 minute. */
+#define CLUSTER_BLACKLIST_TTL 60      /* 1 minute. */
 
 
 /* Before of the addNode() or Exists() operations we always remove expired
@@ -756,7 +756,7 @@ void clusterBlacklistCleanup(void) {
 /* Cleanup the blacklist and add a new node ID to the black list. */
 void clusterBlacklistAddNode(clusterNode *node) {
     dictEntry *de;
-    sds id = sdsnewlen(node->name,DISQUE_CLUSTER_NAMELEN);
+    sds id = sdsnewlen(node->name,CLUSTER_NAMELEN);
 
     clusterBlacklistCleanup();
     if (dictAdd(server.cluster->nodes_black_list,id,NULL) == DICT_OK) {
@@ -765,7 +765,7 @@ void clusterBlacklistAddNode(clusterNode *node) {
         id = sdsdup(id);
     }
     de = dictFind(server.cluster->nodes_black_list,id);
-    dictSetUnsignedIntegerVal(de,time(NULL)+DISQUE_CLUSTER_BLACKLIST_TTL);
+    dictSetUnsignedIntegerVal(de,time(NULL)+CLUSTER_BLACKLIST_TTL);
     sdsfree(id);
 }
 
@@ -773,7 +773,7 @@ void clusterBlacklistAddNode(clusterNode *node) {
  * You don't need to pass an sds string here, any pointer to 40 bytes
  * will work. */
 int clusterBlacklistExists(char *nodeid) {
-    sds id = sdsnewlen(nodeid,DISQUE_CLUSTER_NAMELEN);
+    sds id = sdsnewlen(nodeid,CLUSTER_NAMELEN);
     int retval;
 
     clusterBlacklistCleanup();
@@ -823,8 +823,8 @@ void markNodeAsFailingIfNeeded(clusterNode *node) {
         "Marking node %.40s as failing (quorum reached).", node->name);
 
     /* Mark the node as failing. */
-    node->flags &= ~DISQUE_NODE_PFAIL;
-    node->flags |= DISQUE_NODE_FAIL;
+    node->flags &= ~CLUSTER_NODE_PFAIL;
+    node->flags |= CLUSTER_NODE_FAIL;
     node->fail_time = mstime();
 
     /* Broadcast the failing node name to everybody, forcing all the other
@@ -843,7 +843,7 @@ void clearNodeFailureIfNeeded(clusterNode *node) {
     serverLog(LL_VERBOSE,
         "Clear FAIL state for node %.40s: it is reachable again.",
             node->name);
-    node->flags &= ~DISQUE_NODE_FAIL;
+    node->flags &= ~CLUSTER_NODE_FAIL;
     clusterDoBeforeSleep(CLUSTER_TODO_UPDATE_STATE|CLUSTER_TODO_SAVE_CONFIG);
 }
 
@@ -892,7 +892,7 @@ int clusterStartHandshake(char *ip, int port) {
     }
 
     /* Port sanity check */
-    if (port <= 0 || port > (65535-DISQUE_CLUSTER_PORT_INCR)) {
+    if (port <= 0 || port > (65535-CLUSTER_PORT_INCR)) {
         errno = EINVAL;
         return 0;
     }
@@ -917,7 +917,7 @@ int clusterStartHandshake(char *ip, int port) {
     /* Add the node with a random address (NULL as first argument to
      * createClusterNode()). Everything will be fixed during the
      * handshake. */
-    n = createClusterNode(NULL,DISQUE_NODE_HANDSHAKE|DISQUE_NODE_MEET);
+    n = createClusterNode(NULL,CLUSTER_NODE_HANDSHAKE|CLUSTER_NODE_MEET);
     memcpy(n->ip,norm_ip,sizeof(n->ip));
     n->port = port;
     clusterAddNode(n);
@@ -951,7 +951,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
         if (node) {
             /* We already know this node. */
             if (sender && node != myself) {
-                if (flags & (DISQUE_NODE_FAIL|DISQUE_NODE_PFAIL)) {
+                if (flags & (CLUSTER_NODE_FAIL|CLUSTER_NODE_PFAIL)) {
                     if (clusterNodeAddFailureReport(node,sender)) {
                         serverLog(LL_VERBOSE,
                             "Node %.40s reported node %.40s as not reachable.",
@@ -972,7 +972,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
              * handshake with the (possibly) new address: this will result
              * into a node address update if the handshake will be
              * successful. */
-            if (node->flags & (DISQUE_NODE_FAIL|DISQUE_NODE_PFAIL) &&
+            if (node->flags & (CLUSTER_NODE_FAIL|CLUSTER_NODE_PFAIL) &&
                 (strcasecmp(node->ip,g->ip) || node->port != ntohs(g->port)))
             {
                 clusterStartHandshake(g->ip,ntohs(g->port));
@@ -985,7 +985,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
              * is a well known node in our cluster, otherwise we risk
              * joining another cluster. */
             if (sender &&
-                !(flags & DISQUE_NODE_NOADDR) &&
+                !(flags & CLUSTER_NODE_NOADDR) &&
                 !clusterBlacklistExists(g->nodename))
             {
                 clusterStartHandshake(g->ip,ntohs(g->port));
@@ -1030,8 +1030,8 @@ int nodeUpdateAddressIfNeeded(clusterNode *node, clusterLink *link, int port) {
     memcpy(node->ip,ip,sizeof(ip));
     node->port = port;
     if (node->link) freeClusterLink(node->link);
-    node->flags &= ~DISQUE_NODE_NOADDR;
-    serverLog(DISQUE_WARNING,"Address updated for node %.40s, now %s:%d",
+    node->flags &= ~CLUSTER_NODE_NOADDR;
+    serverLog(LL_WARNING,"Address updated for node %.40s, now %s:%d",
         node->name, node->ip, node->port);
 
     return 1;
@@ -1129,7 +1129,7 @@ int clusterProcessPacket(clusterLink *link) {
                 strcmp(ip,myself->ip))
             {
                 memcpy(myself->ip,ip,NET_IP_STR_LEN);
-                serverLog(DISQUE_WARNING,"IP address for this node updated to %s",
+                serverLog(LL_WARNING,"IP address for this node updated to %s",
                     myself->ip);
                 clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
             }
@@ -1142,7 +1142,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender && type == CLUSTERMSG_TYPE_MEET) {
             clusterNode *node;
 
-            node = createClusterNode(NULL,DISQUE_NODE_HANDSHAKE);
+            node = createClusterNode(NULL,CLUSTER_NODE_HANDSHAKE);
             nodeIp2String(node->ip,link);
             node->port = ntohs(hdr->port);
             clusterAddNode(node);
@@ -1190,17 +1190,17 @@ int clusterProcessPacket(clusterLink *link) {
                 clusterRenameNode(link->node, hdr->sender);
                 serverLog(LL_DEBUG,"Handshake with node %.40s completed.",
                     link->node->name);
-                link->node->flags &= ~DISQUE_NODE_HANDSHAKE;
+                link->node->flags &= ~CLUSTER_NODE_HANDSHAKE;
                 clusterDoBeforeSleep(CLUSTER_TODO_UPDATE_STATE|
                                      CLUSTER_TODO_SAVE_CONFIG);
             } else if (memcmp(link->node->name,hdr->sender,
-                        DISQUE_CLUSTER_NAMELEN) != 0)
+                        CLUSTER_NAMELEN) != 0)
             {
                 /* If the reply has a non matching node ID we
                  * disconnect this node and set it as not having an associated
                  * address. */
                 serverLog(LL_DEBUG,"PONG contains mismatching sender ID");
-                link->node->flags |= DISQUE_NODE_NOADDR;
+                link->node->flags |= CLUSTER_NODE_NOADDR;
                 link->node->ip[0] = '\0';
                 link->node->port = 0;
                 freeClusterLink(link);
@@ -1230,7 +1230,7 @@ int clusterProcessPacket(clusterLink *link) {
              * The FAIL condition is also reversible under specific
              * conditions detected by clearNodeFailureIfNeeded(). */
             if (nodeTimedOut(link->node)) {
-                link->node->flags &= ~DISQUE_NODE_PFAIL;
+                link->node->flags &= ~CLUSTER_NODE_PFAIL;
                 clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
                                      CLUSTER_TODO_UPDATE_STATE);
             } else if (nodeFailed(link->node)) {
@@ -1246,14 +1246,14 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         failing = clusterLookupNode(hdr->data.fail.about.nodename);
         if (failing &&
-            !(failing->flags & (DISQUE_NODE_FAIL|DISQUE_NODE_MYSELF)))
+            !(failing->flags & (CLUSTER_NODE_FAIL|CLUSTER_NODE_MYSELF)))
         {
             serverLog(LL_VERBOSE,
                 "FAIL message received from %.40s about %.40s",
                 hdr->sender, hdr->data.fail.about.nodename);
-            failing->flags |= DISQUE_NODE_FAIL;
+            failing->flags |= CLUSTER_NODE_FAIL;
             failing->fail_time = mstime();
-            failing->flags &= ~DISQUE_NODE_PFAIL;
+            failing->flags &= ~CLUSTER_NODE_PFAIL;
             clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
                                  CLUSTER_TODO_UPDATE_STATE);
         }
@@ -1270,7 +1270,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL,SER_MESSAGE);
         if (j == NULL) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Received corrupted job description from node %.40s",
                 hdr->sender);
         } else {
@@ -1398,7 +1398,7 @@ int clusterProcessPacket(clusterLink *link) {
              * message. */
             if (j->state == JOB_STATE_QUEUED &&
                 (type == CLUSTERMSG_TYPE_WORKING ||
-                 memcmp(sender->name,myself->name,DISQUE_CLUSTER_NAMELEN) > 0))
+                 memcmp(sender->name,myself->name,CLUSTER_NAMELEN) > 0))
             {
                 dequeueJob(j);
             }
@@ -1449,7 +1449,7 @@ int clusterProcessPacket(clusterLink *link) {
         receiveNeedJobs(sender,qname,count);
         decrRefCount(qname);
     } else {
-        serverLog(DISQUE_WARNING,"Received unknown packet type: %d", type);
+        serverLog(LL_WARNING,"Received unknown packet type: %d", type);
     }
     return 1;
 }
@@ -1512,7 +1512,7 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                 if (memcmp(hdr->sig,"DbuZ",4) != 0 ||
                     ntohl(hdr->totlen) < CLUSTERMSG_MIN_LEN)
                 {
-                    serverLog(DISQUE_WARNING,
+                    serverLog(LL_WARNING,
                         "Bad message length or signature received "
                         "from Cluster bus.");
                     handleLinkIOError(link);
@@ -1584,7 +1584,7 @@ void clusterBroadcastMessage(dict *nodes, void *buf, size_t len) {
         clusterNode *node = dictGetKey(de);
 
         if (!node->link) continue;
-        if (node->flags & (DISQUE_NODE_MYSELF|DISQUE_NODE_HANDSHAKE))
+        if (node->flags & (CLUSTER_NODE_MYSELF|CLUSTER_NODE_HANDSHAKE))
             continue;
         clusterSendMessage(node->link,buf,len);
     }
@@ -1602,7 +1602,7 @@ void clusterBuildMessageHdr(clusterMsg *hdr, int type) {
     hdr->sig[2] = 'u';
     hdr->sig[3] = 'Z';
     hdr->type = htons(type);
-    memcpy(hdr->sender,myself->name,DISQUE_CLUSTER_NAMELEN);
+    memcpy(hdr->sender,myself->name,CLUSTER_NAMELEN);
     hdr->port = htons(server.port);
     hdr->flags = htons(myself->flags);
     hdr->state = server.cluster->state;
@@ -1702,7 +1702,7 @@ void clusterSendPing(clusterLink *link, int type) {
 
         /* Give a bias to FAIL/PFAIL nodes. */
         if (maxiterations > wanted*2 &&
-            !(this->flags & (DISQUE_NODE_PFAIL|DISQUE_NODE_FAIL)))
+            !(this->flags & (CLUSTER_NODE_PFAIL|CLUSTER_NODE_FAIL)))
             continue;
 
         /* In the gossip section don't include:
@@ -1710,7 +1710,7 @@ void clusterSendPing(clusterLink *link, int type) {
          * 3) Nodes with the NOADDR flag set.
          * 4) Disconnected nodes if they don't have configured slots.
          */
-        if (this->flags & (DISQUE_NODE_HANDSHAKE|DISQUE_NODE_NOADDR) ||
+        if (this->flags & (CLUSTER_NODE_HANDSHAKE|CLUSTER_NODE_NOADDR) ||
             this->link == NULL)
         {
             freshnodes--; /* Tecnically not correct, but saves CPU. */
@@ -1720,14 +1720,14 @@ void clusterSendPing(clusterLink *link, int type) {
         /* Check if we already added this node */
         for (j = 0; j < gossipcount; j++) {
             if (memcmp(hdr->data.ping.gossip[j].nodename,this->name,
-                    DISQUE_CLUSTER_NAMELEN) == 0) break;
+                    CLUSTER_NAMELEN) == 0) break;
         }
         if (j != gossipcount) continue;
 
         /* Add it */
         freshnodes--;
         gossip = &(hdr->data.ping.gossip[gossipcount]);
-        memcpy(gossip->nodename,this->name,DISQUE_CLUSTER_NAMELEN);
+        memcpy(gossip->nodename,this->name,CLUSTER_NAMELEN);
         gossip->ping_sent = htonl(this->ping_sent);
         gossip->pong_received = htonl(this->pong_received);
         memcpy(gossip->ip,this->ip,sizeof(this->ip));
@@ -1750,15 +1750,15 @@ void clusterSendPing(clusterLink *link, int type) {
 
 /* Send a FAIL message to all the nodes we are able to contact.
  * The FAIL message is sent when we detect that a node is failing
- * (DISQUE_NODE_PFAIL) and we also receive a gossip confirmation of this:
- * we switch the node state to DISQUE_NODE_FAIL and ask all the other
+ * (CLUSTER_NODE_PFAIL) and we also receive a gossip confirmation of this:
+ * we switch the node state to CLUSTER_NODE_FAIL and ask all the other
  * nodes to do the same ASAP. */
 void clusterSendFail(char *nodename) {
     unsigned char buf[sizeof(clusterMsg)];
     clusterMsg *hdr = (clusterMsg*) buf;
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_FAIL);
-    memcpy(hdr->data.fail.about.nodename,nodename,DISQUE_CLUSTER_NAMELEN);
+    memcpy(hdr->data.fail.about.nodename,nodename,CLUSTER_NAMELEN);
     clusterBroadcastMessage(server.cluster->nodes,buf,ntohl(hdr->totlen));
 }
 
@@ -2028,7 +2028,7 @@ void clusterCron(void) {
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
 
-        if (node->flags & (DISQUE_NODE_MYSELF|DISQUE_NODE_NOADDR)) continue;
+        if (node->flags & (CLUSTER_NODE_MYSELF|CLUSTER_NODE_NOADDR)) continue;
 
         /* A Node in HANDSHAKE state has a limited lifespan equal to the
          * configured node timeout. */
@@ -2043,7 +2043,7 @@ void clusterCron(void) {
             clusterLink *link;
 
             fd = anetTcpNonBlockBindConnect(server.neterr, node->ip,
-                node->port+DISQUE_CLUSTER_PORT_INCR, NET_FIRST_BIND_ADDR);
+                node->port+CLUSTER_PORT_INCR, NET_FIRST_BIND_ADDR);
             if (fd == -1) {
                 /* We got a synchronous error from connect before
                  * clusterSendPing() had a chance to be called.
@@ -2053,7 +2053,7 @@ void clusterCron(void) {
                 if (node->ping_sent == 0) node->ping_sent = mstime();
                 serverLog(LL_DEBUG, "Unable to connect to "
                     "Cluster Node [%s]:%d -> %s", node->ip,
-                    node->port+DISQUE_CLUSTER_PORT_INCR,
+                    node->port+CLUSTER_PORT_INCR,
                     server.neterr);
                 continue;
             }
@@ -2070,7 +2070,7 @@ void clusterCron(void) {
              * of a PING one, to force the receiver to add us in its node
              * table. */
             old_ping_sent = node->ping_sent;
-            clusterSendPing(link, node->flags & DISQUE_NODE_MEET ?
+            clusterSendPing(link, node->flags & CLUSTER_NODE_MEET ?
                     CLUSTERMSG_TYPE_MEET : CLUSTERMSG_TYPE_PING);
             if (old_ping_sent) {
                 /* If there was an active ping before the link was
@@ -2083,10 +2083,10 @@ void clusterCron(void) {
              * to this node. Instead after the PONG is received and we
              * are no longer in meet/handshake status, we want to send
              * normal PING packets. */
-            node->flags &= ~DISQUE_NODE_MEET;
+            node->flags &= ~CLUSTER_NODE_MEET;
 
             serverLog(LL_DEBUG,"Connecting with Node %.40s at %s:%d",
-                    node->name, node->ip, node->port+DISQUE_CLUSTER_PORT_INCR);
+                    node->name, node->ip, node->port+CLUSTER_PORT_INCR);
         }
     }
     dictReleaseIterator(di);
@@ -2104,7 +2104,7 @@ void clusterCron(void) {
 
             /* Don't ping nodes disconnected or with a ping currently active. */
             if (this->link == NULL || this->ping_sent != 0) continue;
-            if (this->flags & (DISQUE_NODE_MYSELF|DISQUE_NODE_HANDSHAKE))
+            if (this->flags & (CLUSTER_NODE_MYSELF|CLUSTER_NODE_HANDSHAKE))
                 continue;
             if (min_pong_node == NULL || min_pong > this->pong_received) {
                 min_pong_node = this;
@@ -2130,7 +2130,7 @@ void clusterCron(void) {
         mstime_t delay;
 
         if (node->flags &
-            (DISQUE_NODE_MYSELF|DISQUE_NODE_NOADDR|DISQUE_NODE_HANDSHAKE))
+            (CLUSTER_NODE_MYSELF|CLUSTER_NODE_NOADDR|CLUSTER_NODE_HANDSHAKE))
                 continue;
 
         /* If we are waiting for the PONG more than half the cluster
@@ -2171,17 +2171,17 @@ void clusterCron(void) {
         if (delay > server.cluster_node_timeout) {
             /* Timeout reached. Set the node as possibly failing if it is
              * not already in this state. */
-            if (!(node->flags & (DISQUE_NODE_PFAIL|DISQUE_NODE_FAIL))) {
+            if (!(node->flags & (CLUSTER_NODE_PFAIL|CLUSTER_NODE_FAIL))) {
                 serverLog(LL_DEBUG,"*** NODE %.40s possibly failing",
                     node->name);
-                node->flags |= DISQUE_NODE_PFAIL;
+                node->flags |= CLUSTER_NODE_PFAIL;
                 update_state = 1;
             }
         }
     }
     dictReleaseIterator(di);
 
-    if (update_state || server.cluster->state == DISQUE_CLUSTER_FAIL)
+    if (update_state || server.cluster->state == CLUSTER_FAIL)
         clusterUpdateState();
 
     clusterUpdateReachableNodes();
@@ -2221,9 +2221,9 @@ void clusterDoBeforeSleep(int flags) {
  * and are based on heuristics. Actaully the main point about the rejoin and
  * writable delay is that they should be a few orders of magnitude larger
  * than the network latency. */
-#define DISQUE_CLUSTER_MAX_REJOIN_DELAY 5000
-#define DISQUE_CLUSTER_MIN_REJOIN_DELAY 500
-#define DISQUE_CLUSTER_WRITABLE_DELAY 2000
+#define CLUSTER_MAX_REJOIN_DELAY 5000
+#define CLUSTER_MIN_REJOIN_DELAY 500
+#define CLUSTER_WRITABLE_DELAY 2000
 
 void clusterUpdateState(void) {
     server.cluster->todo_before_sleep &= ~CLUSTER_TODO_UPDATE_STATE;
@@ -2246,7 +2246,7 @@ void clusterUpdateState(void) {
         while((de = dictNext(di)) != NULL) {
             clusterNode *node = dictGetVal(de);
 
-            if (!(node->flags & DISQUE_NODE_HANDSHAKE))
+            if (!(node->flags & CLUSTER_NODE_HANDSHAKE))
                 server.cluster->size++;
         }
         dictReleaseIterator(di);
@@ -2263,11 +2263,11 @@ struct disqueNodeFlags {
 };
 
 static struct disqueNodeFlags disqueNodeFlagsTable[] = {
-    {DISQUE_NODE_MYSELF,    "myself,"},
-    {DISQUE_NODE_PFAIL,     "fail?,"},
-    {DISQUE_NODE_FAIL,      "fail,"},
-    {DISQUE_NODE_HANDSHAKE, "handshake,"},
-    {DISQUE_NODE_NOADDR,    "noaddr,"}
+    {CLUSTER_NODE_MYSELF,    "myself,"},
+    {CLUSTER_NODE_PFAIL,     "fail?,"},
+    {CLUSTER_NODE_FAIL,      "fail,"},
+    {CLUSTER_NODE_HANDSHAKE, "handshake,"},
+    {CLUSTER_NODE_NOADDR,    "noaddr,"}
 };
 
 /* Concatenate the comma separated list of node flags to the given SDS
@@ -2306,7 +2306,7 @@ sds clusterGenNodeDescription(clusterNode *node) {
     ci = sdscatprintf(ci," %lld %lld %s",
         (long long) node->ping_sent,
         (long long) node->pong_received,
-        (node->link || node->flags & DISQUE_NODE_MYSELF) ?
+        (node->link || node->flags & CLUSTER_NODE_MYSELF) ?
                     "connected" : "disconnected");
 
     return ci;
@@ -2365,10 +2365,10 @@ void clusterUpdateReachableNodes(void) {
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
 
-        if (node->flags & (DISQUE_NODE_MYSELF|
-                           DISQUE_NODE_HANDSHAKE|
-                           DISQUE_NODE_PFAIL|
-                           DISQUE_NODE_FAIL)) continue;
+        if (node->flags & (CLUSTER_NODE_MYSELF|
+                           CLUSTER_NODE_HANDSHAKE|
+                           CLUSTER_NODE_PFAIL|
+                           CLUSTER_NODE_FAIL)) continue;
         server.cluster->reachable_nodes[server.cluster->reachable_nodes_count++]
             = node;
     }
@@ -2450,7 +2450,7 @@ void clusterCommand(client *c) {
         /* CLUSTER FORGET <NODE ID> */
         clusterNode *n;
 
-        if (sdslen(c->argv[2]->ptr) != DISQUE_CLUSTER_NAMELEN) {
+        if (sdslen(c->argv[2]->ptr) != CLUSTER_NAMELEN) {
             addReplyError(c,"Invalid node identifier");
             return;
         }
@@ -2503,14 +2503,14 @@ void clusterCommand(client *c) {
 void helloCommand(client *c) {
     addReplyMultiBulkLen(c,2+dictSize(server.cluster->nodes));
     addReplyLongLong(c,1); /* Version. */
-    addReplyBulkCBuffer(c,myself->name,DISQUE_CLUSTER_NAMELEN); /* My ID. */
+    addReplyBulkCBuffer(c,myself->name,CLUSTER_NAMELEN); /* My ID. */
     dictForeach(server.cluster->nodes,de)
         clusterNode *node = dictGetVal(de);
         int priority = 1;
-        if (node->flags & DISQUE_NODE_PFAIL) priority = 10;
-        if (node->flags & DISQUE_NODE_FAIL) priority = 100;
+        if (node->flags & CLUSTER_NODE_PFAIL) priority = 10;
+        if (node->flags & CLUSTER_NODE_FAIL) priority = 100;
         addReplyMultiBulkLen(c,4);
-        addReplyBulkCBuffer(c,node->name,DISQUE_CLUSTER_NAMELEN); /* ID. */
+        addReplyBulkCBuffer(c,node->name,CLUSTER_NAMELEN); /* ID. */
         addReplyBulkCString(c,node->ip); /* IP address. */
         addReplyBulkLongLong(c,node->port); /* TCP port. */
         addReplyBulkLongLong(c,priority); /* Priority. */

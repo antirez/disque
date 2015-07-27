@@ -553,7 +553,7 @@ void receiveYourJobs(clusterNode *node, uint32_t numjobs, unsigned char *seriali
         job *job, *sj = deserializeJob(nextjob,remlen,&nextjob,SER_MESSAGE);
 
         if (sj == NULL) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "The %d-th job received via YOURJOBS from %.40s is corrupted.",
                 (int)j+1, node->name);
             return;

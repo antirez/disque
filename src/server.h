@@ -177,9 +177,9 @@ typedef long long mstime_t; /* millisecond time type. */
 #define OBJ_ENCODING_EMBSTR 2  /* Embedded sds string encoding */
 
 /* AOF states */
-#define DISQUE_AOF_OFF 0             /* AOF is off */
-#define DISQUE_AOF_ON 1              /* AOF is on */
-#define DISQUE_AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
+#define AOF_OFF 0             /* AOF is off */
+#define AOF_ON 1              /* AOF is on */
+#define AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
 
 /* Client flags */
 #define CLIENT_MONITOR (1<<0) /* This client is a slave monitor, see MONITOR */
@@ -210,7 +210,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define LL_DEBUG 0
 #define LL_VERBOSE 1
 #define LL_NOTICE 2
-#define DISQUE_WARNING 3
+#define LL_WARNING 3
 #define LL_RAW (1<<10) /* Modifier to log without timestamp */
 #define CONFIG_DEFAULT_VERBOSITY LL_NOTICE
 
@@ -480,7 +480,7 @@ struct disqueServer {
     int daemonize;                  /* True if running as a daemon */
     clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_COUNT];
     /* AOF persistence */
-    int aof_state;                  /* DISQUE_AOF_(ON|OFF|WAIT_REWRITE) */
+    int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
     int aof_fsync;                  /* Kind of fsync() policy */
     char *aof_filename;             /* Name of the AOF file */
     int aof_no_fsync_on_rewrite;    /* Don't fsync if a rewrite is in prog. */

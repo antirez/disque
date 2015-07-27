@@ -73,9 +73,9 @@ void stopLoading(void) {
 /* Get the AOF state as string for INFO reporting. */
 char *aofGetStateString(void) {
     switch(server.aof_state) {
-    case DISQUE_AOF_OFF: return "off";
-    case DISQUE_AOF_ON: return "on";
-    case DISQUE_AOF_WAIT_REWRITE: return "wait-rewrite";
+    case AOF_OFF: return "off";
+    case AOF_ON: return "on";
+    case AOF_WAIT_REWRITE: return "wait-rewrite";
     default: return "unknown";
     }
 }
@@ -188,7 +188,7 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
              * as a notice or warning. */
             numblocks = listLength(server.aof_rewrite_buf_blocks);
             if (((numblocks+1) % 10) == 0) {
-                int level = ((numblocks+1) % 100) == 0 ? DISQUE_WARNING :
+                int level = ((numblocks+1) % 100) == 0 ? LL_WARNING :
                                                          LL_NOTICE;
                 serverLog(level,"Background AOF buffer size: %lu MB",
                     aofRewriteBufferSize()/(1024*1024));
@@ -236,20 +236,20 @@ ssize_t aofRewriteBufferWrite(int fd) {
 /* Starts a background task that performs fsync() against the specified
  * file descriptor (the one of the AOF file) in another thread. */
 void aof_background_fsync(int fd) {
-    bioCreateBackgroundJob(DISQUE_BIO_AOF_FSYNC,(void*)(long)fd,NULL,NULL);
+    bioCreateBackgroundJob(BIO_AOF_FSYNC,(void*)(long)fd,NULL,NULL);
 }
 
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */
 void stopAppendOnly(void) {
-    serverAssert(server.aof_state != DISQUE_AOF_OFF);
+    serverAssert(server.aof_state != AOF_OFF);
     flushAppendOnlyFile(1);
     aof_fsync(server.aof_fd);
     close(server.aof_fd);
 
     server.aof_fd = -1;
     server.aof_selected_db = -1;
-    server.aof_state = DISQUE_AOF_OFF;
+    server.aof_state = AOF_OFF;
     /* rewrite operation in progress? kill it, wait child exit */
     if (server.aof_child_pid != -1) {
         int statloc;
@@ -273,19 +273,19 @@ void stopAppendOnly(void) {
 int startAppendOnly(void) {
     server.aof_last_fsync = server.unixtime;
     server.aof_fd = open(server.aof_filename,O_WRONLY|O_APPEND|O_CREAT,0644);
-    serverAssert(server.aof_state == DISQUE_AOF_OFF);
+    serverAssert(server.aof_state == AOF_OFF);
     if (server.aof_fd == -1) {
-        serverLog(DISQUE_WARNING,"Disque needs to enable the AOF but can't open the append only file: %s",strerror(errno));
+        serverLog(LL_WARNING,"Disque needs to enable the AOF but can't open the append only file: %s",strerror(errno));
         return C_ERR;
     }
     if (rewriteAppendOnlyFileBackground() == C_ERR) {
         close(server.aof_fd);
-        serverLog(DISQUE_WARNING,"Disque needs to enable the AOF but can't trigger a background AOF rewrite operation. Check the above logs for more info about the error.");
+        serverLog(LL_WARNING,"Disque needs to enable the AOF but can't trigger a background AOF rewrite operation. Check the above logs for more info about the error.");
         return C_ERR;
     }
     /* We correctly switched on AOF, now wait for the rewrite to be complete
      * in order to append data on disk. */
-    server.aof_state = DISQUE_AOF_WAIT_REWRITE;
+    server.aof_state = AOF_WAIT_REWRITE;
     return C_OK;
 }
 
@@ -316,7 +316,7 @@ void flushAppendOnlyFile(int force) {
     if (sdslen(server.aof_buf) == 0) return;
 
     if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
-        sync_in_progress = bioPendingJobsOfType(DISQUE_BIO_AOF_FSYNC) != 0;
+        sync_in_progress = bioPendingJobsOfType(BIO_AOF_FSYNC) != 0;
 
     if (server.aof_fsync == AOF_FSYNC_EVERYSEC && !force) {
         /* With this append fsync policy we do background fsyncing.
@@ -378,13 +378,13 @@ void flushAppendOnlyFile(int force) {
         /* Log the AOF write error and record the error code. */
         if (nwritten == -1) {
             if (can_log) {
-                serverLog(DISQUE_WARNING,"Error writing to the AOF file: %s",
+                serverLog(LL_WARNING,"Error writing to the AOF file: %s",
                     strerror(errno));
                 server.aof_last_write_errno = errno;
             }
         } else {
             if (can_log) {
-                serverLog(DISQUE_WARNING,"Short write while writing to "
+                serverLog(LL_WARNING,"Short write while writing to "
                                        "the AOF file: (nwritten=%lld, "
                                        "expected=%lld)",
                                        (long long)nwritten,
@@ -393,7 +393,7 @@ void flushAppendOnlyFile(int force) {
 
             if (ftruncate(server.aof_fd, server.aof_current_size) == -1) {
                 if (can_log) {
-                    serverLog(DISQUE_WARNING, "Could not remove short write "
+                    serverLog(LL_WARNING, "Could not remove short write "
                              "from the append-only file.  Disque may refuse "
                              "to load the AOF the next time it starts.  "
                              "ftruncate: %s", strerror(errno));
@@ -412,7 +412,7 @@ void flushAppendOnlyFile(int force) {
              * reply for the client is already in the output buffers, and we
              * have the contract with the user that on acknowledged write data
              * is synced on disk. */
-            serverLog(DISQUE_WARNING,"Can't recover from AOF write error when the AOF fsync policy is 'always'. Exiting...");
+            serverLog(LL_WARNING,"Can't recover from AOF write error when the AOF fsync policy is 'always'. Exiting...");
             exit(1);
         } else {
             /* Recover from failed write leaving data into the buffer. However
@@ -432,7 +432,7 @@ void flushAppendOnlyFile(int force) {
         /* Successful write(2). If AOF was in error state, restore the
          * OK state and log the event. */
         if (server.aof_last_write_status == C_ERR) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "AOF write error looks solved, Disque can write again.");
             server.aof_last_write_status = C_OK;
         }
@@ -502,7 +502,7 @@ void feedAppendOnlyFile(robj **argv, int argc) {
     /* Append to the AOF buffer. This will be flushed on disk just before
      * of re-entering the event loop, so before the client will get a
      * positive reply about the operation performed. */
-    if (server.aof_state == DISQUE_AOF_ON)
+    if (server.aof_state == AOF_ON)
         server.aof_buf = sdscatlen(server.aof_buf,buf,sdslen(buf));
 
     /* If a background append only file rewriting is in progress we want to
@@ -574,13 +574,13 @@ int loadAppendOnlyFile(char *filename) {
     }
 
     if (fp == NULL) {
-        serverLog(DISQUE_WARNING,"Fatal error: can't open the append log file for reading: %s",strerror(errno));
+        serverLog(LL_WARNING,"Fatal error: can't open the append log file for reading: %s",strerror(errno));
         exit(1);
     }
 
     /* Temporarily disable AOF, to prevent EXEC from feeding a MULTI
      * to the same file we're about to read. */
-    server.aof_state = DISQUE_AOF_OFF;
+    server.aof_state = AOF_OFF;
 
     fakeClient = createFakeClient();
     startLoading(fp);
@@ -640,7 +640,7 @@ int loadAppendOnlyFile(char *filename) {
         /* Command lookup */
         cmd = lookupCommand(argv[0]->ptr);
         if (!cmd) {
-            serverLog(DISQUE_WARNING,"Unknown command '%s' reading the append only file", (char*)argv[0]->ptr);
+            serverLog(LL_WARNING,"Unknown command '%s' reading the append only file", (char*)argv[0]->ptr);
             exit(1);
         }
 
@@ -669,40 +669,40 @@ loaded_ok: /* DB loaded, cleanup and return C_OK to the caller. */
 
 readerr: /* Read error. If feof(fp) is true, fall through to unexpected EOF. */
     if (!feof(fp)) {
-        serverLog(DISQUE_WARNING,"Unrecoverable error reading the append only file: %s", strerror(errno));
+        serverLog(LL_WARNING,"Unrecoverable error reading the append only file: %s", strerror(errno));
         exit(1);
     }
 
     /* Unexpected AOF end of file. */
     if (server.aof_load_truncated) {
-        serverLog(DISQUE_WARNING,"!!! Warning: short read while loading the AOF file !!!");
-        serverLog(DISQUE_WARNING,"!!! Truncating the AOF at offset %llu !!!",
+        serverLog(LL_WARNING,"!!! Warning: short read while loading the AOF file !!!");
+        serverLog(LL_WARNING,"!!! Truncating the AOF at offset %llu !!!",
             (unsigned long long) valid_up_to);
         if (valid_up_to == -1 || truncate(filename,valid_up_to) == -1) {
             if (valid_up_to == -1) {
-                serverLog(DISQUE_WARNING,"Last valid command offset is invalid");
+                serverLog(LL_WARNING,"Last valid command offset is invalid");
             } else {
-                serverLog(DISQUE_WARNING,"Error truncating the AOF file: %s",
+                serverLog(LL_WARNING,"Error truncating the AOF file: %s",
                     strerror(errno));
             }
         } else {
             /* Make sure the AOF file descriptor points to the end of the
              * file after the truncate call. */
             if (server.aof_fd != -1 && lseek(server.aof_fd,0,SEEK_END) == -1) {
-                serverLog(DISQUE_WARNING,"Can't seek the end of the AOF file: %s",
+                serverLog(LL_WARNING,"Can't seek the end of the AOF file: %s",
                     strerror(errno));
             } else {
-                serverLog(DISQUE_WARNING,
+                serverLog(LL_WARNING,
                     "AOF loaded anyway because aof-load-truncated is enabled");
                 goto loaded_ok;
             }
         }
     }
-    serverLog(DISQUE_WARNING,"Unexpected end of file reading the append only file. You can: 1) Make a backup of your AOF file, then use ./disque-check-aof --fix <filename>. 2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.");
+    serverLog(LL_WARNING,"Unexpected end of file reading the append only file. You can: 1) Make a backup of your AOF file, then use ./disque-check-aof --fix <filename>. 2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.");
     exit(1);
 
 fmterr: /* Format error. */
-    serverLog(DISQUE_WARNING,"Bad file format reading the append only file: make a backup of your AOF file, then use ./disque-check-aof --fix <filename>");
+    serverLog(LL_WARNING,"Bad file format reading the append only file: make a backup of your AOF file, then use ./disque-check-aof --fix <filename>");
     exit(1);
 }
 
@@ -762,7 +762,7 @@ int rewriteAppendOnlyFile(char *filename, int background) {
     snprintf(tmpfile,256,"temp-rewriteaof-%d.aof", (int) getpid());
     fp = fopen(tmpfile,"w");
     if (!fp) {
-        serverLog(DISQUE_WARNING, "Opening the temp file for AOF rewrite in rewriteAppendOnlyFile(): %s", strerror(errno));
+        serverLog(LL_WARNING, "Opening the temp file for AOF rewrite in rewriteAppendOnlyFile(): %s", strerror(errno));
         return C_ERR;
     }
 
@@ -848,7 +848,7 @@ flush_and_rename:
     /* Use RENAME to make sure the AOF file is changed atomically only
      * if the generate AOF file is ok. */
     if (rename(tmpfile,filename) == -1) {
-        serverLog(DISQUE_WARNING,"Error moving temp append only file on the final destination: %s", strerror(errno));
+        serverLog(LL_WARNING,"Error moving temp append only file on the final destination: %s", strerror(errno));
         unlink(tmpfile);
         return C_ERR;
     }
@@ -856,7 +856,7 @@ flush_and_rename:
     return C_OK;
 
 werr:
-    serverLog(DISQUE_WARNING,"Write error writing append only file on disk: %s", strerror(errno));
+    serverLog(LL_WARNING,"Write error writing append only file on disk: %s", strerror(errno));
     fclose(fp);
     unlink(tmpfile);
     if (di) dictReleaseIterator(di);
@@ -884,7 +884,7 @@ void aofChildPipeReadable(aeEventLoop *el, int fd, void *privdata, int mask) {
              * since in the other side the children will use a timeout if the
              * kernel can't buffer our write, or, the children was
              * terminated. */
-            serverLog(DISQUE_WARNING,"Can't send ACK to AOF child: %s",
+            serverLog(LL_WARNING,"Can't send ACK to AOF child: %s",
                 strerror(errno));
         }
     }
@@ -920,7 +920,7 @@ int aofCreatePipes(void) {
     return C_OK;
 
 error:
-    serverLog(DISQUE_WARNING,"Error opening /setting AOF rewrite IPC pipes: %s",
+    serverLog(LL_WARNING,"Error opening /setting AOF rewrite IPC pipes: %s",
         strerror(errno));
     for (j = 0; j < 6; j++) if(fds[j] != -1) close(fds[j]);
     return C_ERR;
@@ -985,7 +985,7 @@ int rewriteAppendOnlyFileBackground(void) {
         server.stat_fork_rate = (double) zmalloc_used_memory() * 1000000 / server.stat_fork_time / (1024*1024*1024); /* GB per second. */
         latencyAddSampleIfNeeded("fork",server.stat_fork_time/1000);
         if (childpid == -1) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Can't rewrite append only file in background: fork: %s",
                 strerror(errno));
             return C_ERR;
@@ -1033,7 +1033,7 @@ void aofUpdateCurrentSize(void) {
 
     latencyStartMonitor(latency);
     if (disque_fstat(server.aof_fd,&sb) == -1) {
-        serverLog(DISQUE_WARNING,"Unable to obtain the AOF file length. stat: %s",
+        serverLog(LL_WARNING,"Unable to obtain the AOF file length. stat: %s",
             strerror(errno));
     } else {
         server.aof_current_size = sb.st_size;
@@ -1061,13 +1061,13 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
             (int)server.aof_child_pid);
         newfd = open(tmpfile,O_WRONLY|O_APPEND);
         if (newfd == -1) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Unable to open the temporary AOF produced by the child: %s", strerror(errno));
             goto cleanup;
         }
 
         if (aofRewriteBufferWrite(newfd) == -1) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Error trying to flush the parent diff to the rewritten AOF: %s", strerror(errno));
             close(newfd);
             goto cleanup;
@@ -1121,7 +1121,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
          * it exists, because we reference it with "oldfd". */
         latencyStartMonitor(latency);
         if (rename(tmpfile,server.aof_filename) == -1) {
-            serverLog(DISQUE_WARNING,
+            serverLog(LL_WARNING,
                 "Error trying to rename the temporary AOF file: %s", strerror(errno));
             close(newfd);
             if (oldfd != -1) close(oldfd);
@@ -1156,23 +1156,23 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
         serverLog(LL_NOTICE, "Background AOF rewrite finished successfully");
         /* Change state from WAIT_REWRITE to ON if needed */
-        if (server.aof_state == DISQUE_AOF_WAIT_REWRITE)
-            server.aof_state = DISQUE_AOF_ON;
+        if (server.aof_state == AOF_WAIT_REWRITE)
+            server.aof_state = AOF_ON;
 
         /* Asynchronously close the overwritten AOF. */
-        if (oldfd != -1) bioCreateBackgroundJob(DISQUE_BIO_CLOSE_FILE,(void*)(long)oldfd,NULL,NULL);
+        if (oldfd != -1) bioCreateBackgroundJob(BIO_CLOSE_FILE,(void*)(long)oldfd,NULL,NULL);
 
         serverLog(LL_VERBOSE,
             "Background AOF rewrite signal handler took %lldus", ustime()-now);
     } else if (!bysignal && exitcode != 0) {
         server.aof_lastbgrewrite_status = C_ERR;
 
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "Background AOF rewrite terminated with error");
     } else {
         server.aof_lastbgrewrite_status = C_ERR;
 
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "Background AOF rewrite terminated by signal %d", bysignal);
     }
 
@@ -1184,6 +1184,6 @@ cleanup:
     server.aof_rewrite_time_last = time(NULL)-server.aof_rewrite_time_start;
     server.aof_rewrite_time_start = -1;
     /* Schedule a new rewrite if we are waiting for it to switch the AOF ON. */
-    if (server.aof_state == DISQUE_AOF_WAIT_REWRITE)
+    if (server.aof_state == AOF_WAIT_REWRITE)
         server.aof_rewrite_scheduled = 1;
 }

@@ -70,7 +70,7 @@ void debugCommand(client *c) {
             addReply(c,shared.err);
             return;
         }
-        serverLog(DISQUE_WARNING,"Append Only File loaded by DEBUG LOADAOF");
+        serverLog(LL_WARNING,"Append Only File loaded by DEBUG LOADAOF");
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"sleep") && c->argc == 3) {
         double dtime = strtod(c->argv[2]->ptr,NULL);
@@ -111,13 +111,13 @@ void debugCommand(client *c) {
 
 void _serverAssert(char *estr, char *file, int line) {
     bugReportStart();
-    serverLog(DISQUE_WARNING,"=== ASSERTION FAILED ===");
-    serverLog(DISQUE_WARNING,"==> %s:%d '%s' is not true",file,line,estr);
+    serverLog(LL_WARNING,"=== ASSERTION FAILED ===");
+    serverLog(LL_WARNING,"==> %s:%d '%s' is not true",file,line,estr);
 #ifdef HAVE_BACKTRACE
     server.assert_failed = estr;
     server.assert_file = file;
     server.assert_line = line;
-    serverLog(DISQUE_WARNING,"(forcing SIGSEGV to print the bug report.)");
+    serverLog(LL_WARNING,"(forcing SIGSEGV to print the bug report.)");
 #endif
     *((char*)-1) = 'x';
 }
@@ -126,10 +126,10 @@ void _serverAssertPrintClientInfo(client *c) {
     int j;
 
     bugReportStart();
-    serverLog(DISQUE_WARNING,"=== ASSERTION FAILED CLIENT CONTEXT ===");
-    serverLog(DISQUE_WARNING,"client->flags = %d", c->flags);
-    serverLog(DISQUE_WARNING,"client->fd = %d", c->fd);
-    serverLog(DISQUE_WARNING,"client->argc = %d", c->argc);
+    serverLog(LL_WARNING,"=== ASSERTION FAILED CLIENT CONTEXT ===");
+    serverLog(LL_WARNING,"client->flags = %d", c->flags);
+    serverLog(LL_WARNING,"client->fd = %d", c->fd);
+    serverLog(LL_WARNING,"client->argc = %d", c->argc);
     for (j=0; j < c->argc; j++) {
         char buf[128];
         char *arg;
@@ -141,26 +141,26 @@ void _serverAssertPrintClientInfo(client *c) {
                 c->argv[j]->type, c->argv[j]->encoding);
             arg = buf;
         }
-        serverLog(DISQUE_WARNING,"client->argv[%d] = \"%s\" (refcount: %d)",
+        serverLog(LL_WARNING,"client->argv[%d] = \"%s\" (refcount: %d)",
             j, arg, c->argv[j]->refcount);
     }
 }
 
 void _serverAssertPrintObject(robj *o) {
     bugReportStart();
-    serverLog(DISQUE_WARNING,"=== ASSERTION FAILED OBJECT CONTEXT ===");
+    serverLog(LL_WARNING,"=== ASSERTION FAILED OBJECT CONTEXT ===");
     serverLogObjectDebugInfo(o);
 }
 
 void serverLogObjectDebugInfo(robj *o) {
-    serverLog(DISQUE_WARNING,"Object type: %d", o->type);
-    serverLog(DISQUE_WARNING,"Object encoding: %d", o->encoding);
-    serverLog(DISQUE_WARNING,"Object refcount: %d", o->refcount);
+    serverLog(LL_WARNING,"Object type: %d", o->type);
+    serverLog(LL_WARNING,"Object encoding: %d", o->encoding);
+    serverLog(LL_WARNING,"Object refcount: %d", o->refcount);
     if (o->type == OBJ_STRING && sdsEncodedObject(o)) {
-        serverLog(DISQUE_WARNING,"Object raw string len: %zu", sdslen(o->ptr));
+        serverLog(LL_WARNING,"Object raw string len: %zu", sdslen(o->ptr));
         if (sdslen(o->ptr) < 4096) {
             sds repr = sdscatrepr(sdsempty(),o->ptr,sdslen(o->ptr));
-            serverLog(DISQUE_WARNING,"Object raw string content: %s", repr);
+            serverLog(LL_WARNING,"Object raw string content: %s", repr);
             sdsfree(repr);
         }
     }
@@ -174,19 +174,19 @@ void _serverAssertWithInfo(client *c, robj *o, char *estr, char *file, int line)
 
 void _serverPanic(char *msg, char *file, int line) {
     bugReportStart();
-    serverLog(DISQUE_WARNING,"------------------------------------------------");
-    serverLog(DISQUE_WARNING,"!!! Software Failure. Press left mouse button to continue");
-    serverLog(DISQUE_WARNING,"Guru Meditation: %s #%s:%d",msg,file,line);
+    serverLog(LL_WARNING,"------------------------------------------------");
+    serverLog(LL_WARNING,"!!! Software Failure. Press left mouse button to continue");
+    serverLog(LL_WARNING,"Guru Meditation: %s #%s:%d",msg,file,line);
 #ifdef HAVE_BACKTRACE
-    serverLog(DISQUE_WARNING,"(forcing SIGSEGV in order to print the stack trace)");
+    serverLog(LL_WARNING,"(forcing SIGSEGV in order to print the stack trace)");
 #endif
-    serverLog(DISQUE_WARNING,"------------------------------------------------");
+    serverLog(LL_WARNING,"------------------------------------------------");
     *((char*)-1) = 'x';
 }
 
 void bugReportStart(void) {
     if (server.bug_report_start == 0) {
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "\n\n=== DISQUE BUG REPORT START: Cut & paste starting from here ===");
         server.bug_report_start = 1;
     }
@@ -231,20 +231,20 @@ void logStackContent(void **sp) {
         unsigned long val = (unsigned long) sp[i];
 
         if (sizeof(long) == 4)
-            serverLog(DISQUE_WARNING, "(%08lx) -> %08lx", addr, val);
+            serverLog(LL_WARNING, "(%08lx) -> %08lx", addr, val);
         else
-            serverLog(DISQUE_WARNING, "(%016lx) -> %016lx", addr, val);
+            serverLog(LL_WARNING, "(%016lx) -> %016lx", addr, val);
     }
 }
 
 void logRegisters(ucontext_t *uc) {
-    serverLog(DISQUE_WARNING, "--- REGISTERS");
+    serverLog(LL_WARNING, "--- REGISTERS");
 
 /* OSX */
 #if defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)
   /* OSX AMD64 */
     #if defined(_STRUCT_X86_THREAD_STATE64) && !defined(__i386__)
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
     "\n"
     "RAX:%016lx RBX:%016lx\nRCX:%016lx RDX:%016lx\n"
     "RDI:%016lx RSI:%016lx\nRBP:%016lx RSP:%016lx\n"
@@ -276,7 +276,7 @@ void logRegisters(ucontext_t *uc) {
     logStackContent((void**)uc->uc_mcontext->__ss.__rsp);
     #else
     /* OSX x86 */
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
     "\n"
     "EAX:%08lx EBX:%08lx ECX:%08lx EDX:%08lx\n"
     "EDI:%08lx ESI:%08lx EBP:%08lx ESP:%08lx\n"
@@ -305,7 +305,7 @@ void logRegisters(ucontext_t *uc) {
 #elif defined(__linux__)
     /* Linux x86 */
     #if defined(__i386__)
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
     "\n"
     "EAX:%08lx EBX:%08lx ECX:%08lx EDX:%08lx\n"
     "EDI:%08lx ESI:%08lx EBP:%08lx ESP:%08lx\n"
@@ -331,7 +331,7 @@ void logRegisters(ucontext_t *uc) {
     logStackContent((void**)uc->uc_mcontext.gregs[7]);
     #elif defined(__X86_64__) || defined(__x86_64__)
     /* Linux AMD64 */
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
     "\n"
     "RAX:%016lx RBX:%016lx\nRCX:%016lx RDX:%016lx\n"
     "RDI:%016lx RSI:%016lx\nRBP:%016lx RSP:%016lx\n"
@@ -361,7 +361,7 @@ void logRegisters(ucontext_t *uc) {
     logStackContent((void**)uc->uc_mcontext.gregs[15]);
     #endif
 #else
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
         "  Dumping of registers not supported for this OS/arch");
 #endif
 }
@@ -403,15 +403,15 @@ void logCurrentClient(void) {
     sds client;
     int j;
 
-    serverLog(DISQUE_WARNING, "--- CURRENT CLIENT INFO");
+    serverLog(LL_WARNING, "--- CURRENT CLIENT INFO");
     client = catClientInfoString(sdsempty(),cc);
-    serverLog(DISQUE_WARNING,"client: %s", client);
+    serverLog(LL_WARNING,"client: %s", client);
     sdsfree(client);
     for (j = 0; j < cc->argc; j++) {
         robj *decoded;
 
         decoded = getDecodedObject(cc->argv[j]);
-        serverLog(DISQUE_WARNING,"argv[%d]: '%s'", j, (char*)decoded->ptr);
+        serverLog(LL_WARNING,"argv[%d]: '%s'", j, (char*)decoded->ptr);
         decrRefCount(decoded);
     }
 }
@@ -506,25 +506,25 @@ void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
     UNUSED(info);
 
     bugReportStart();
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
         "    Disque %s crashed by signal: %d", DISQUE_VERSION, sig);
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
         "    Failed assertion: %s (%s:%d)", server.assert_failed,
                         server.assert_file, server.assert_line);
 
     /* Log the stack trace */
-    serverLog(DISQUE_WARNING, "--- STACK TRACE");
+    serverLog(LL_WARNING, "--- STACK TRACE");
     logStackTrace(uc);
 
     /* Log INFO and CLIENT LIST */
-    serverLog(DISQUE_WARNING, "--- INFO OUTPUT");
+    serverLog(LL_WARNING, "--- INFO OUTPUT");
     infostring = genDisqueInfoString("all");
     infostring = sdscatprintf(infostring, "hash_init_value: %u\n",
         dictGetHashFunctionSeed());
-    serverLogRaw(DISQUE_WARNING, infostring);
-    serverLog(DISQUE_WARNING, "--- CLIENT LIST OUTPUT");
+    serverLogRaw(LL_WARNING, infostring);
+    serverLog(LL_WARNING, "--- CLIENT LIST OUTPUT");
     clients = getAllClientsInfoString();
-    serverLogRaw(DISQUE_WARNING, clients);
+    serverLogRaw(LL_WARNING, clients);
     sdsfree(infostring);
     sdsfree(clients);
 
@@ -536,18 +536,18 @@ void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
 
 #if defined(HAVE_PROC_MAPS)
     /* Test memory */
-    serverLog(DISQUE_WARNING, "--- FAST MEMORY TEST");
+    serverLog(LL_WARNING, "--- FAST MEMORY TEST");
     bioKillThreads();
     if (memtest_test_linux_anonymous_maps()) {
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "!!! MEMORY ERROR DETECTED! Check your memory ASAP !!!");
     } else {
-        serverLog(DISQUE_WARNING,
+        serverLog(LL_WARNING,
             "Fast memory test PASSED, however your memory can still be broken. Please run a memory test for several hours if possible.");
     }
 #endif
 
-    serverLog(DISQUE_WARNING,
+    serverLog(LL_WARNING,
 "\n=== DISQUE BUG REPORT END. Make sure to include from START to END. ===\n\n"
 "       Please report the crash by opening an issue on github:\n\n"
 "           http://github.com/antirez/disque/issues\n\n"
@@ -600,13 +600,13 @@ void watchdogSignalHandler(int sig, siginfo_t *info, void *secret) {
     UNUSED(info);
     UNUSED(sig);
 
-    serverLogFromHandler(DISQUE_WARNING,"\n--- WATCHDOG TIMER EXPIRED ---");
+    serverLogFromHandler(LL_WARNING,"\n--- WATCHDOG TIMER EXPIRED ---");
 #ifdef HAVE_BACKTRACE
     logStackTrace(uc);
 #else
-    serverLogFromHandler(DISQUE_WARNING,"Sorry: no support for backtrace().");
+    serverLogFromHandler(LL_WARNING,"Sorry: no support for backtrace().");
 #endif
-    serverLogFromHandler(DISQUE_WARNING,"--------\n");
+    serverLogFromHandler(LL_WARNING,"--------\n");
 }
 
 /* Schedule a SIGALRM delivery after the specified period in milliseconds.

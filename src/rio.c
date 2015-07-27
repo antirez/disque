@@ -81,7 +81,7 @@ static off_t rioBufferTell(rio *r) {
 /* Flushes any buffer to target device if applicable. Returns 1 on success
  * and 0 on failures. */
 static int rioBufferFlush(rio *r) {
-    DISQUE_NOTUSED(r);
+    UNUSED(r);
     return 1; /* Nothing to do, our write just appends to the buffer. */
 }
 
@@ -232,9 +232,9 @@ static size_t rioFdsetWrite(rio *r, const void *buf, size_t len) {
 
 /* Returns 1 or 0 for success/failure. */
 static size_t rioFdsetRead(rio *r, void *buf, size_t len) {
-    DISQUE_NOTUSED(r);
-    DISQUE_NOTUSED(buf);
-    DISQUE_NOTUSED(len);
+    UNUSED(r);
+    UNUSED(buf);
+    UNUSED(len);
     return 0; /* Error, this target does not support reading. */
 }
 

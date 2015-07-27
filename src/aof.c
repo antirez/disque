@@ -133,10 +133,10 @@ void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
     listNode *ln;
     aofrwblock *block;
     ssize_t nwritten;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(fd);
-    DISQUE_NOTUSED(privdata);
-    DISQUE_NOTUSED(mask);
+    UNUSED(el);
+    UNUSED(fd);
+    UNUSED(privdata);
+    UNUSED(mask);
 
     while(1) {
         ln = listFirst(server.aof_rewrite_buf_blocks);
@@ -189,7 +189,7 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
             numblocks = listLength(server.aof_rewrite_buf_blocks);
             if (((numblocks+1) % 10) == 0) {
                 int level = ((numblocks+1) % 100) == 0 ? DISQUE_WARNING :
-                                                         DISQUE_NOTICE;
+                                                         LL_NOTICE;
                 serverLog(level,"Background AOF buffer size: %lu MB",
                     aofRewriteBufferSize()/(1024*1024));
             }
@@ -254,7 +254,7 @@ void stopAppendOnly(void) {
     if (server.aof_child_pid != -1) {
         int statloc;
 
-        serverLog(DISQUE_NOTICE,"Killing running AOF rewrite child: %ld",
+        serverLog(LL_NOTICE,"Killing running AOF rewrite child: %ld",
             (long) server.aof_child_pid);
         if (kill(server.aof_child_pid,SIGUSR1) != -1)
             wait3(&statloc,0,NULL);
@@ -336,7 +336,7 @@ void flushAppendOnlyFile(int force) {
             /* Otherwise fall trough, and go write since we can't wait
              * over two seconds. */
             server.aof_delayed_fsync++;
-            serverLog(DISQUE_NOTICE,"Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Disque.");
+            serverLog(LL_NOTICE,"Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Disque.");
         }
     }
     /* We want to perform a single write. This should be guaranteed atomic
@@ -827,13 +827,13 @@ int rewriteAppendOnlyFile(char *filename, int background) {
      * the child will eventually get terminated. */
     if (syncRead(server.aof_pipe_read_ack_from_parent,&byte,1,5000) != 1 ||
         byte != '!') goto werr;
-    serverLog(DISQUE_NOTICE,"Parent agreed to stop sending diffs. Finalizing AOF...");
+    serverLog(LL_NOTICE,"Parent agreed to stop sending diffs. Finalizing AOF...");
 
     /* Read the final diff if any. */
     aofReadDiffFromParent();
 
     /* Write the received diff to the file. */
-    serverLog(DISQUE_NOTICE,
+    serverLog(LL_NOTICE,
         "Concatenating %.2f MB of AOF diff received from parent.",
         (double) sdslen(server.aof_child_diff) / (1024*1024));
     if (rioWrite(&aof,server.aof_child_diff,sdslen(server.aof_child_diff)) == 0)
@@ -852,7 +852,7 @@ flush_and_rename:
         unlink(tmpfile);
         return C_ERR;
     }
-    serverLog(DISQUE_NOTICE,"SYNC append only file rewrite performed");
+    serverLog(LL_NOTICE,"SYNC append only file rewrite performed");
     return C_OK;
 
 werr:
@@ -872,12 +872,12 @@ werr:
  * parent sends a '!' as well to acknowledge. */
 void aofChildPipeReadable(aeEventLoop *el, int fd, void *privdata, int mask) {
     char byte;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(privdata);
-    DISQUE_NOTUSED(mask);
+    UNUSED(el);
+    UNUSED(privdata);
+    UNUSED(mask);
 
     if (read(fd,&byte,1) == 1 && byte == '!') {
-        serverLog(DISQUE_NOTICE,"AOF rewrite child asks to stop sending diffs.");
+        serverLog(LL_NOTICE,"AOF rewrite child asks to stop sending diffs.");
         server.aof_stop_sending_diff = 1;
         if (write(server.aof_pipe_write_ack_to_child,"!",1) != 1) {
             /* If we can't send the ack, inform the user, but don't try again
@@ -971,7 +971,7 @@ int rewriteAppendOnlyFileBackground(void) {
             size_t private_dirty = zmalloc_get_private_dirty();
 
             if (private_dirty) {
-                serverLog(DISQUE_NOTICE,
+                serverLog(LL_NOTICE,
                     "AOF rewrite: %zu MB of memory used by copy-on-write",
                     private_dirty/(1024*1024));
             }
@@ -990,7 +990,7 @@ int rewriteAppendOnlyFileBackground(void) {
                 strerror(errno));
             return C_ERR;
         }
-        serverLog(DISQUE_NOTICE,
+        serverLog(LL_NOTICE,
             "Background append only file rewriting started by pid %d",childpid);
         server.aof_rewrite_scheduled = 0;
         server.aof_rewrite_time_start = time(NULL);
@@ -1051,7 +1051,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         long long now = ustime();
         mstime_t latency;
 
-        serverLog(DISQUE_NOTICE,
+        serverLog(LL_NOTICE,
             "Background AOF rewrite terminated with success");
 
         /* Flush the differences accumulated by the parent to the
@@ -1075,7 +1075,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         latencyEndMonitor(latency);
         latencyAddSampleIfNeeded("aof-rewrite-diff-write",latency);
 
-        serverLog(DISQUE_NOTICE,
+        serverLog(LL_NOTICE,
             "Residual parent diff successfully flushed to the rewritten AOF (%.2f MB)", (double) aofRewriteBufferSize() / (1024*1024));
 
         /* The only remaining thing to do is to rename the temporary file to
@@ -1154,7 +1154,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
         server.aof_lastbgrewrite_status = C_OK;
 
-        serverLog(DISQUE_NOTICE, "Background AOF rewrite finished successfully");
+        serverLog(LL_NOTICE, "Background AOF rewrite finished successfully");
         /* Change state from WAIT_REWRITE to ON if needed */
         if (server.aof_state == DISQUE_AOF_WAIT_REWRITE)
             server.aof_state = DISQUE_AOF_ON;
@@ -1162,7 +1162,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         /* Asynchronously close the overwritten AOF. */
         if (oldfd != -1) bioCreateBackgroundJob(DISQUE_BIO_CLOSE_FILE,(void*)(long)oldfd,NULL,NULL);
 
-        serverLog(DISQUE_VERBOSE,
+        serverLog(LL_VERBOSE,
             "Background AOF rewrite signal handler took %lldus", ustime()-now);
     } else if (!bysignal && exitcode != 0) {
         server.aof_lastbgrewrite_status = C_ERR;

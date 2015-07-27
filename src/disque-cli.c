@@ -53,7 +53,7 @@
 #include "anet.h"
 #include "ae.h"
 
-#define DISQUE_NOTUSED(V) ((void) V)
+#define UNUSED(V) ((void) V)
 
 #define OUTPUT_STANDARD 0
 #define OUTPUT_RAW 1
@@ -1828,7 +1828,7 @@ unsigned long compute_something_fast(void) {
 }
 
 static void intrinsicLatencyModeStop(int s) {
-    DISQUE_NOTUSED(s);
+    UNUSED(s);
     force_cancel_loop = 1;
 }
 

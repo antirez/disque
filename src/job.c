@@ -384,7 +384,7 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
 void processJob(job *j) {
     mstime_t old_awakeme = j->awakeme;
 
-    serverLog(DISQUE_VERBOSE,
+    serverLog(LL_VERBOSE,
         "PROCESS %.48s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
         j->id,
         (int)j->state,
@@ -398,7 +398,7 @@ void processJob(job *j) {
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
-        serverLog(DISQUE_VERBOSE,"EVICT %.48s", j->id);
+        serverLog(LL_VERBOSE,"EVICT %.48s", j->id);
         unregisterJob(j);
         freeJob(j);
         return;
@@ -446,9 +446,9 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int max = 10000; /* 10k jobs * 1000 milliseconds = 10M jobs/sec max. */
     mstime_t now = mstime(), latency;
     skiplistNode *current, *next;
-    DISQUE_NOTUSED(eventLoop);
-    DISQUE_NOTUSED(id);
-    DISQUE_NOTUSED(clientData);
+    UNUSED(eventLoop);
+    UNUSED(id);
+    UNUSED(clientData);
 
 #ifdef DEBUG_SCHEDULER
     static time_t last_log = 0;
@@ -944,7 +944,7 @@ void addReplyJobID(client *c, job *j) {
  * replicated, C_ERR is returned, in order to signal the client further
  * accesses to the job are not allowed. */
 int jobReplicationAchieved(job *j) {
-    serverLog(DISQUE_VERBOSE,"Replication ACHIEVED %.48s",j->id);
+    serverLog(LL_VERBOSE,"Replication ACHIEVED %.48s",j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */

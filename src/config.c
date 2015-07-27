@@ -140,9 +140,9 @@ void loadServerConfigFromString(char *config) {
                 exit(1);
             }
         } else if (!strcasecmp(argv[0],"loglevel") && argc == 2) {
-            if (!strcasecmp(argv[1],"debug")) server.verbosity = DISQUE_DEBUG;
-            else if (!strcasecmp(argv[1],"verbose")) server.verbosity = DISQUE_VERBOSE;
-            else if (!strcasecmp(argv[1],"notice")) server.verbosity = DISQUE_NOTICE;
+            if (!strcasecmp(argv[1],"debug")) server.verbosity = LL_DEBUG;
+            else if (!strcasecmp(argv[1],"verbose")) server.verbosity = LL_VERBOSE;
+            else if (!strcasecmp(argv[1],"notice")) server.verbosity = LL_NOTICE;
             else if (!strcasecmp(argv[1],"warning")) server.verbosity = DISQUE_WARNING;
             else {
                 err = "Invalid log level. Must be one of debug, notice, warning";
@@ -204,9 +204,9 @@ void loadServerConfigFromString(char *config) {
             }
         } else if (!strcasecmp(argv[0],"maxmemory-policy") && argc == 2) {
             if (!strcasecmp(argv[1],"acks")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_ACKS;
+                server.maxmemory_policy = MAXMEMORY_ACKS;
             } else if (!strcasecmp(argv[1],"noeviction")) {
-                server.maxmemory_policy = DISQUE_MAXMEMORY_NO_EVICTION;
+                server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
             } else {
                 err = "Invalid maxmemory policy";
                 goto loaderr;
@@ -471,9 +471,9 @@ void configSetCommand(client *c) {
         if (server.hz > CONFIG_MAX_HZ) server.hz = CONFIG_MAX_HZ;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-policy")) {
         if (!strcasecmp(o->ptr,"acks")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_ACKS;
+            server.maxmemory_policy = MAXMEMORY_ACKS;
         } else if (!strcasecmp(o->ptr,"noeviction")) {
-            server.maxmemory_policy = DISQUE_MAXMEMORY_NO_EVICTION;
+            server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
         } else {
             goto badfmt;
         }
@@ -556,11 +556,11 @@ void configSetCommand(client *c) {
         if (!strcasecmp(o->ptr,"warning")) {
             server.verbosity = DISQUE_WARNING;
         } else if (!strcasecmp(o->ptr,"notice")) {
-            server.verbosity = DISQUE_NOTICE;
+            server.verbosity = LL_NOTICE;
         } else if (!strcasecmp(o->ptr,"verbose")) {
-            server.verbosity = DISQUE_VERBOSE;
+            server.verbosity = LL_VERBOSE;
         } else if (!strcasecmp(o->ptr,"debug")) {
-            server.verbosity = DISQUE_DEBUG;
+            server.verbosity = LL_DEBUG;
         } else {
             goto badfmt;
         }
@@ -733,8 +733,8 @@ void configGetCommand(client *c) {
         char *s;
 
         switch(server.maxmemory_policy) {
-        case DISQUE_MAXMEMORY_ACKS: s = "acks"; break;
-        case DISQUE_MAXMEMORY_NO_EVICTION: s = "noeviction"; break;
+        case MAXMEMORY_ACKS: s = "acks"; break;
+        case MAXMEMORY_NO_EVICTION: s = "noeviction"; break;
         default: s = "unknown"; break; /* too harmless to panic */
         }
         addReplyBulkCString(c,"maxmemory-policy");
@@ -759,9 +759,9 @@ void configGetCommand(client *c) {
 
         switch(server.verbosity) {
         case DISQUE_WARNING: s = "warning"; break;
-        case DISQUE_VERBOSE: s = "verbose"; break;
-        case DISQUE_NOTICE: s = "notice"; break;
-        case DISQUE_DEBUG: s = "debug"; break;
+        case LL_VERBOSE: s = "verbose"; break;
+        case LL_NOTICE: s = "notice"; break;
+        case LL_DEBUG: s = "debug"; break;
         default: s = "unknown"; break; /* too harmless to panic */
         }
         addReplyBulkCString(c,"loglevel");
@@ -1212,7 +1212,7 @@ void rewriteConfigRemoveOrphaned(struct rewriteConfigState *state) {
         /* Don't blank lines about options the rewrite process
          * don't understand. */
         if (dictFind(state->rewritten,option) == NULL) {
-            serverLog(DISQUE_DEBUG,"Not rewritten option: %s", option);
+            serverLog(LL_DEBUG,"Not rewritten option: %s", option);
             continue;
         }
 
@@ -1314,9 +1314,9 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"timeout",server.maxidletime,CONFIG_DEFAULT_CLIENT_TIMEOUT);
     rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,CONFIG_DEFAULT_TCP_KEEPALIVE);
     rewriteConfigEnumOption(state,"loglevel",server.verbosity,
-        "debug", DISQUE_DEBUG,
-        "verbose", DISQUE_VERBOSE,
-        "notice", DISQUE_NOTICE,
+        "debug", LL_DEBUG,
+        "verbose", LL_VERBOSE,
+        "notice", LL_NOTICE,
         "warning", DISQUE_WARNING,
         NULL, CONFIG_DEFAULT_VERBOSITY);
     rewriteConfigStringOption(state,"logfile",server.logfile,CONFIG_DEFAULT_LOGFILE);
@@ -1328,8 +1328,8 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"maxclients",server.maxclients,CONFIG_DEFAULT_MAX_CLIENTS);
     rewriteConfigBytesOption(state,"maxmemory",server.maxmemory,CONFIG_DEFAULT_MAXMEMORY);
     rewriteConfigEnumOption(state,"maxmemory-policy",server.maxmemory_policy,
-        "acks", DISQUE_MAXMEMORY_ACKS,
-        "noeviction", DISQUE_MAXMEMORY_NO_EVICTION,
+        "acks", MAXMEMORY_ACKS,
+        "noeviction", MAXMEMORY_NO_EVICTION,
         NULL, CONFIG_DEFAULT_MAXMEMORY_POLICY);
     rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,CONFIG_DEFAULT_MAXMEMORY_SAMPLES);
     rewriteConfigYesNoOption(state,"appendonly",server.aof_state != DISQUE_AOF_OFF,0);

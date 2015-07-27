@@ -65,7 +65,7 @@ client *createClient(int fd) {
     client *c = zmalloc(sizeof(client));
 
     /* passing -1 as fd it is possible to create a non connected client.
-     * This is useful since all the Disque commands needs to be executed
+     * This is useful since all the commands needs to be executed
      * in the context of a client. When commands are executed in other
      * contexts (for instance a Lua script) we need a non connected client. */
     if (fd != -1) {
@@ -575,9 +575,9 @@ static void acceptCommonHandler(int fd, int flags) {
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int cport, cfd, max = MAX_ACCEPTS_PER_CALL;
     char cip[NET_IP_STR_LEN];
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
-    DISQUE_NOTUSED(privdata);
+    UNUSED(el);
+    UNUSED(mask);
+    UNUSED(privdata);
 
     while(max--) {
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
@@ -587,16 +587,16 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                     "Accepting client connection: %s", server.neterr);
             return;
         }
-        serverLog(DISQUE_VERBOSE,"Accepted %s:%d", cip, cport);
+        serverLog(LL_VERBOSE,"Accepted %s:%d", cip, cport);
         acceptCommonHandler(cfd,0);
     }
 }
 
 void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int cfd, max = MAX_ACCEPTS_PER_CALL;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
-    DISQUE_NOTUSED(privdata);
+    UNUSED(el);
+    UNUSED(mask);
+    UNUSED(privdata);
 
     while(max--) {
         cfd = anetUnixAccept(server.neterr, fd);
@@ -606,7 +606,7 @@ void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                     "Accepting client connection: %s", server.neterr);
             return;
         }
-        serverLog(DISQUE_VERBOSE,"Accepted connection to %s", server.unixsocket);
+        serverLog(LL_VERBOSE,"Accepted connection to %s", server.unixsocket);
         acceptCommonHandler(cfd,CLIENT_UNIX_SOCKET);
     }
 }
@@ -707,8 +707,8 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     int nwritten = 0, totwritten = 0, objlen;
     size_t objmem;
     robj *o;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
+    UNUSED(el);
+    UNUSED(mask);
 
     while(c->bufpos > 0 || listLength(c->reply)) {
         if (c->bufpos > 0) {
@@ -763,7 +763,7 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (errno == EAGAIN) {
             nwritten = 0;
         } else {
-            serverLog(DISQUE_VERBOSE,
+            serverLog(LL_VERBOSE,
                 "Error writing to client: %s", strerror(errno));
             freeClient(c);
             return;
@@ -843,9 +843,9 @@ int processInlineBuffer(client *c) {
 /* Helper function. Trims query buffer to make the function that processes
  * multi bulk requests idempotent. */
 static void setProtocolError(client *c, int pos) {
-    if (server.verbosity >= DISQUE_VERBOSE) {
+    if (server.verbosity >= LL_VERBOSE) {
         sds client = catClientInfoString(sdsempty(),c);
-        serverLog(DISQUE_VERBOSE,
+        serverLog(LL_VERBOSE,
             "Protocol error from client: %s", client);
         sdsfree(client);
     }
@@ -1039,8 +1039,8 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     client *c = (client*) privdata;
     int nread, readlen;
     size_t qblen;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
+    UNUSED(el);
+    UNUSED(mask);
 
     readlen = PROTO_IOBUF_LEN;
     /* If this is a multi bulk request, and we are processing a bulk reply
@@ -1065,12 +1065,12 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (errno == EAGAIN) {
             return;
         } else {
-            serverLog(DISQUE_VERBOSE, "Reading from client: %s",strerror(errno));
+            serverLog(LL_VERBOSE, "Reading from client: %s",strerror(errno));
             freeClient(c);
             return;
         }
     } else if (nread == 0) {
-        serverLog(DISQUE_VERBOSE, "Client closed connection");
+        serverLog(LL_VERBOSE, "Client closed connection");
         freeClient(c);
         return;
     }
@@ -1434,7 +1434,7 @@ unsigned long getClientOutputBufferMemoryUsage(client *c) {
  * CLIENT_TYPE_NORMAL -> Normal client
  */
 int getClientType(client *c) {
-    DISQUE_NOTUSED(c);
+    UNUSED(c);
     return CLIENT_TYPE_NORMAL;
 }
 

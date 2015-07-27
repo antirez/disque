@@ -193,7 +193,7 @@ int clusterLoadConfig(char *filename) {
     zfree(line);
     fclose(fp);
 
-    serverLog(DISQUE_NOTICE,"Node configuration loaded, I'm %.40s", myself->name);
+    serverLog(LL_NOTICE,"Node configuration loaded, I'm %.40s", myself->name);
     return C_OK;
 
 fmterr:
@@ -347,7 +347,7 @@ void clusterInit(void) {
          * by the createClusterNode() function. */
         myself = server.cluster->myself =
             createClusterNode(NULL,DISQUE_NODE_MYSELF);
-        serverLog(DISQUE_NOTICE,"No cluster configuration found, I'm %.40s",
+        serverLog(LL_NOTICE,"No cluster configuration found, I'm %.40s",
             myself->name);
         clusterAddNode(myself);
         saveconf = 1;
@@ -477,15 +477,15 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int max = MAX_CLUSTER_ACCEPTS_PER_CALL;
     char cip[NET_IP_STR_LEN];
     clusterLink *link;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
-    DISQUE_NOTUSED(privdata);
+    UNUSED(el);
+    UNUSED(mask);
+    UNUSED(privdata);
 
     while(max--) {
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
-                serverLog(DISQUE_VERBOSE,
+                serverLog(LL_VERBOSE,
                     "Accepting cluster node: %s", server.neterr);
             return;
         }
@@ -493,7 +493,7 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         anetEnableTcpNoDelay(NULL,cfd);
 
         /* Use non-blocking I/O for cluster messages. */
-        serverLog(DISQUE_VERBOSE,"Accepted cluster node %s:%d", cip, cport);
+        serverLog(LL_VERBOSE,"Accepted cluster node %s:%d", cip, cport);
         /* Create a link object we use to handle the connection.
          * It gets passed to the readable handler when data is available.
          * Initiallly the link->node pointer is set to NULL as we don't know
@@ -503,37 +503,6 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         link->fd = cfd;
         aeCreateFileEvent(server.el,cfd,AE_READABLE,clusterReadHandler,link);
     }
-}
-
-/* -----------------------------------------------------------------------------
- * Key space handling
- * -------------------------------------------------------------------------- */
-
-/* We have 16384 hash slots. The hash slot of a given key is obtained
- * as the least significant 14 bits of the crc16 of the key.
- *
- * However if the key contains the {...} pattern, only the part between
- * { and } is hashed. This may be useful in the future to force certain
- * keys to be in the same node (assuming no resharding is in progress). */
-unsigned int keyHashSlot(char *key, int keylen) {
-    int s, e; /* start-end indexes of { and } */
-
-    for (s = 0; s < keylen; s++)
-        if (key[s] == '{') break;
-
-    /* No '{' ? Hash the whole key. This is the base case. */
-    if (s == keylen) return crc16(key,keylen) & 0x3FFF;
-
-    /* '{' found? Check if we have the corresponding '}'. */
-    for (e = s+1; e < keylen; e++)
-        if (key[e] == '}') break;
-
-    /* No '}' or nothing betweeen {} ? Hash the whole key. */
-    if (e == keylen || e == s+1) return crc16(key,keylen) & 0x3FFF;
-
-    /* If we are here there is both a { and a } on its right. Hash
-     * what is in the middle between { and }. */
-    return crc16(key+s+1,e-s-1) & 0x3FFF;
 }
 
 /* -----------------------------------------------------------------------------
@@ -730,7 +699,7 @@ void clusterRenameNode(clusterNode *node, char *newname) {
     int retval;
     sds s = sdsnewlen(node->name, DISQUE_CLUSTER_NAMELEN);
 
-    serverLog(DISQUE_DEBUG,"Renaming node %.40s into %.40s",
+    serverLog(LL_DEBUG,"Renaming node %.40s into %.40s",
         node->name, newname);
     retval = dictDelete(server.cluster->nodes, s);
     sdsfree(s);
@@ -850,7 +819,7 @@ void markNodeAsFailingIfNeeded(clusterNode *node) {
     failures++;
     if (failures < needed_quorum) return; /* No weak agreement from masters. */
 
-    serverLog(DISQUE_VERBOSE,
+    serverLog(LL_VERBOSE,
         "Marking node %.40s as failing (quorum reached).", node->name);
 
     /* Mark the node as failing. */
@@ -871,7 +840,7 @@ void clearNodeFailureIfNeeded(clusterNode *node) {
     serverAssert(nodeFailed(node));
 
     /* We always clear the FAIL flag if we can contact the node again. */
-    serverLog(DISQUE_VERBOSE,
+    serverLog(LL_VERBOSE,
         "Clear FAIL state for node %.40s: it is reachable again.",
             node->name);
     node->flags &= ~DISQUE_NODE_FAIL;
@@ -970,7 +939,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
         sds ci;
 
         ci = representDisqueNodeFlags(sdsempty(), flags);
-        serverLog(DISQUE_DEBUG,"GOSSIP %.40s %s:%d %s",
+        serverLog(LL_DEBUG,"GOSSIP %.40s %s:%d %s",
             g->nodename,
             g->ip,
             ntohs(g->port),
@@ -984,14 +953,14 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
             if (sender && node != myself) {
                 if (flags & (DISQUE_NODE_FAIL|DISQUE_NODE_PFAIL)) {
                     if (clusterNodeAddFailureReport(node,sender)) {
-                        serverLog(DISQUE_VERBOSE,
+                        serverLog(LL_VERBOSE,
                             "Node %.40s reported node %.40s as not reachable.",
                             sender->name, node->name);
                     }
                     markNodeAsFailingIfNeeded(node);
                 } else {
                     if (clusterNodeDelFailureReport(node,sender)) {
-                        serverLog(DISQUE_VERBOSE,
+                        serverLog(LL_VERBOSE,
                             "Node %.40s reported node %.40s is back online.",
                             sender->name, node->name);
                     }
@@ -1084,7 +1053,7 @@ int clusterProcessPacket(clusterLink *link) {
     clusterNode *sender;
 
     server.cluster->stats_bus_messages_received++;
-    serverLog(DISQUE_DEBUG,"--- Processing packet of type %d, %lu bytes",
+    serverLog(LL_DEBUG,"--- Processing packet of type %d, %lu bytes",
         type, (unsigned long) totlen);
 
     /* Perform sanity checks */
@@ -1140,7 +1109,7 @@ int clusterProcessPacket(clusterLink *link) {
 
     /* Initial processing of PING and MEET requests replying with a PONG. */
     if (type == CLUSTERMSG_TYPE_PING || type == CLUSTERMSG_TYPE_MEET) {
-        serverLog(DISQUE_DEBUG,"Ping packet received: %p", (void*)link->node);
+        serverLog(LL_DEBUG,"Ping packet received: %p", (void*)link->node);
 
         /* We use incoming MEET messages in order to set the address
          * for 'myself', since only other cluster nodes will send us
@@ -1194,7 +1163,7 @@ int clusterProcessPacket(clusterLink *link) {
     if (type == CLUSTERMSG_TYPE_PING || type == CLUSTERMSG_TYPE_PONG ||
         type == CLUSTERMSG_TYPE_MEET)
     {
-        serverLog(DISQUE_DEBUG,"%s packet received: %p",
+        serverLog(LL_DEBUG,"%s packet received: %p",
             type == CLUSTERMSG_TYPE_PING ? "ping" : "pong",
             (void*)link->node);
         if (link->node) {
@@ -1202,7 +1171,7 @@ int clusterProcessPacket(clusterLink *link) {
                 /* If we already have this node, try to change the
                  * IP/port of the node with the new one. */
                 if (sender) {
-                    serverLog(DISQUE_VERBOSE,
+                    serverLog(LL_VERBOSE,
                         "Handshake: we already know node %.40s, "
                         "updating the address if needed.", sender->name);
                     if (nodeUpdateAddressIfNeeded(sender,link,ntohs(hdr->port)))
@@ -1219,7 +1188,7 @@ int clusterProcessPacket(clusterLink *link) {
                 /* First thing to do is replacing the random name with the
                  * right node name if this was a handshake stage. */
                 clusterRenameNode(link->node, hdr->sender);
-                serverLog(DISQUE_DEBUG,"Handshake with node %.40s completed.",
+                serverLog(LL_DEBUG,"Handshake with node %.40s completed.",
                     link->node->name);
                 link->node->flags &= ~DISQUE_NODE_HANDSHAKE;
                 clusterDoBeforeSleep(CLUSTER_TODO_UPDATE_STATE|
@@ -1230,7 +1199,7 @@ int clusterProcessPacket(clusterLink *link) {
                 /* If the reply has a non matching node ID we
                  * disconnect this node and set it as not having an associated
                  * address. */
-                serverLog(DISQUE_DEBUG,"PONG contains mismatching sender ID");
+                serverLog(LL_DEBUG,"PONG contains mismatching sender ID");
                 link->node->flags |= DISQUE_NODE_NOADDR;
                 link->node->ip[0] = '\0';
                 link->node->port = 0;
@@ -1279,7 +1248,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (failing &&
             !(failing->flags & (DISQUE_NODE_FAIL|DISQUE_NODE_MYSELF)))
         {
-            serverLog(DISQUE_VERBOSE,
+            serverLog(LL_VERBOSE,
                 "FAIL message received from %.40s about %.40s",
                 hdr->sender, hdr->data.fail.about.nodename);
             failing->flags |= DISQUE_NODE_FAIL;
@@ -1337,7 +1306,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         uint32_t mayhave = ntohl(hdr->data.jobid.job.aux);
 
-        serverLog(DISQUE_VERBOSE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.48s",
+        serverLog(LL_VERBOSE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.48s",
             (int) mayhave,
             sender->name, hdr->data.jobid.job.id);
 
@@ -1391,7 +1360,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) {
-            serverLog(DISQUE_VERBOSE,"RECEIVED DELJOB FOR JOB %.48s", j->id);
+            serverLog(LL_VERBOSE,"RECEIVED DELJOB FOR JOB %.48s", j->id);
             unregisterJob(j);
             freeJob(j);
         }
@@ -1405,7 +1374,7 @@ int clusterProcessPacket(clusterLink *link) {
              * first to queue the job, so no need to broadcast a QUEUED
              * message the first time we queue it. */
             j->flags &= ~JOB_FLAG_BCAST_QUEUED;
-            serverLog(DISQUE_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
+            serverLog(LL_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
             if (delay == 0) {
                 enqueueJob(j,0);
             } else {
@@ -1418,7 +1387,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state <= JOB_STATE_QUEUED) {
-            serverLog(DISQUE_VERBOSE,"UPDATING QTIME FOR JOB %.48s", j->id);
+            serverLog(LL_VERBOSE,"UPDATING QTIME FOR JOB %.48s", j->id);
             /* Move the time we'll re-queue this job in the future. Moreover
              * if the sender has a Node ID greate than our node ID, and we
              * have the message queued as well, dequeue it, to avoid an
@@ -1475,7 +1444,7 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t count = ntohl(hdr->data.jobsreq.about.count);
         robj *qname = createStringObject(hdr->data.jobsreq.about.qname,
                                          qnamelen);
-        serverLog(DISQUE_VERBOSE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
+        serverLog(LL_VERBOSE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
             (char*)qname->ptr,count);
         receiveNeedJobs(sender,qname,count);
         decrRefCount(qname);
@@ -1501,12 +1470,12 @@ void handleLinkIOError(clusterLink *link) {
 void clusterWriteHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     clusterLink *link = (clusterLink*) privdata;
     ssize_t nwritten;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
+    UNUSED(el);
+    UNUSED(mask);
 
     nwritten = write(fd, link->sndbuf, sdslen(link->sndbuf));
     if (nwritten <= 0) {
-        serverLog(DISQUE_DEBUG,"I/O error writing to node link: %s",
+        serverLog(LL_DEBUG,"I/O error writing to node link: %s",
             strerror(errno));
         handleLinkIOError(link);
         return;
@@ -1525,8 +1494,8 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     clusterMsg *hdr;
     clusterLink *link = (clusterLink*) privdata;
     unsigned int readlen, rcvbuflen;
-    DISQUE_NOTUSED(el);
-    DISQUE_NOTUSED(mask);
+    UNUSED(el);
+    UNUSED(mask);
 
     while(1) { /* Read as long as there is data to read. */
         rcvbuflen = sdslen(link->rcvbuf);
@@ -1559,7 +1528,7 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
         if (nread <= 0) {
             /* I/O error... */
-            serverLog(DISQUE_DEBUG,"I/O error reading from node link: %s",
+            serverLog(LL_DEBUG,"I/O error reading from node link: %s",
                 (nread == 0) ? "connection closed" : strerror(errno));
             handleLinkIOError(link);
             return;
@@ -1930,21 +1899,21 @@ void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay) {
  * This message is sent to all the nodes we believe may have a copy
  * of the message and are reachable. */
 void clusterBroadcastQueued(job *j, unsigned char flags) {
-    serverLog(DISQUE_VERBOSE,"BCAST QUEUED: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST QUEUED: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_QUEUED,0,flags);
 }
 
 /* WORKING is like QUEUED, but will always force the receiver to dequeue. */
 void clusterBroadcastWorking(job *j) {
-    serverLog(DISQUE_VERBOSE,"BCAST WORKING: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST WORKING: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_WORKING,0,CLUSTERMSG_NOFLAGS);
 }
 
 /* Send a DELJOB message to all the nodes that may have a copy. */
 void clusterBroadcastDelJob(job *j) {
-    serverLog(DISQUE_VERBOSE,"BCAST DELJOB: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST DELJOB: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_DELJOB,0,CLUSTERMSG_NOFLAGS);
 }
@@ -1953,7 +1922,7 @@ void clusterBroadcastDelJob(job *j) {
  * already queued, to prevent us from queueing it in the next few
  * milliseconds. */
 void clusterSendWillQueue(job *j) {
-    serverLog(DISQUE_VERBOSE,"BCAST WILLQUEUE: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST WILLQUEUE: %.48s",j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_WILLQUEUE,0,CLUSTERMSG_NOFLAGS);
 }
@@ -1975,7 +1944,7 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     uint32_t alloclen;
     clusterMsg *hdr;
 
-    serverLog(DISQUE_VERBOSE,"Sending NEEDJOBS for %s %d, %d nodes",
+    serverLog(LL_VERBOSE,"Sending NEEDJOBS for %s %d, %d nodes",
         (char*)qname->ptr, (int)numjobs, (int)dictSize(nodes));
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
@@ -2002,7 +1971,7 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
 
     if (!node->link) return;
 
-    serverLog(DISQUE_VERBOSE,"Sending %d jobs to %.40s", (int)count,node->name);
+    serverLog(LL_VERBOSE,"Sending %d jobs to %.40s", (int)count,node->name);
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
     totlen += sizeof(clusterMsgDataJob) -
@@ -2074,7 +2043,7 @@ void clusterCron(void) {
             clusterLink *link;
 
             fd = anetTcpNonBlockBindConnect(server.neterr, node->ip,
-                node->port+DISQUE_CLUSTER_PORT_INCR, DISQUE_BIND_ADDR);
+                node->port+DISQUE_CLUSTER_PORT_INCR, NET_FIRST_BIND_ADDR);
             if (fd == -1) {
                 /* We got a synchronous error from connect before
                  * clusterSendPing() had a chance to be called.
@@ -2082,7 +2051,7 @@ void clusterCron(void) {
                  * so we claim we actually sent a ping now (that will
                  * be really sent as soon as the link is obtained). */
                 if (node->ping_sent == 0) node->ping_sent = mstime();
-                serverLog(DISQUE_DEBUG, "Unable to connect to "
+                serverLog(LL_DEBUG, "Unable to connect to "
                     "Cluster Node [%s]:%d -> %s", node->ip,
                     node->port+DISQUE_CLUSTER_PORT_INCR,
                     server.neterr);
@@ -2116,7 +2085,7 @@ void clusterCron(void) {
              * normal PING packets. */
             node->flags &= ~DISQUE_NODE_MEET;
 
-            serverLog(DISQUE_DEBUG,"Connecting with Node %.40s at %s:%d",
+            serverLog(LL_DEBUG,"Connecting with Node %.40s at %s:%d",
                     node->name, node->ip, node->port+DISQUE_CLUSTER_PORT_INCR);
         }
     }
@@ -2143,7 +2112,7 @@ void clusterCron(void) {
             }
         }
         if (min_pong_node) {
-            serverLog(DISQUE_DEBUG,"Pinging node %.40s", min_pong_node->name);
+            serverLog(LL_DEBUG,"Pinging node %.40s", min_pong_node->name);
             clusterSendPing(min_pong_node->link, CLUSTERMSG_TYPE_PING);
         }
     }
@@ -2203,7 +2172,7 @@ void clusterCron(void) {
             /* Timeout reached. Set the node as possibly failing if it is
              * not already in this state. */
             if (!(node->flags & (DISQUE_NODE_PFAIL|DISQUE_NODE_FAIL))) {
-                serverLog(DISQUE_DEBUG,"*** NODE %.40s possibly failing",
+                serverLog(LL_DEBUG,"*** NODE %.40s possibly failing",
                     node->name);
                 node->flags |= DISQUE_NODE_PFAIL;
                 update_state = 1;

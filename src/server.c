@@ -155,7 +155,7 @@ void serverLogRaw(int level, const char *msg) {
     const char *c = ".-*#";
     FILE *fp;
     char buf[64];
-    int rawmode = (level & DISQUE_LOG_RAW);
+    int rawmode = (level & LL_RAW);
     int log_to_stdout = server.logfile[0] == '\0';
 
     level &= 0xff; /* clear flags */
@@ -591,7 +591,7 @@ int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
         !(c->flags & CLIENT_BLOCKED) &&  /* no timeout for blocked clients. */
         (now - c->lastinteraction > server.maxidletime))
     {
-        serverLog(DISQUE_VERBOSE,"Closing idle client");
+        serverLog(LL_VERBOSE,"Closing idle client");
         freeClient(c);
         return 1;
     } else if (c->flags & CLIENT_BLOCKED) {
@@ -720,9 +720,9 @@ void updateCachedTime(void) {
  */
 
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
-    DISQUE_NOTUSED(eventLoop);
-    DISQUE_NOTUSED(id);
-    DISQUE_NOTUSED(clientData);
+    UNUSED(eventLoop);
+    UNUSED(id);
+    UNUSED(clientData);
 
     /* Software watchdog: deliver the SIGALRM that will reach the signal
      * handler if we don't return here fast enough. */
@@ -749,14 +749,14 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
-        if (prepareForShutdown(DISQUE_SHUTDOWN_NOFLAGS) == C_OK) exit(0);
+        if (prepareForShutdown(SHUTDOWN_NOFLAGS) == C_OK) exit(0);
         serverLog(DISQUE_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
         server.shutdown_asap = 0;
     }
 
     /* Show information about connected clients */
     run_with_period(5000) {
-        serverLog(DISQUE_VERBOSE,
+        serverLog(LL_VERBOSE,
             "%lu clients connected, %zu bytes in use",
             listLength(server.clients),
             zmalloc_used_memory());
@@ -804,7 +804,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                             server.aof_rewrite_base_size : 1;
             long long growth = (server.aof_current_size*100/base) - 100;
             if (growth >= server.aof_rewrite_perc) {
-                serverLog(DISQUE_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
+                serverLog(LL_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
                 rewriteAppendOnlyFileBackground();
             }
          }
@@ -848,7 +848,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
  * main loop of the event driven library, that is, before to sleep
  * for ready file descriptors. */
 void beforeSleep(struct aeEventLoop *eventLoop) {
-    DISQUE_NOTUSED(eventLoop);
+    UNUSED(eventLoop);
 
     /* Unblock clients waiting to receive messages into queues.
      * We do this both on processCommand() and here, since we need to
@@ -1113,7 +1113,7 @@ void adjustOpenFilesLimit(void) {
                     "If you need higher maxclients increase 'ulimit -n'.",
                     (unsigned long long) oldlimit, server.maxclients);
             } else {
-                serverLog(DISQUE_NOTICE,"Increased maximum number of open files "
+                serverLog(LL_NOTICE,"Increased maximum number of open files "
                     "to %llu (it was originally set to %llu).",
                     (unsigned long long) maxfiles,
                     (unsigned long long) oldlimit);
@@ -1337,7 +1337,7 @@ void initServer(void) {
     if (server.arch_bits == 32 && server.maxmemory == 0) {
         serverLog(DISQUE_WARNING,"Warning: 32 bit instance detected but no memory limit set. Setting 3 GB maxmemory limit with 'noeviction' policy now.");
         server.maxmemory = 3072LL*(1024*1024); /* 3 GB */
-        server.maxmemory_policy = DISQUE_MAXMEMORY_NO_EVICTION;
+        server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
 
     clusterInit();
@@ -1478,13 +1478,13 @@ void call(client *c, int flags) {
 
     /* Log the command into the Slow log if needed, and populate the
      * per-command statistics that we show in INFO commandstats. */
-    if (flags & DISQUE_CALL_SLOWLOG) {
+    if (flags & CMD_CALL_SLOWLOG) {
         char *latency_event = (c->cmd->flags & CMD_FAST) ?
                               "fast-command" : "command";
         latencyAddSampleIfNeeded(latency_event,duration/1000);
         slowlogPushEntryIfNeeded(c->argv,c->argc,duration);
     }
-    if (flags & DISQUE_CALL_STATS) {
+    if (flags & CMD_CALL_STATS) {
         c->cmd->microseconds += duration;
         c->cmd->calls++;
     }
@@ -1563,7 +1563,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
-    call(c,DISQUE_CALL_FULL);
+    call(c,CMD_CALL_FULL);
     handleClientsBlockedOnQueues();
     return C_OK;
 }
@@ -1579,7 +1579,7 @@ void closeListeningSockets(int unlink_unix_socket) {
     if (server.sofd != -1) close(server.sofd);
     for (j = 0; j < server.cfd_count; j++) close(server.cfd[j]);
     if (unlink_unix_socket && server.unixsocket) {
-        serverLog(DISQUE_NOTICE,"Removing the unix socket file.");
+        serverLog(LL_NOTICE,"Removing the unix socket file.");
         unlink(server.unixsocket); /* don't care if this fails */
     }
 }
@@ -1587,7 +1587,7 @@ void closeListeningSockets(int unlink_unix_socket) {
 /* Performs the operations needed to shutdown correctly the server, including
  * additional operations as specified by 'flags'. */
 int prepareForShutdown(int flags) {
-    int rewrite = flags & DISQUE_SHUTDOWN_REWRITE_AOF;
+    int rewrite = flags & SHUTDOWN_REWRITE_AOF;
 
     serverLog(DISQUE_WARNING,"User requested shutdown...");
     /* Kill the saving child if there is a background saving in progress.
@@ -1608,7 +1608,7 @@ int prepareForShutdown(int flags) {
             kill(server.aof_child_pid,SIGUSR1);
         }
         /* Append only file: fsync() the AOF and exit */
-        serverLog(DISQUE_NOTICE,"Calling fsync() on the AOF file.");
+        serverLog(LL_NOTICE,"Calling fsync() on the AOF file.");
         aof_fsync(server.aof_fd);
     }
 
@@ -1619,7 +1619,7 @@ int prepareForShutdown(int flags) {
     }
 
     if (server.daemonize) {
-        serverLog(DISQUE_NOTICE,"Removing the pid file.");
+        serverLog(LL_NOTICE,"Removing the pid file.");
         unlink(server.pidfile);
     }
 
@@ -1724,7 +1724,7 @@ void shutdownCommand(client *c) {
         return;
     } else if (c->argc == 2) {
         if (!strcasecmp(c->argv[1]->ptr,"rewrite-aof")) {
-            flags |= DISQUE_SHUTDOWN_REWRITE_AOF;
+            flags |= SHUTDOWN_REWRITE_AOF;
         } else {
             addReply(c,shared.syntaxerr);
             return;
@@ -1735,7 +1735,7 @@ void shutdownCommand(client *c) {
      * the dataset on shutdown (otherwise it could overwrite the current DB
      * with half-read data). */
     if (server.loading)
-        flags = (flags & ~DISQUE_SHUTDOWN_REWRITE_AOF);
+        flags = (flags & ~SHUTDOWN_REWRITE_AOF);
     if (prepareForShutdown(flags) == C_OK) exit(0);
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
@@ -2151,7 +2151,7 @@ int freeMemoryIfNeeded(void) {
      * when 95% of maxmemory is reached. */
     if (getMemoryWarningLevel() < 2) return C_OK;
 
-    if (server.maxmemory_policy == DISQUE_MAXMEMORY_NO_EVICTION)
+    if (server.maxmemory_policy == MAXMEMORY_NO_EVICTION)
         return C_ERR; /* We need to free memory, but policy forbids. */
 
     /* Compute how much memory we need to free. */
@@ -2306,7 +2306,7 @@ void disqueAsciiArt(void) {
     char *buf = zmalloc(1024*16);
 
     if (server.syslog_enabled) {
-        serverLog(DISQUE_NOTICE,
+        serverLog(LL_NOTICE,
             "Disque %s (%s/%d) %s bit, port %d, pid %ld ready to start.",
             DISQUE_VERSION,
             disqueGitSHA1(),
@@ -2324,7 +2324,7 @@ void disqueAsciiArt(void) {
             server.port,
             (long) getpid()
         );
-        serverLogRaw(DISQUE_NOTICE|DISQUE_LOG_RAW,buf);
+        serverLogRaw(LL_NOTICE|LL_RAW,buf);
     }
     zfree(buf);
 }
@@ -2388,7 +2388,7 @@ void loadDataFromDisk(void) {
     long long start = ustime();
     if (server.aof_state == DISQUE_AOF_ON || server.aof_enqueue_jobs_once) {
         if (loadAppendOnlyFile(server.aof_filename) == C_OK)
-            serverLog(DISQUE_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
+            serverLog(LL_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
 
         /* Rewrite aof-enqueue-jobs-once setting it to no if enabled: this
          * option has the special property of auto-turning itself off. */
@@ -2417,7 +2417,7 @@ void serverSetProcTitle(char *title) {
         server.bindaddr_count ? server.bindaddr[0] : "*",
         server.port);
 #else
-    DISQUE_NOTUSED(title);
+    UNUSED(title);
 #endif
 }
 
@@ -2497,9 +2497,9 @@ int main(int argc, char **argv) {
     checkTcpBacklogSettings();
     loadDataFromDisk();
     if (server.ipfd_count > 0)
-        serverLog(DISQUE_NOTICE,"The server is now ready to accept connections on port %d", server.port);
+        serverLog(LL_NOTICE,"The server is now ready to accept connections on port %d", server.port);
     if (server.sofd > 0)
-        serverLog(DISQUE_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
+        serverLog(LL_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
 
     /* Warning the user about suspicious maxmemory setting. */
     if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {

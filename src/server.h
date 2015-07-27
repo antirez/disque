@@ -207,15 +207,15 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CLIENT_TYPE_COUNT 1
 
 /* Log levels */
-#define DISQUE_DEBUG 0
-#define DISQUE_VERBOSE 1
-#define DISQUE_NOTICE 2
+#define LL_DEBUG 0
+#define LL_VERBOSE 1
+#define LL_NOTICE 2
 #define DISQUE_WARNING 3
-#define DISQUE_LOG_RAW (1<<10) /* Modifier to log without timestamp */
-#define CONFIG_DEFAULT_VERBOSITY DISQUE_NOTICE
+#define LL_RAW (1<<10) /* Modifier to log without timestamp */
+#define CONFIG_DEFAULT_VERBOSITY LL_NOTICE
 
 /* Anti-warning macro... */
-#define DISQUE_NOTUSED(V) ((void) V)
+#define UNUSED(V) ((void) V)
 
 /* Append only defines */
 #define AOF_FSYNC_NO 0
@@ -224,31 +224,31 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CONFIG_DEFAULT_AOF_FSYNC AOF_FSYNC_EVERYSEC
 
 /* Disque maxmemory strategies */
-#define DISQUE_MAXMEMORY_ACKS 0
-#define DISQUE_MAXMEMORY_NO_EVICTION 1
-#define CONFIG_DEFAULT_MAXMEMORY_POLICY DISQUE_MAXMEMORY_ACKS
+#define MAXMEMORY_ACKS 0
+#define MAXMEMORY_NO_EVICTION 1
+#define CONFIG_DEFAULT_MAXMEMORY_POLICY MAXMEMORY_ACKS
 
 /* Units */
 #define UNIT_SECONDS 0
 #define UNIT_MILLISECONDS 1
 
 /* SHUTDOWN flags */
-#define DISQUE_SHUTDOWN_NOFLAGS 0 /* No flags. */
-#define DISQUE_SHUTDOWN_REWRITE_AOF 1 /* Sync AOF rewrite before exiting. */
+#define SHUTDOWN_NOFLAGS 0 /* No flags. */
+#define SHUTDOWN_REWRITE_AOF 1 /* Sync AOF rewrite before exiting. */
 
 /* Command call flags, see call() function */
-#define DISQUE_CALL_NONE 0
-#define DISQUE_CALL_SLOWLOG 1
-#define DISQUE_CALL_STATS 2
-#define DISQUE_CALL_PROPAGATE 4
-#define DISQUE_CALL_FULL (DISQUE_CALL_SLOWLOG | DISQUE_CALL_STATS | DISQUE_CALL_PROPAGATE)
+#define CMD_CALL_NONE 0
+#define CMD_CALL_SLOWLOG 1
+#define CMD_CALL_STATS 2
+#define CMD_CALL_PROPAGATE 4
+#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
 
 /* Command propagation flags, see propagate() function */
-#define DISQUE_PROPAGATE_NONE 0
-#define DISQUE_PROPAGATE_AOF 1
+#define PROPAGATE_NONE 0
+#define PROPAGATE_AOF 1
 
 /* Get the first bind addr or NULL */
-#define DISQUE_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
+#define NET_FIRST_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.

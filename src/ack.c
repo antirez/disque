@@ -68,7 +68,7 @@ mstime_t getNextGCRetryTime(job *job) {
 /* Try to garbage collect the job. */
 void tryJobGC(job *job) {
     if (job->state != JOB_STATE_ACKED) return;
-    serverLog(DISQUE_VERBOSE,"GC %.48s", job->id);
+    serverLog(LL_VERBOSE,"GC %.48s", job->id);
 
     /* Don't overflow the count, it's only useful for the exponential delay.
      * Actually we'll keep trying forever. */
@@ -88,7 +88,7 @@ void tryJobGC(job *job) {
     if (dictSize(job->nodes_delivered) != 0 &&
         dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed))
     {
-        serverLog(DISQUE_VERBOSE,
+        serverLog(LL_VERBOSE,
             "Deleting %.48s: all nodes reached in tryJobGC()",
             job->id);
         unregisterJob(job);
@@ -117,7 +117,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
      * send us ACKJOB about a job we were not aware. */
     int dummy_ack = dictSize(job->nodes_delivered) == 0;
 
-    serverLog(DISQUE_VERBOSE,"RECEIVED GOTACK FROM %.40s FOR JOB %.48s",
+    serverLog(LL_VERBOSE,"RECEIVED GOTACK FROM %.40s FOR JOB %.48s",
         sender->name, job->id);
 
     /* We should never receive a GOTACK for a job which is not acknowledged,
@@ -128,7 +128,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
      * it's up to it to perform the garbage collection, so we can forget about
      * this job and reclaim memory. */
     if (dummy_ack && known) {
-        serverLog(DISQUE_VERBOSE,"Deleting %.48s: authoritative node reached",
+        serverLog(LL_VERBOSE,"Deleting %.48s: authoritative node reached",
             job->id);
         unregisterJob(job);
         freeJob(job);
@@ -162,7 +162,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
         dictAdd(job->nodes_confirmed,sender->name,sender);
         if (dictSize(job->nodes_confirmed) >= dictSize(server.cluster->nodes))
         {
-            serverLog(DISQUE_VERBOSE,
+            serverLog(LL_VERBOSE,
                 "Deleting %.48s: dummy ACK not known cluster-wide",
                 job->id);
             unregisterJob(job);
@@ -176,7 +176,7 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
     if (!dummy_ack && job->nodes_confirmed &&
          dictSize(job->nodes_confirmed) >= dictSize(job->nodes_delivered))
     {
-        serverLog(DISQUE_VERBOSE,
+        serverLog(LL_VERBOSE,
             "Deleting %.48s: All nodes involved acknowledged the job",
             job->id);
         clusterBroadcastDelJob(job);

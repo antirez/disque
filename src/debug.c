@@ -503,7 +503,7 @@ void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
     ucontext_t *uc = (ucontext_t*) secret;
     sds infostring, clients;
     struct sigaction act;
-    DISQUE_NOTUSED(info);
+    UNUSED(info);
 
     bugReportStart();
     serverLog(DISQUE_WARNING,
@@ -583,11 +583,11 @@ void serverLogHexDump(int level, char *descr, void *value, size_t len) {
         len--;
         v++;
         if (b-buf == 64 || len == 0) {
-            serverLogRaw(level|DISQUE_LOG_RAW,buf);
+            serverLogRaw(level|LL_RAW,buf);
             b = buf;
         }
     }
-    serverLogRaw(level|DISQUE_LOG_RAW,"\n");
+    serverLogRaw(level|LL_RAW,"\n");
 }
 
 /* =========================== Software Watchdog ============================ */
@@ -597,8 +597,8 @@ void watchdogSignalHandler(int sig, siginfo_t *info, void *secret) {
 #ifdef HAVE_BACKTRACE
     ucontext_t *uc = (ucontext_t*) secret;
 #endif
-    DISQUE_NOTUSED(info);
-    DISQUE_NOTUSED(sig);
+    UNUSED(info);
+    UNUSED(sig);
 
     serverLogFromHandler(DISQUE_WARNING,"\n--- WATCHDOG TIMER EXPIRED ---");
 #ifdef HAVE_BACKTRACE

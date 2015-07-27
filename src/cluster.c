@@ -69,7 +69,7 @@ void clusterSendGotJob(clusterNode *node, job *j);
 void clusterSendGotAck(clusterNode *node, char *jobid, int known);
 void clusterBroadcastQueued(job *j, unsigned char flags);
 void clusterBroadcastDelJob(job *j);
-sds representDisqueNodeFlags(sds ci, uint16_t flags);
+sds representClusterNodeFlags(sds ci, uint16_t flags);
 
 /* -----------------------------------------------------------------------------
  * Initialization
@@ -938,7 +938,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
         clusterNode *node;
         sds ci;
 
-        ci = representDisqueNodeFlags(sdsempty(), flags);
+        ci = representClusterNodeFlags(sdsempty(), flags);
         serverLog(LL_DEBUG,"GOSSIP %.40s %s:%d %s",
             g->nodename,
             g->ip,
@@ -2272,7 +2272,7 @@ static struct disqueNodeFlags disqueNodeFlagsTable[] = {
 
 /* Concatenate the comma separated list of node flags to the given SDS
  * string 'ci'. */
-sds representDisqueNodeFlags(sds ci, uint16_t flags) {
+sds representClusterNodeFlags(sds ci, uint16_t flags) {
     if (flags == 0) {
         ci = sdscat(ci,"noflags,");
     } else {
@@ -2300,7 +2300,7 @@ sds clusterGenNodeDescription(clusterNode *node) {
         node->port);
 
     /* Flags */
-    ci = representDisqueNodeFlags(ci, node->flags);
+    ci = representClusterNodeFlags(ci, node->flags);
 
     /* Latency from the POV of this node, link status */
     ci = sdscatprintf(ci," %lld %lld %s",

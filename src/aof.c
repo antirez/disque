@@ -531,8 +531,8 @@ struct client *createFakeClient(void) {
     c->argc = 0;
     c->argv = NULL;
     c->bufpos = 0;
-    c->flags = DISQUE_AOF_CLIENT;
-    c->btype = DISQUE_BLOCKED_NONE;
+    c->flags = CLIENT_AOF_CLIENT;
+    c->btype = BLOCKED_NONE;
     c->reply = listCreate();
     c->reply_bytes = 0;
     c->obuf_soft_limit_reached_time = 0;
@@ -650,7 +650,7 @@ int loadAppendOnlyFile(char *filename) {
         /* The fake client should not have a reply */
         serverAssert(fakeClient->bufpos == 0 && listLength(fakeClient->reply) == 0);
         /* The fake client should never get blocked */
-        serverAssert((fakeClient->flags & DISQUE_BLOCKED) == 0);
+        serverAssert((fakeClient->flags & CLIENT_BLOCKED) == 0);
 
         /* Clean up. Command code may have changed argv/argc so we use the
          * argv/argc of the client instead of the local variables. */
@@ -769,7 +769,7 @@ int rewriteAppendOnlyFile(char *filename, int background) {
     if (background) server.aof_child_diff = sdsempty();
     rioInitWithFile(&aof,fp);
     if (server.aof_rewrite_incremental_fsync)
-        rioSetAutoSync(&aof,DISQUE_AOF_AUTOSYNC_BYTES);
+        rioSetAutoSync(&aof,AOF_AUTOSYNC_BYTES);
 
     /* Rerwite jobs that are in interesting states: active or queued.
      * ad LOADJOB commands. */

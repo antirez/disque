@@ -177,7 +177,7 @@ static size_t rioFdsetWrite(rio *r, const void *buf, size_t len) {
     if (len) {
         r->io.fdset.buf = sdscatlen(r->io.fdset.buf,buf,len);
         len = 0; /* Prevent entering the while belove if we don't flush. */
-        if (sdslen(r->io.fdset.buf) > DISQUE_IOBUF_LEN) doflush = 1;
+        if (sdslen(r->io.fdset.buf) > PROTO_IOBUF_LEN) doflush = 1;
     }
 
     if (doflush) {

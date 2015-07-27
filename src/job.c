@@ -77,7 +77,7 @@ void generateJobID(char *id, int ttl) {
     /* Get the pseudo random bytes using SHA1 in counter mode. */
     counter++;
     SHA1Init(&ctx);
-    SHA1Update(&ctx,(unsigned char*)server.jobid_seed,DISQUE_RUN_ID_SIZE);
+    SHA1Update(&ctx,(unsigned char*)server.jobid_seed,CONFIG_RUN_ID_SIZE);
     SHA1Update(&ctx,(unsigned char*)&counter,sizeof(counter));
     SHA1Final(hash,&ctx);
 
@@ -869,7 +869,7 @@ void AOFAckJob(job *job) {
  * restart, and is only processed while loading AOFs. Clients calling this
  * command get an error. */
 void loadjobCommand(client *c) {
-    if (!(c->flags & DISQUE_AOF_CLIENT)) {
+    if (!(c->flags & CLIENT_AOF_CLIENT)) {
         addReplyError(c,"LOADJOB is a special command only processed from AOF");
         return;
     }
@@ -999,7 +999,7 @@ int jobReplicationAchieved(job *j) {
 #define DELAYED_JOB_ADD_NODE_MIN_PERIOD 50 /* 50 milliseconds. */
 int clientsCronHandleDelayedJobReplication(client *c) {
     /* Return ASAP if this client is not blocked for job replication. */
-    if (!(c->flags & DISQUE_BLOCKED) || c->btype != DISQUE_BLOCKED_JOB_REPL)
+    if (!(c->flags & CLIENT_BLOCKED) || c->btype != BLOCKED_JOB_REPL)
         return 0;
 
     mstime_t elapsed = server.mstime - c->bpop.added_node_time;
@@ -1204,7 +1204,7 @@ void addjobCommand(client *c) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
         c->bpop.added_node_time = server.mstime;
-        blockClient(c,DISQUE_BLOCKED_JOB_REPL);
+        blockClient(c,BLOCKED_JOB_REPL);
         setJobAssociatedValue(job,c);
         /* Create the nodes_confirmed dictionary only if we actually need
          * it for synchronous replication. It will be released later

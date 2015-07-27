@@ -34,17 +34,17 @@
  * getTimeoutFromObjectOrReply() is just an utility function to parse a
  * timeout argument since blocking operations usually require a timeout.
  *
- * blockClient() set the DISQUE_BLOCKED flag in the client, and set the
- * specified block type 'btype' filed to one of DISQUE_BLOCKED_* macros.
+ * blockClient() set the CLIENT_BLOCKED flag in the client, and set the
+ * specified block type 'btype' filed to one of BLOCKED_* macros.
  *
  * unblockClient() unblocks the client doing the following:
  * 1) It calls the btype-specific function to cleanup the state.
- * 2) It unblocks the client by unsetting the DISQUE_BLOCKED flag.
+ * 2) It unblocks the client by unsetting the CLIENT_BLOCKED flag.
  * 3) It puts the client into a list of just unblocked clients that are
  *    processed ASAP in the beforeSleep() event loop callback, so that
  *    if there is some query buffer to process, we do it. This is also
  *    required because otherwise there is no 'readable' event fired, we
- *    already read the pending commands. We also set the DISQUE_UNBLOCKED
+ *    already read the pending commands. We also set the CLIENT_UNBLOCKED
  *    flag to remember the client is in the unblocked_clients list.
  *
  * processUnblockedClients() is called inside the beforeSleep() function
@@ -94,11 +94,11 @@ int getTimeoutFromObjectOrReply(client *c, robj *object, mstime_t *timeout, int 
     return C_OK;
 }
 
-/* Block a client for the specific operation type. Once the DISQUE_BLOCKED
+/* Block a client for the specific operation type. Once the CLIENT_BLOCKED
  * flag is set client query buffer is not longer processed, but accumulated,
  * and will be processed when the client is unblocked. */
 void blockClient(client *c, int btype) {
-    c->flags |= DISQUE_BLOCKED;
+    c->flags |= CLIENT_BLOCKED;
     c->btype = btype;
     server.bpop_blocked_clients++;
 }
@@ -115,13 +115,13 @@ void processUnblockedClients(void) {
         serverAssert(ln != NULL);
         c = ln->value;
         listDelNode(server.unblocked_clients,ln);
-        c->flags &= ~DISQUE_UNBLOCKED;
+        c->flags &= ~CLIENT_UNBLOCKED;
         /* Note that the client may be blocked again at this point, since
          * a new blocking command was processed. In that case we just remove
          * it from the unblocked clients list without actually processing
          * its pending query buffer. */
-        if (!(c->flags & DISQUE_BLOCKED)) {
-            c->btype = DISQUE_BLOCKED_NONE;
+        if (!(c->flags & CLIENT_BLOCKED)) {
+            c->btype = BLOCKED_NONE;
 
             /* Process remaining data in the input buffer. */
             if (c->querybuf && sdslen(c->querybuf) > 0) {
@@ -134,22 +134,22 @@ void processUnblockedClients(void) {
 /* Unblock a client calling the right function depending on the kind
  * of operation the client is blocking for. */
 void unblockClient(client *c) {
-    if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
+    if (c->btype == BLOCKED_JOB_REPL) {
         unblockClientWaitingJobRepl(c);
-    } else if (c->btype == DISQUE_BLOCKED_GETJOB) {
+    } else if (c->btype == BLOCKED_GETJOB) {
         unblockClientBlockedForJobs(c);
     } else {
         serverPanic("Unknown btype in unblockClient().");
     }
     /* Clear the flags, and put the client in the unblocked list so that
      * we'll process new commands in its query buffer ASAP. */
-    c->flags &= ~DISQUE_BLOCKED;
-    c->btype = DISQUE_BLOCKED_NONE;
+    c->flags &= ~CLIENT_BLOCKED;
+    c->btype = BLOCKED_NONE;
     server.bpop_blocked_clients--;
     /* The client may already be into the unblocked list because of a previous
      * blocking operation, don't add back it into the list multiple times. */
-    if (!(c->flags & DISQUE_UNBLOCKED)) {
-        c->flags |= DISQUE_UNBLOCKED;
+    if (!(c->flags & CLIENT_UNBLOCKED)) {
+        c->flags |= CLIENT_UNBLOCKED;
         listAddNodeTail(server.unblocked_clients,c);
     }
 }
@@ -157,12 +157,12 @@ void unblockClient(client *c) {
 /* This function gets called when a blocked client timed out in order to
  * send it a reply of some kind. */
 void replyToBlockedClientTimedOut(client *c) {
-    if (c->btype == DISQUE_BLOCKED_JOB_REPL) {
+    if (c->btype == BLOCKED_JOB_REPL) {
         addReplySds(c,
             sdsnew("-NOREPL Timeout reached before replicating to "
                    "the requested number of nodes\r\n"));
         return;
-    } else if (c->btype == DISQUE_BLOCKED_GETJOB) {
+    } else if (c->btype == BLOCKED_GETJOB) {
         addReply(c,shared.nullmultibulk);
     } else {
         serverPanic("Unknown btype in replyToBlockedClientTimedOut().");

@@ -93,7 +93,7 @@ robj *createStringObject(const char *ptr, size_t len) {
 
 robj *createStringObjectFromLongLong(long long value) {
     robj *o;
-    if (value >= 0 && value < DISQUE_SHARED_INTEGERS) {
+    if (value >= 0 && value < OBJ_SHARED_INTEGERS) {
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
     } else {
@@ -257,7 +257,7 @@ robj *tryObjectEncoding(robj *o) {
          * Note that we avoid using shared integers when maxmemory is used
          * because every object needs to have a private LRU field for the LRU
          * algorithm to work well. */
-        if (value >= 0 && value < DISQUE_SHARED_INTEGERS) {
+        if (value >= 0 && value < OBJ_SHARED_INTEGERS) {
             decrRefCount(o);
             incrRefCount(shared.integers[value]);
             return shared.integers[value];

@@ -59,7 +59,7 @@ typedef struct clusterNode {
     mstime_t ping_sent;      /* Unix time we sent latest ping */
     mstime_t pong_received;  /* Unix time we received the pong */
     mstime_t fail_time;      /* Unix time when FAIL flag was set */
-    char ip[DISQUE_IP_STR_LEN];  /* Latest known IP address of this node */
+    char ip[NET_IP_STR_LEN];  /* Latest known IP address of this node */
     int port;                   /* Latest known port of this node */
     clusterLink *link;          /* TCP/IP link with this node */
     list *fail_reports;         /* List of nodes signaling this as failing */
@@ -117,7 +117,7 @@ typedef struct {
     char nodename[DISQUE_CLUSTER_NAMELEN];
     uint32_t ping_sent;
     uint32_t pong_received;
-    char ip[DISQUE_IP_STR_LEN]; /* IP address last time it was seen */
+    char ip[NET_IP_STR_LEN]; /* IP address last time it was seen */
     uint16_t port;              /* port last time it was seen */
     uint16_t flags;             /* node->flags copy */
     uint16_t notused1;          /* Some room for future improvements. */

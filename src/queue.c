@@ -303,7 +303,7 @@ void blockForJobs(client *c, robj **queues, int numqueues, mstime_t timeout, uin
         if (q->clients == NULL) q->clients = listCreate();
         listAddNodeTail(q->clients,c);
     }
-    blockClient(c,DISQUE_BLOCKED_GETJOB);
+    blockClient(c,BLOCKED_GETJOB);
 }
 
 /* Unblock client waiting for jobs in queues. Never call this directly,
@@ -372,7 +372,7 @@ void handleClientsBlockedOnQueues(void) {
  * data, we should periodically call needJobsForQueue() with the
  * queues name in order to send NEEDJOBS messages from time to time. */
 int clientsCronSendNeedJobs(client *c) {
-    if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_GETJOB) {
+    if (c->flags & CLIENT_BLOCKED && c->btype == BLOCKED_GETJOB) {
         dictForeach(c->bpop.queues,de)
             robj *qname = dictGetKey(de);
             needJobsForQueueName(qname,NEEDJOBS_CLIENTS_WAITING);

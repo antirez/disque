@@ -194,7 +194,7 @@ void serverLogRaw(int level, const char *msg) {
  * the INFO output on crash. */
 void serverLog(int level, const char *fmt, ...) {
     va_list ap;
-    char msg[DISQUE_MAX_LOGMSG_LEN];
+    char msg[LOG_MAX_LEN];
 
     if ((level&0xff) < server.verbosity) return;
 
@@ -477,7 +477,7 @@ int htNeedsResize(dict *dict) {
     size = dictSlots(dict);
     used = dictSize(dict);
     return (size && used && size > DICT_HT_INITIAL_SIZE &&
-            (used*100/size < DISQUE_HT_MINFILL));
+            (used*100/size < HASHTABLE_MIN_FILL));
 }
 
 void tryResizeHashTables(void) {
@@ -536,7 +536,7 @@ void flushServerData(void) {
     listRewind(server.clients,&li);
     while((ln = listNext(&li))) {
         client *c = ln->value;
-        if (c->flags & DISQUE_BLOCKED && c->btype == DISQUE_BLOCKED_GETJOB) {
+        if (c->flags & CLIENT_BLOCKED && c->btype == BLOCKED_GETJOB) {
             /* We send the same reply we send on timeout, in order to avoid
              * for the client to be aware of a different error to handle. */
             addReply(c,shared.nullmultibulk);
@@ -565,7 +565,7 @@ void trackInstantaneousMetric(int metric, long long current_reading) {
     server.inst_metric[metric].samples[server.inst_metric[metric].idx] =
         ops_sec;
     server.inst_metric[metric].idx++;
-    server.inst_metric[metric].idx %= DISQUE_METRIC_SAMPLES;
+    server.inst_metric[metric].idx %= STATS_METRIC_SAMPLES;
     server.inst_metric[metric].last_sample_time = mstime();
     server.inst_metric[metric].last_sample_count = current_reading;
 }
@@ -575,9 +575,9 @@ long long getInstantaneousMetric(int metric) {
     int j;
     long long sum = 0;
 
-    for (j = 0; j < DISQUE_METRIC_SAMPLES; j++)
+    for (j = 0; j < STATS_METRIC_SAMPLES; j++)
         sum += server.inst_metric[metric].samples[j];
-    return sum / DISQUE_METRIC_SAMPLES;
+    return sum / STATS_METRIC_SAMPLES;
 }
 
 /* Check for timeouts. Returns non-zero if the client was terminated.
@@ -588,13 +588,13 @@ int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
     time_t now = now_ms/1000;
 
     if (server.maxidletime &&
-        !(c->flags & DISQUE_BLOCKED) &&  /* no timeout for blocked clients. */
+        !(c->flags & CLIENT_BLOCKED) &&  /* no timeout for blocked clients. */
         (now - c->lastinteraction > server.maxidletime))
     {
         serverLog(DISQUE_VERBOSE,"Closing idle client");
         freeClient(c);
         return 1;
-    } else if (c->flags & DISQUE_BLOCKED) {
+    } else if (c->flags & CLIENT_BLOCKED) {
         /* Blocked OPS timeout is handled with milliseconds resolution.
          * However note that the actual resolution is limited by
          * server.hz. */
@@ -618,7 +618,7 @@ int clientsCronResizeQueryBuffer(client *c) {
     /* There are two conditions to resize the query buffer:
      * 1) Query buffer is > BIG_ARG and too big for latest peak.
      * 2) Client is inactive and the buffer is bigger than 1k. */
-    if (((querybuf_size > DISQUE_MBULK_BIG_ARG) &&
+    if (((querybuf_size > PROTO_MBULK_BIG_ARG) &&
          (querybuf_size/(c->querybuf_peak+1)) > 2) ||
          (querybuf_size > 1024 && idletime > 2))
     {
@@ -732,10 +732,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     updateCachedTime();
 
     run_with_period(100) {
-        trackInstantaneousMetric(DISQUE_METRIC_COMMAND,server.stat_numcommands);
-        trackInstantaneousMetric(DISQUE_METRIC_NET_INPUT,
+        trackInstantaneousMetric(STATS_METRIC_COMMAND,server.stat_numcommands);
+        trackInstantaneousMetric(STATS_METRIC_NET_INPUT,
                 server.stat_net_input_bytes);
-        trackInstantaneousMetric(DISQUE_METRIC_NET_OUTPUT,
+        trackInstantaneousMetric(STATS_METRIC_NET_OUTPUT,
                 server.stat_net_output_bytes);
     }
 
@@ -926,11 +926,11 @@ void createSharedObjects(void) {
     shared.punsubscribebulk = createStringObject("$12\r\npunsubscribe\r\n",19);
     shared.loadjob = createStringObject("LOADJOB",7);
     shared.deljob = createStringObject("DELJOB",6);
-    for (j = 0; j < DISQUE_SHARED_INTEGERS; j++) {
+    for (j = 0; j < OBJ_SHARED_INTEGERS; j++) {
         shared.integers[j] = createObject(OBJ_STRING,(void*)(long)j);
         shared.integers[j]->encoding = OBJ_ENCODING_INT;
     }
-    for (j = 0; j < DISQUE_SHARED_BULKHDR_LEN; j++) {
+    for (j = 0; j < OBJ_SHARED_BULKHDR_LEN; j++) {
         shared.mbulkhdr[j] = createObject(OBJ_STRING,
             sdscatprintf(sdsempty(),"*%d\r\n",j));
         shared.bulkhdr[j] = createObject(OBJ_STRING,
@@ -947,14 +947,14 @@ void createSharedObjects(void) {
 void initServerConfig(void) {
     int j;
 
-    getRandomHexChars(server.runid,DISQUE_RUN_ID_SIZE);
-    getRandomHexChars(server.jobid_seed,DISQUE_RUN_ID_SIZE);
+    getRandomHexChars(server.runid,CONFIG_RUN_ID_SIZE);
+    getRandomHexChars(server.jobid_seed,CONFIG_RUN_ID_SIZE);
     server.configfile = NULL;
     server.hz = CONFIG_DEFAULT_HZ;
-    server.runid[DISQUE_RUN_ID_SIZE] = '\0';
+    server.runid[CONFIG_RUN_ID_SIZE] = '\0';
     server.arch_bits = (sizeof(long) == 8) ? 64 : 32;
-    server.port = DISQUE_SERVERPORT;
-    server.tcp_backlog = DISQUE_TCP_BACKLOG;
+    server.port = CONFIG_DEFAULT_SERVER_PORT;
+    server.tcp_backlog = CONFIG_DEFAULT_TCP_BACKLOG;
     server.bindaddr_count = 0;
     server.unixsocket = NULL;
     server.unixsocketperm = CONFIG_DEFAULT_UNIX_SOCKET_PERM;
@@ -962,10 +962,10 @@ void initServerConfig(void) {
     server.sofd = -1;
     server.dbnum = CONFIG_DEFAULT_DBNUM;
     server.verbosity = CONFIG_DEFAULT_VERBOSITY;
-    server.maxidletime = DISQUE_MAXIDLETIME;
+    server.maxidletime = CONFIG_DEFAULT_CLIENT_TIMEOUT;
     server.tcpkeepalive = CONFIG_DEFAULT_TCP_KEEPALIVE;
     server.active_expire_enabled = 1;
-    server.client_max_querybuf_len = DISQUE_MAX_QUERYBUF_LEN;
+    server.client_max_querybuf_len = PROTO_MAX_QUERYBUF_LEN;
     server.loading = 0;
     server.logfile = zstrdup(CONFIG_DEFAULT_LOGFILE);
     server.syslog_enabled = CONFIG_DEFAULT_SYSLOG_ENABLED;
@@ -975,8 +975,8 @@ void initServerConfig(void) {
     server.aof_state = DISQUE_AOF_OFF;
     server.aof_fsync = CONFIG_DEFAULT_AOF_FSYNC;
     server.aof_no_fsync_on_rewrite = CONFIG_DEFAULT_AOF_NO_FSYNC_ON_REWRITE;
-    server.aof_rewrite_perc = DISQUE_AOF_REWRITE_PERC;
-    server.aof_rewrite_min_size = DISQUE_AOF_REWRITE_MIN_SIZE;
+    server.aof_rewrite_perc = AOF_REWRITE_PERC;
+    server.aof_rewrite_min_size = AOF_REWRITE_MIN_SIZE;
     server.aof_rewrite_base_size = 0;
     server.aof_rewrite_scheduled = 0;
     server.aof_last_fsync = time(NULL);
@@ -1006,7 +1006,7 @@ void initServerConfig(void) {
     server.loading_process_events_interval_bytes = (1024*1024*2);
 
     /* Client output buffer limits */
-    for (j = 0; j < DISQUE_CLIENT_TYPE_COUNT; j++)
+    for (j = 0; j < CLIENT_TYPE_COUNT; j++)
         server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
 
     /* Double constants initialization */
@@ -1028,8 +1028,8 @@ void initServerConfig(void) {
     server.rpopCommand = lookupCommandByCString("rpop");
 
     /* Slow log */
-    server.slowlog_log_slower_than = DISQUE_SLOWLOG_LOG_SLOWER_THAN;
-    server.slowlog_max_len = DISQUE_SLOWLOG_MAX_LEN;
+    server.slowlog_log_slower_than = CONFIG_DEFAULT_SLOWLOG_LOG_SLOWER_THAN;
+    server.slowlog_max_len = CONFIG_DEFAULT_SLOWLOG_MAX_LEN;
 
     /* Latency monitor */
     server.latency_monitor_threshold = CONFIG_DEFAULT_LATENCY_MONITOR_THRESHOLD;
@@ -1044,20 +1044,20 @@ void initServerConfig(void) {
 
 /* This function will try to raise the max number of open files accordingly to
  * the configured max number of clients. It also reserves a number of file
- * descriptors (DISQUE_MIN_RESERVED_FDS) for extra operations of
+ * descriptors (CONFIG_MIN_RESERVED_FDS) for extra operations of
  * persistence, listening sockets, log files and so forth.
  *
  * If it will not be possible to set the limit accordingly to the configured
  * max number of clients, the function will do the reverse setting
  * server.maxclients to the value that we can actually handle. */
 void adjustOpenFilesLimit(void) {
-    rlim_t maxfiles = server.maxclients+DISQUE_MIN_RESERVED_FDS;
+    rlim_t maxfiles = server.maxclients+CONFIG_MIN_RESERVED_FDS;
     struct rlimit limit;
 
     if (getrlimit(RLIMIT_NOFILE,&limit) == -1) {
         serverLog(DISQUE_WARNING,"Unable to obtain the current NOFILE limit (%s), assuming 1024 and setting the max clients configuration accordingly.",
             strerror(errno));
-        server.maxclients = 1024-DISQUE_MIN_RESERVED_FDS;
+        server.maxclients = 1024-CONFIG_MIN_RESERVED_FDS;
     } else {
         rlim_t oldlimit = limit.rlim_cur;
 
@@ -1090,7 +1090,7 @@ void adjustOpenFilesLimit(void) {
 
             if (f != maxfiles) {
                 int old_maxclients = server.maxclients;
-                server.maxclients = f-DISQUE_MIN_RESERVED_FDS;
+                server.maxclients = f-CONFIG_MIN_RESERVED_FDS;
                 if (server.maxclients < 1) {
                     serverLog(DISQUE_WARNING,"Your current 'ulimit -n' "
                         "of %llu is not enough for Disque to start. "
@@ -1216,7 +1216,7 @@ void resetServerStats(void) {
     server.stat_fork_time = 0;
     server.stat_fork_rate = 0;
     server.stat_rejected_conn = 0;
-    for (j = 0; j < DISQUE_METRIC_COUNT; j++) {
+    for (j = 0; j < STATS_METRIC_COUNT; j++) {
         server.inst_metric[j].idx = 0;
         server.inst_metric[j].last_sample_time = mstime();
         server.inst_metric[j].last_sample_count = 0;
@@ -1254,7 +1254,7 @@ void initServer(void) {
 
     createSharedObjects();
     adjustOpenFilesLimit();
-    server.el = aeCreateEventLoop(server.maxclients+DISQUE_EVENTLOOP_FDSET_INCR);
+    server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     /* Open the TCP listening socket for the user commands. */
     if (server.port != 0 &&
         listenToPort(server.port,server.ipfd,&server.ipfd_count) == C_ERR)
@@ -1359,13 +1359,13 @@ void populateCommandTable(void) {
 
         while(*f != '\0') {
             switch(*f) {
-            case 'w': c->flags |= DISQUE_CMD_WRITE; break;
-            case 'r': c->flags |= DISQUE_CMD_READONLY; break;
-            case 'm': c->flags |= DISQUE_CMD_DENYOOM; break;
-            case 'a': c->flags |= DISQUE_CMD_ADMIN; break;
-            case 'l': c->flags |= DISQUE_CMD_LOADING; break;
-            case 'M': c->flags |= DISQUE_CMD_SKIP_MONITOR; break;
-            case 'F': c->flags |= DISQUE_CMD_FAST; break;
+            case 'w': c->flags |= CMD_WRITE; break;
+            case 'r': c->flags |= CMD_READONLY; break;
+            case 'm': c->flags |= CMD_DENYOOM; break;
+            case 'a': c->flags |= CMD_ADMIN; break;
+            case 'l': c->flags |= CMD_LOADING; break;
+            case 'M': c->flags |= CMD_SKIP_MONITOR; break;
+            case 'F': c->flags |= CMD_FAST; break;
             default: serverPanic("Unsupported command flag"); break;
             }
             f++;
@@ -1431,7 +1431,7 @@ void replicationFeedMonitors(client *c, list *monitors, robj **argv, int argc) {
 
     gettimeofday(&tv,NULL);
     cmdrepr = sdscatprintf(cmdrepr,"%ld.%06ld ",(long)tv.tv_sec,(long)tv.tv_usec);
-    if (c->flags & DISQUE_UNIX_SOCKET) {
+    if (c->flags & CLIENT_UNIX_SOCKET) {
         cmdrepr = sdscatprintf(cmdrepr,"[unix:%s] ",server.unixsocket);
     } else {
         cmdrepr = sdscatprintf(cmdrepr,"[%s] ",getClientPeerId(c));
@@ -1466,7 +1466,7 @@ void call(client *c, int flags) {
      * not generated from reading an AOF. */
     if (listLength(server.monitors) &&
         !server.loading &&
-        !(c->cmd->flags & DISQUE_CMD_SKIP_MONITOR))
+        !(c->cmd->flags & CMD_SKIP_MONITOR))
     {
         replicationFeedMonitors(c,server.monitors,c->argv,c->argc);
     }
@@ -1479,7 +1479,7 @@ void call(client *c, int flags) {
     /* Log the command into the Slow log if needed, and populate the
      * per-command statistics that we show in INFO commandstats. */
     if (flags & DISQUE_CALL_SLOWLOG) {
-        char *latency_event = (c->cmd->flags & DISQUE_CMD_FAST) ?
+        char *latency_event = (c->cmd->flags & CMD_FAST) ?
                               "fast-command" : "command";
         latencyAddSampleIfNeeded(latency_event,duration/1000);
         slowlogPushEntryIfNeeded(c->argv,c->argc,duration);
@@ -1506,7 +1506,7 @@ int processCommand(client *c) {
      * a regular command proc. */
     if (!strcasecmp(c->argv[0]->ptr,"quit")) {
         addReply(c,shared.ok);
-        c->flags |= DISQUE_CLOSE_AFTER_REPLY;
+        c->flags |= CLIENT_CLOSE_AFTER_REPLY;
         return C_ERR;
     }
 
@@ -1538,7 +1538,7 @@ int processCommand(client *c) {
      * is returning an error. */
     if (server.maxmemory) {
         int retval = freeMemoryIfNeeded();
-        if ((c->cmd->flags & DISQUE_CMD_DENYOOM) && retval == C_ERR) {
+        if ((c->cmd->flags & CMD_DENYOOM) && retval == C_ERR) {
             addReply(c, shared.oomerr);
             return C_OK;
         }
@@ -1546,7 +1546,7 @@ int processCommand(client *c) {
 
     /* Don't accept write commands if there are problems persisting on disk. */
     if (server.aof_last_write_status == C_ERR &&
-         (c->cmd->flags & DISQUE_CMD_WRITE ||
+         (c->cmd->flags & CMD_WRITE ||
           c->cmd->proc == pingCommand))
     {
         addReplySds(c,
@@ -1557,8 +1557,8 @@ int processCommand(client *c) {
     }
 
     /* Loading DB? Return an error if the command has not the
-     * DISQUE_CMD_LOADING flag. */
-    if (server.loading && !(c->cmd->flags & DISQUE_CMD_LOADING)) {
+     * CMD_LOADING flag. */
+    if (server.loading && !(c->cmd->flags & CMD_LOADING)) {
         addReply(c, shared.loadingerr);
         return C_OK;
     }
@@ -1641,7 +1641,7 @@ int prepareForShutdown(int flags) {
  * possible branch misprediction related leak.
  */
 int time_independent_strcmp(char *a, char *b) {
-    char bufa[DISQUE_AUTHPASS_MAX_LEN], bufb[DISQUE_AUTHPASS_MAX_LEN];
+    char bufa[CONFIG_AUTHPASS_MAX_LEN], bufb[CONFIG_AUTHPASS_MAX_LEN];
     /* The above two strlen perform len(a) + len(b) operations where either
      * a or b are fixed (our password) length, and the difference is only
      * relative to the length of the user provided string, so no information
@@ -1761,14 +1761,14 @@ void addReplyCommand(client *c, struct serverCommand *cmd) {
 
         int flagcount = 0;
         void *flaglen = addDeferredMultiBulkLength(c);
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_WRITE, "write");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_READONLY, "readonly");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_DENYOOM, "denyoom");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_ADMIN, "admin");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_RANDOM, "random");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_LOADING, "loading");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_SKIP_MONITOR, "skip_monitor");
-        flagcount += addReplyCommandFlag(c,cmd,DISQUE_CMD_FAST, "fast");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_WRITE, "write");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_READONLY, "readonly");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_DENYOOM, "denyoom");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_ADMIN, "admin");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_RANDOM, "random");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_LOADING, "loading");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_SKIP_MONITOR, "skip_monitor");
+        flagcount += addReplyCommandFlag(c,cmd,CMD_FAST, "fast");
         setDeferredMultiBulkLength(c, flaglen, flagcount);
 
         addReplyLongLong(c, cmd->firstkey);
@@ -2062,11 +2062,11 @@ sds genDisqueInfoString(char *section) {
             "latest_fork_usec:%lld\r\n",
             server.stat_numconnections,
             server.stat_numcommands,
-            getInstantaneousMetric(DISQUE_METRIC_COMMAND),
+            getInstantaneousMetric(STATS_METRIC_COMMAND),
             server.stat_net_input_bytes,
             server.stat_net_output_bytes,
-            (float)getInstantaneousMetric(DISQUE_METRIC_NET_INPUT)/1024,
-            (float)getInstantaneousMetric(DISQUE_METRIC_NET_OUTPUT)/1024,
+            (float)getInstantaneousMetric(STATS_METRIC_NET_INPUT)/1024,
+            (float)getInstantaneousMetric(STATS_METRIC_NET_OUTPUT)/1024,
             server.stat_rejected_conn,
             server.stat_fork_time);
     }
@@ -2117,9 +2117,9 @@ void infoCommand(client *c) {
 
 void monitorCommand(client *c) {
     /* ignore MONITOR if already slave or in monitor mode */
-    if (c->flags & DISQUE_MONITOR) return;
+    if (c->flags & CLIENT_MONITOR) return;
 
-    c->flags |= DISQUE_MONITOR;
+    c->flags |= CLIENT_MONITOR;
     listAddNodeTail(server.monitors,c);
     addReply(c,shared.ok);
 }

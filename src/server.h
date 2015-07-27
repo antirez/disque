@@ -71,35 +71,28 @@ typedef long long mstime_t; /* millisecond time type. */
 
 /* Static server configuration */
 #define CONFIG_DEFAULT_HZ        10      /* Time interrupt calls/sec. */
-#define DISQUE_MIN_HZ            1
-#define DISQUE_MAX_HZ            500
+#define CONFIG_MIN_HZ            1
+#define CONFIG_MAX_HZ            500
 #define DISQUE_TIME_ERR          500     /* Desynchronization (in ms) */
-#define DISQUE_SERVERPORT        7711    /* TCP port */
-#define DISQUE_TCP_BACKLOG       511     /* TCP listen backlog */
-#define DISQUE_MAXIDLETIME       0       /* default client timeout: infinite */
+#define CONFIG_DEFAULT_SERVER_PORT        7711    /* TCP port */
+#define CONFIG_DEFAULT_TCP_BACKLOG       511     /* TCP listen backlog */
+#define CONFIG_DEFAULT_CLIENT_TIMEOUT       0       /* default client timeout: infinite */
 #define CONFIG_DEFAULT_DBNUM     16
-#define DISQUE_CONFIGLINE_MAX    1024
-#define DISQUE_DBCRON_DBS_PER_CALL 16
-#define DISQUE_MAX_WRITE_PER_EVENT (1024*64)
-#define DISQUE_SHARED_INTEGERS 10000
-#define DISQUE_SHARED_BULKHDR_LEN 32
-#define DISQUE_MAX_LOGMSG_LEN    1024 /* Default maximum length of syslog messages */
-#define DISQUE_AOF_REWRITE_PERC  100
-#define DISQUE_AOF_REWRITE_MIN_SIZE (64*1024*1024)
-#define DISQUE_AOF_REWRITE_ITEMS_PER_CMD 64
-#define DISQUE_SLOWLOG_LOG_SLOWER_THAN 10000
-#define DISQUE_SLOWLOG_MAX_LEN 128
+#define CONFIG_MAX_LINE    1024
+#define CRON_DBS_PER_CALL 16
+#define NET_MAX_WRITES_PER_EVENT (1024*64)
+#define OBJ_SHARED_INTEGERS 10000
+#define OBJ_SHARED_BULKHDR_LEN 32
+#define LOG_MAX_LEN    1024 /* Default maximum length of syslog messages */
+#define AOF_REWRITE_PERC  100
+#define AOF_REWRITE_MIN_SIZE (64*1024*1024)
+#define AOF_REWRITE_ITEMS_PER_CMD 64
+#define CONFIG_DEFAULT_SLOWLOG_LOG_SLOWER_THAN 10000
+#define CONFIG_DEFAULT_SLOWLOG_MAX_LEN 128
 #define CONFIG_DEFAULT_MAX_CLIENTS 10000
-#define DISQUE_AUTHPASS_MAX_LEN 512
+#define CONFIG_AUTHPASS_MAX_LEN 512
 #define CONFIG_DEFAULT_SLAVE_PRIORITY 100
-#define DISQUE_REPL_TIMEOUT 60
-#define DISQUE_REPL_PING_SLAVE_PERIOD 10
-#define DISQUE_RUN_ID_SIZE 40
-#define DISQUE_EOF_MARK_SIZE 40
-#define CONFIG_DEFAULT_REPL_BACKLOG_SIZE (1024*1024)    /* 1mb */
-#define CONFIG_DEFAULT_REPL_BACKLOG_TIME_LIMIT (60*60)  /* 1 hour */
-#define DISQUE_REPL_BACKLOG_MIN_SIZE (1024*16)          /* 16k */
-#define DISQUE_BGSAVE_RETRY_DELAY 5 /* Wait a few secs before trying again. */
+#define CONFIG_RUN_ID_SIZE 40
 #define CONFIG_DEFAULT_PID_FILE "/var/run/disque.pid"
 #define CONFIG_DEFAULT_SYSLOG_IDENT "disque"
 #define CONFIG_DEFAULT_CLUSTER_CONFIG_FILE "nodes.conf"
@@ -109,14 +102,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CONFIG_DEFAULT_LOGFILE ""
 #define CONFIG_DEFAULT_SYSLOG_ENABLED 0
 #define CONFIG_DEFAULT_STOP_WRITES_ON_BGSAVE_ERROR 1
-#define CONFIG_DEFAULT_RDB_COMPRESSION 1
-#define CONFIG_DEFAULT_RDB_CHECKSUM 1
-#define CONFIG_DEFAULT_RDB_FILENAME "dump.rdb"
-#define CONFIG_DEFAULT_REPL_DISKLESS_SYNC 0
-#define CONFIG_DEFAULT_REPL_DISKLESS_SYNC_DELAY 5
 #define CONFIG_DEFAULT_SLAVE_SERVE_STALE_DATA 1
 #define CONFIG_DEFAULT_SLAVE_READ_ONLY 1
-#define CONFIG_DEFAULT_REPL_DISABLE_TCP_NODELAY 0
 #define CONFIG_DEFAULT_MAXMEMORY (1024*1024*1024) /* 1gb */
 #define CONFIG_DEFAULT_MAXMEMORY_SAMPLES 5
 #define CONFIG_DEFAULT_AOF_FILENAME "disque.aof"
@@ -127,10 +114,10 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CONFIG_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC 1
 #define CONFIG_DEFAULT_MIN_SLAVES_TO_WRITE 0
 #define CONFIG_DEFAULT_MIN_SLAVES_MAX_LAG 10
-#define DISQUE_IP_STR_LEN 46 /* INET6_ADDRSTRLEN is 46 but we need to be sure */
-#define DISQUE_PEER_ID_LEN (DISQUE_IP_STR_LEN+32) /* Must be enough for ip:port */
-#define DISQUE_BINDADDR_MAX 16
-#define DISQUE_MIN_RESERVED_FDS 32
+#define NET_IP_STR_LEN 46 /* INET6_ADDRSTRLEN is 46 but we need to be sure */
+#define NET_PEER_ID_LEN (NET_IP_STR_LEN+32) /* Must be enough for ip:port */
+#define CONFIG_BINDADDR_MAX 16
+#define CONFIG_MIN_RESERVED_FDS 32
 #define CONFIG_DEFAULT_LATENCY_MONITOR_THRESHOLD 0
 
 #define ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP 20 /* Loopkups per loop. */
@@ -140,38 +127,40 @@ typedef long long mstime_t; /* millisecond time type. */
 #define ACTIVE_EXPIRE_CYCLE_FAST 1
 
 /* Instantaneous metrics tracking. */
-#define DISQUE_METRIC_SAMPLES 16     /* Number of samples per metric. */
-#define DISQUE_METRIC_COMMAND 0      /* Number of commands executed. */
-#define DISQUE_METRIC_NET_INPUT 1    /* Bytes read to network .*/
-#define DISQUE_METRIC_NET_OUTPUT 2   /* Bytes written to network. */
-#define DISQUE_METRIC_COUNT 3
+#define STATS_METRIC_SAMPLES 16     /* Number of samples per metric. */
+#define STATS_METRIC_COMMAND 0      /* Number of commands executed. */
+#define STATS_METRIC_NET_INPUT 1    /* Bytes read to network .*/
+#define STATS_METRIC_NET_OUTPUT 2   /* Bytes written to network. */
+#define STATS_METRIC_COUNT 3
 
 /* Protocol and I/O related defines */
-#define DISQUE_MAX_QUERYBUF_LEN  (1024*1024*1024) /* 1GB max query buffer. */
-#define DISQUE_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size */
-#define DISQUE_REPLY_CHUNK_BYTES (16*1024) /* 16k output buffer */
-#define DISQUE_INLINE_MAX_SIZE   (1024*64) /* Max size of inline reads */
-#define DISQUE_MBULK_BIG_ARG     (1024*32)
-#define DISQUE_LONGSTR_SIZE      21          /* Bytes needed for long -> str */
-#define DISQUE_AOF_AUTOSYNC_BYTES (1024*1024*32) /* fdatasync every 32MB */
-/* When configuring the Disque eventloop, we setup it so that the total number
- * of file descriptors we can handle are server.maxclients + RESERVED_FDS + FDSET_INCR
- * that is our safety margin. */
-#define DISQUE_EVENTLOOP_FDSET_INCR (DISQUE_MIN_RESERVED_FDS+96)
+#define PROTO_MAX_QUERYBUF_LEN  (1024*1024*1024) /* 1GB max query buffer. */
+#define PROTO_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size */
+#define PROTO_REPLY_CHUNK_BYTES (16*1024) /* 16k output buffer */
+#define PROTO_INLINE_MAX_SIZE   (1024*64) /* Max size of inline reads */
+#define PROTO_MBULK_BIG_ARG     (1024*32)
+#define LONG_STR_SIZE      21          /* Bytes needed for long -> str */
+#define AOF_AUTOSYNC_BYTES (1024*1024*32) /* fdatasync every 32MB */
+
+/* When configuring the server eventloop, we setup it so that the total number
+ * of file descriptors we can handle are server.maxclients + RESERVED_FDS +
+ * a few more to stay safe. Since RESERVED_FDS defaults to 32, we add 96
+ * in order to make sure of not over provisioning more than 128 fds. */
+#define CONFIG_FDSET_INCR (CONFIG_MIN_RESERVED_FDS+96)
 
 /* Hash table parameters */
-#define DISQUE_HT_MINFILL        10      /* Minimal hash table fill 10% */
+#define HASHTABLE_MIN_FILL        10      /* Minimal hash table fill 10% */
 
 /* Command flags. Please check the command table defined in the disque.c file
  * for more information about the meaning of every flag. */
-#define DISQUE_CMD_WRITE        (1<<0)  /* "w" flag */
-#define DISQUE_CMD_READONLY     (1<<1)  /* "r" flag */
-#define DISQUE_CMD_DENYOOM      (1<<2)  /* "m" flag */
-#define DISQUE_CMD_ADMIN        (1<<3)  /* "a" flag */
-#define DISQUE_CMD_RANDOM       (1<<4)  /* "R" flag */
-#define DISQUE_CMD_LOADING      (1<<5)  /* "l" flag */
-#define DISQUE_CMD_SKIP_MONITOR (1<<6)  /* "M" flag */
-#define DISQUE_CMD_FAST         (1<<7)  /* "F" flag */
+#define CMD_WRITE        (1<<0)  /* "w" flag */
+#define CMD_READONLY     (1<<1)  /* "r" flag */
+#define CMD_DENYOOM      (1<<2)  /* "m" flag */
+#define CMD_ADMIN        (1<<3)  /* "a" flag */
+#define CMD_RANDOM       (1<<4)  /* "R" flag */
+#define CMD_LOADING      (1<<5)  /* "l" flag */
+#define CMD_SKIP_MONITOR (1<<6)  /* "M" flag */
+#define CMD_FAST         (1<<7)  /* "F" flag */
 
 /* Object types */
 #define OBJ_STRING 0
@@ -193,37 +182,29 @@ typedef long long mstime_t; /* millisecond time type. */
 #define DISQUE_AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
 
 /* Client flags */
-#define DISQUE_MONITOR (1<<0) /* This client is a slave monitor, see MONITOR */
-#define DISQUE_BLOCKED (1<<1) /* The client is waiting in a blocking op. */
-#define DISQUE_CLOSE_AFTER_REPLY (1<<2) /* Close after writing entire reply. */
-#define DISQUE_UNBLOCKED (1<<3)   /* This client was unblocked and is stored in
+#define CLIENT_MONITOR (1<<0) /* This client is a slave monitor, see MONITOR */
+#define CLIENT_BLOCKED (1<<1) /* The client is waiting in a blocking op. */
+#define CLIENT_CLOSE_AFTER_REPLY (1<<2) /* Close after writing entire reply. */
+#define CLIENT_UNBLOCKED (1<<3)   /* This client was unblocked and is stored in
                                      server.unblocked_clients */
-#define DISQUE_CLOSE_ASAP (1<<4)  /* Close this client ASAP */
-#define DISQUE_UNIX_SOCKET (1<<5) /* Client connected via Unix domain socket */
-#define DISQUE_READONLY (1<<6)    /* Cluster client is in read-only state. */
-#define DISQUE_AOF_CLIENT (1<<7)  /* AOF loading client. */
+#define CLIENT_CLOSE_ASAP (1<<4)  /* Close this client ASAP */
+#define CLIENT_UNIX_SOCKET (1<<5) /* Client connected via Unix domain socket */
+#define CLIENT_AOF_CLIENT (1<<6)  /* AOF loading client. */
 
 /* Client block type (btype field in client structure)
- * if DISQUE_BLOCKED flag is set. */
-#define DISQUE_BLOCKED_NONE 0    /* Not blocked, no DISQUE_BLOCKED flag set. */
-#define DISQUE_BLOCKED_JOB_REPL 1 /* Wait job synchronous replication. */
-#define DISQUE_BLOCKED_GETJOB 2   /* Wait for new jobs in a set of queues. */
+ * if CLIENT_BLOCKED flag is set. */
+#define BLOCKED_NONE 0    /* Not blocked, no CLIENT_BLOCKED flag set. */
+#define BLOCKED_JOB_REPL 1 /* Wait job synchronous replication. */
+#define BLOCKED_GETJOB 2   /* Wait for new jobs in a set of queues. */
 
 /* Client request types */
-#define DISQUE_REQ_INLINE 1
-#define DISQUE_REQ_MULTIBULK 2
+#define PROTO_REQ_INLINE 1
+#define PROTO_REQ_MULTIBULK 2
 
 /* Client classes for client limits, currently used only for
  * the max-client-output-buffer limit implementation. */
-#define DISQUE_CLIENT_TYPE_NORMAL 0 /* Normal req-reply clients + MONITORs */
-#define DISQUE_CLIENT_TYPE_COUNT 1
-
-/* Synchronous read timeout - slave side */
-#define DISQUE_REPL_SYNCIO_TIMEOUT 5
-
-/* List related stuff */
-#define DISQUE_HEAD 0
-#define DISQUE_TAIL 1
+#define CLIENT_TYPE_NORMAL 0 /* Normal req-reply clients + MONITORs */
+#define CLIENT_TYPE_COUNT 1
 
 /* Log levels */
 #define DISQUE_DEBUG 0
@@ -320,11 +301,11 @@ typedef struct blockingState {
                                remember command options altering the return
                                value. */
 
-    /* DISQUE_BLOCKED_JOB_REPL */
+    /* BLOCKED_JOB_REPL */
     struct job *job;        /* Job we are trying to replicate. */
     mstime_t added_node_time; /* Last time we added a new node. */
 
-    /* DISQUE_BLOCKED_GETJOB */
+    /* BLOCKED_GETJOB */
     dict *queues;           /* Queues we are waiting for. */
 } blockingState;
 
@@ -349,15 +330,15 @@ typedef struct client {
     time_t ctime;           /* Client creation time */
     time_t lastinteraction; /* time of the last interaction, used for timeout */
     time_t obuf_soft_limit_reached_time;
-    int flags;              /* DISQUE_SLAVE | DISQUE_MONITOR */
+    int flags;              /* DISQUE_SLAVE | CLIENT_MONITOR */
     int authenticated;      /* when requirepass is non-NULL */
-    int btype;              /* Type of blocking op if DISQUE_BLOCKED. */
+    int btype;              /* Type of blocking op if CLIENT_BLOCKED. */
     blockingState bpop;     /* blocking state */
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */
     int bufpos;
-    char buf[DISQUE_REPLY_CHUNK_BYTES];
+    char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;
 
 struct sharedObjectsStruct {
@@ -369,9 +350,9 @@ struct sharedObjectsStruct {
     *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk, *subscribebulk,
     *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *loadjob, *deljob,
     *minstring, *maxstring,
-    *integers[DISQUE_SHARED_INTEGERS],
-    *mbulkhdr[DISQUE_SHARED_BULKHDR_LEN], /* "*<value>\r\n" */
-    *bulkhdr[DISQUE_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */
+    *integers[OBJ_SHARED_INTEGERS],
+    *mbulkhdr[OBJ_SHARED_BULKHDR_LEN], /* "*<value>\r\n" */
+    *bulkhdr[OBJ_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */
 };
 
 /* ZSETs use a specialized version of Skiplists */
@@ -402,7 +383,7 @@ typedef struct clientBufferLimitsConfig {
     time_t soft_limit_seconds;
 } clientBufferLimitsConfig;
 
-extern clientBufferLimitsConfig clientBufferLimitsDefaults[DISQUE_CLIENT_TYPE_COUNT];
+extern clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_COUNT];
 
 /*-----------------------------------------------------------------------------
  * Global server state
@@ -430,19 +411,19 @@ struct disqueServer {
     char *pidfile;              /* PID file path */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     int cronloops;              /* Number of times the cron function run */
-    char runid[DISQUE_RUN_ID_SIZE+1];  /* ID always different at every exec. */
-    char jobid_seed[DISQUE_RUN_ID_SIZE]; /* Job ID generation seed. */
+    char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
+    char jobid_seed[CONFIG_RUN_ID_SIZE]; /* Job ID generation seed. */
     /* Networking */
     int port;                   /* TCP listening port */
     int tcp_backlog;            /* TCP listen() backlog */
-    char *bindaddr[DISQUE_BINDADDR_MAX]; /* Addresses we should bind to */
+    char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *unixsocket;           /* UNIX socket path */
     mode_t unixsocketperm;      /* UNIX socket permission */
-    int ipfd[DISQUE_BINDADDR_MAX]; /* TCP socket file descriptors */
+    int ipfd[CONFIG_BINDADDR_MAX]; /* TCP socket file descriptors */
     int ipfd_count;             /* Used slots in ipfd[] */
     int sofd;                   /* Unix socket file descriptor */
-    int cfd[DISQUE_BINDADDR_MAX];/* Cluster bus listening socket */
+    int cfd[CONFIG_BINDADDR_MAX];/* Cluster bus listening socket */
     int cfd_count;              /* Used slots in cfd[] */
     list *clients;              /* List of active clients */
     list *clients_to_close;     /* Clients to close asynchronously */
@@ -486,9 +467,9 @@ struct disqueServer {
     struct {
         long long last_sample_time; /* Timestamp of last sample in ms */
         long long last_sample_count;/* Count in last sample */
-        long long samples[DISQUE_METRIC_SAMPLES];
+        long long samples[STATS_METRIC_SAMPLES];
         int idx;
-    } inst_metric[DISQUE_METRIC_COUNT];
+    } inst_metric[STATS_METRIC_COUNT];
     /* Configuration */
     int verbosity;                  /* Loglevel in disque.conf */
     int maxidletime;                /* Client timeout in seconds */
@@ -497,7 +478,7 @@ struct disqueServer {
     size_t client_max_querybuf_len; /* Limit for client query buffer length */
     int dbnum;                      /* Total number of configured DBs */
     int daemonize;                  /* True if running as a daemon */
-    clientBufferLimitsConfig client_obuf_limits[DISQUE_CLIENT_TYPE_COUNT];
+    clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_COUNT];
     /* AOF persistence */
     int aof_state;                  /* DISQUE_AOF_(ON|OFF|WAIT_REWRITE) */
     int aof_fsync;                  /* Kind of fsync() policy */

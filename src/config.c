@@ -50,7 +50,7 @@ static struct {
     {NULL, 0}
 };
 
-clientBufferLimitsConfig clientBufferLimitsDefaults[DISQUE_CLIENT_TYPE_COUNT] = {
+clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_COUNT] = {
     {0, 0, 0} /* normal */
 };
 
@@ -119,7 +119,7 @@ void loadServerConfigFromString(char *config) {
         } else if (!strcasecmp(argv[0],"bind") && argc >= 2) {
             int j, addresses = argc-1;
 
-            if (addresses > DISQUE_BINDADDR_MAX) {
+            if (addresses > CONFIG_BINDADDR_MAX) {
                 err = "Too many bind addresses specified"; goto loaderr;
             }
             for (j = 0; j < addresses; j++)
@@ -227,8 +227,8 @@ void loadServerConfigFromString(char *config) {
             }
         } else if (!strcasecmp(argv[0],"hz") && argc == 2) {
             server.hz = atoi(argv[1]);
-            if (server.hz < DISQUE_MIN_HZ) server.hz = DISQUE_MIN_HZ;
-            if (server.hz > DISQUE_MAX_HZ) server.hz = DISQUE_MAX_HZ;
+            if (server.hz < CONFIG_MIN_HZ) server.hz = CONFIG_MIN_HZ;
+            if (server.hz > CONFIG_MAX_HZ) server.hz = CONFIG_MAX_HZ;
         } else if (!strcasecmp(argv[0],"appendonly") && argc == 2) {
             int yes;
 
@@ -287,8 +287,8 @@ void loadServerConfigFromString(char *config) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"requirepass") && argc == 2) {
-            if (strlen(argv[1]) > DISQUE_AUTHPASS_MAX_LEN) {
-                err = "Password is longer than DISQUE_AUTHPASS_MAX_LEN";
+            if (strlen(argv[1]) > CONFIG_AUTHPASS_MAX_LEN) {
+                err = "Password is longer than CONFIG_AUTHPASS_MAX_LEN";
                 goto loaderr;
             }
             server.requirepass = zstrdup(argv[1]);
@@ -388,7 +388,7 @@ loaderr:
  * just load a string. */
 void loadServerConfig(char *filename, char *options) {
     sds config = sdsempty();
-    char buf[DISQUE_CONFIGLINE_MAX+1];
+    char buf[CONFIG_MAX_LINE+1];
 
     /* Load the file content */
     if (filename) {
@@ -403,7 +403,7 @@ void loadServerConfig(char *filename, char *options) {
                 exit(1);
             }
         }
-        while(fgets(buf,DISQUE_CONFIGLINE_MAX+1,fp) != NULL)
+        while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL)
             config = sdscat(config,buf);
         if (fp != stdin) fclose(fp);
     }
@@ -428,7 +428,7 @@ void configSetCommand(client *c) {
     o = c->argv[3];
 
     if (!strcasecmp(c->argv[2]->ptr,"requirepass")) {
-        if (sdslen(o->ptr) > DISQUE_AUTHPASS_MAX_LEN) goto badfmt;
+        if (sdslen(o->ptr) > CONFIG_AUTHPASS_MAX_LEN) goto badfmt;
         zfree(server.requirepass);
         server.requirepass = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory")) {
@@ -453,10 +453,10 @@ void configSetCommand(client *c) {
                 return;
             }
             if ((unsigned int) aeGetSetSize(server.el) <
-                server.maxclients + DISQUE_EVENTLOOP_FDSET_INCR)
+                server.maxclients + CONFIG_FDSET_INCR)
             {
                 if (aeResizeSetSize(server.el,
-                    server.maxclients + DISQUE_EVENTLOOP_FDSET_INCR) == AE_ERR)
+                    server.maxclients + CONFIG_FDSET_INCR) == AE_ERR)
                 {
                     addReplyError(c,"The event loop API used by Disque is not able to handle the specified number of clients");
                     server.maxclients = orig_value;
@@ -467,8 +467,8 @@ void configSetCommand(client *c) {
     } else if (!strcasecmp(c->argv[2]->ptr,"hz")) {
         if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
         server.hz = ll;
-        if (server.hz < DISQUE_MIN_HZ) server.hz = DISQUE_MIN_HZ;
-        if (server.hz > DISQUE_MAX_HZ) server.hz = DISQUE_MAX_HZ;
+        if (server.hz < CONFIG_MIN_HZ) server.hz = CONFIG_MIN_HZ;
+        if (server.hz > CONFIG_MAX_HZ) server.hz = CONFIG_MAX_HZ;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-policy")) {
         if (!strcasecmp(o->ptr,"acks")) {
             server.maxmemory_policy = DISQUE_MAXMEMORY_ACKS;
@@ -772,13 +772,13 @@ void configGetCommand(client *c) {
         sds buf = sdsempty();
         int j;
 
-        for (j = 0; j < DISQUE_CLIENT_TYPE_COUNT; j++) {
+        for (j = 0; j < CLIENT_TYPE_COUNT; j++) {
             buf = sdscatprintf(buf,"%s %llu %llu %ld",
                     getClientTypeName(j),
                     server.client_obuf_limits[j].hard_limit_bytes,
                     server.client_obuf_limits[j].soft_limit_bytes,
                     (long) server.client_obuf_limits[j].soft_limit_seconds);
-            if (j != DISQUE_CLIENT_TYPE_COUNT-1)
+            if (j != CLIENT_TYPE_COUNT-1)
                 buf = sdscatlen(buf," ",1);
         }
         addReplyBulkCString(c,"client-output-buffer-limit");
@@ -881,7 +881,7 @@ void rewriteConfigMarkAsProcessed(struct rewriteConfigState *state, char *option
 struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     FILE *fp = fopen(path,"r");
     struct rewriteConfigState *state = zmalloc(sizeof(*state));
-    char buf[DISQUE_CONFIGLINE_MAX+1];
+    char buf[CONFIG_MAX_LINE+1];
     int linenum = -1;
 
     if (fp == NULL && errno != ENOENT) return NULL;
@@ -894,7 +894,7 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     if (fp == NULL) return state;
 
     /* Read the old file line by line, populate the state. */
-    while(fgets(buf,DISQUE_CONFIGLINE_MAX+1,fp) != NULL) {
+    while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL) {
         int argc;
         sds *argv;
         sds line = sdstrim(sdsnew(buf),"\r\n\t ");
@@ -1121,7 +1121,7 @@ void rewriteConfigClientoutputbufferlimitOption(struct rewriteConfigState *state
     int j;
     char *option = "client-output-buffer-limit";
 
-    for (j = 0; j < DISQUE_CLIENT_TYPE_COUNT; j++) {
+    for (j = 0; j < CLIENT_TYPE_COUNT; j++) {
         int force = (server.client_obuf_limits[j].hard_limit_bytes !=
                     clientBufferLimitsDefaults[j].hard_limit_bytes) ||
                     (server.client_obuf_limits[j].soft_limit_bytes !=
@@ -1306,12 +1306,12 @@ int rewriteConfig(char *path) {
 
     rewriteConfigYesNoOption(state,"daemonize",server.daemonize,0);
     rewriteConfigStringOption(state,"pidfile",server.pidfile,CONFIG_DEFAULT_PID_FILE);
-    rewriteConfigNumericalOption(state,"port",server.port,DISQUE_SERVERPORT);
-    rewriteConfigNumericalOption(state,"tcp-backlog",server.tcp_backlog,DISQUE_TCP_BACKLOG);
+    rewriteConfigNumericalOption(state,"port",server.port,CONFIG_DEFAULT_SERVER_PORT);
+    rewriteConfigNumericalOption(state,"tcp-backlog",server.tcp_backlog,CONFIG_DEFAULT_TCP_BACKLOG);
     rewriteConfigBindOption(state);
     rewriteConfigStringOption(state,"unixsocket",server.unixsocket,NULL);
     rewriteConfigOctalOption(state,"unixsocketperm",server.unixsocketperm,CONFIG_DEFAULT_UNIX_SOCKET_PERM);
-    rewriteConfigNumericalOption(state,"timeout",server.maxidletime,DISQUE_MAXIDLETIME);
+    rewriteConfigNumericalOption(state,"timeout",server.maxidletime,CONFIG_DEFAULT_CLIENT_TIMEOUT);
     rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,CONFIG_DEFAULT_TCP_KEEPALIVE);
     rewriteConfigEnumOption(state,"loglevel",server.verbosity,
         "debug", DISQUE_DEBUG,
@@ -1340,13 +1340,13 @@ int rewriteConfig(char *path) {
         "no", AOF_FSYNC_NO,
         NULL, CONFIG_DEFAULT_AOF_FSYNC);
     rewriteConfigYesNoOption(state,"no-appendfsync-on-rewrite",server.aof_no_fsync_on_rewrite,CONFIG_DEFAULT_AOF_NO_FSYNC_ON_REWRITE);
-    rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",server.aof_rewrite_perc,DISQUE_AOF_REWRITE_PERC);
-    rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",server.aof_rewrite_min_size,DISQUE_AOF_REWRITE_MIN_SIZE);
+    rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",server.aof_rewrite_perc,AOF_REWRITE_PERC);
+    rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",server.aof_rewrite_min_size,AOF_REWRITE_MIN_SIZE);
     rewriteConfigStringOption(state,"cluster-config-file",server.cluster_configfile,CONFIG_DEFAULT_CLUSTER_CONFIG_FILE);
     rewriteConfigNumericalOption(state,"cluster-node-timeout",server.cluster_node_timeout,DISQUE_CLUSTER_DEFAULT_NODE_TIMEOUT);
-    rewriteConfigNumericalOption(state,"slowlog-log-slower-than",server.slowlog_log_slower_than,DISQUE_SLOWLOG_LOG_SLOWER_THAN);
+    rewriteConfigNumericalOption(state,"slowlog-log-slower-than",server.slowlog_log_slower_than,CONFIG_DEFAULT_SLOWLOG_LOG_SLOWER_THAN);
     rewriteConfigNumericalOption(state,"latency-monitor-threshold",server.latency_monitor_threshold,CONFIG_DEFAULT_LATENCY_MONITOR_THRESHOLD);
-    rewriteConfigNumericalOption(state,"slowlog-max-len",server.slowlog_max_len,DISQUE_SLOWLOG_MAX_LEN);
+    rewriteConfigNumericalOption(state,"slowlog-max-len",server.slowlog_max_len,CONFIG_DEFAULT_SLOWLOG_MAX_LEN);
     rewriteConfigYesNoOption(state,"activerehashing",server.activerehashing,CONFIG_DEFAULT_ACTIVE_REHASHING);
     rewriteConfigClientoutputbufferlimitOption(state);
     rewriteConfigNumericalOption(state,"hz",server.hz,CONFIG_DEFAULT_HZ);

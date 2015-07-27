@@ -475,7 +475,7 @@ void freeClusterLink(clusterLink *link) {
 void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int cport, cfd;
     int max = MAX_CLUSTER_ACCEPTS_PER_CALL;
-    char cip[DISQUE_IP_STR_LEN];
+    char cip[NET_IP_STR_LEN];
     clusterLink *link;
     DISQUE_NOTUSED(el);
     DISQUE_NOTUSED(mask);
@@ -905,7 +905,7 @@ int clusterHandshakeInProgress(char *ip, int port) {
  * EINVAL - IP or port are not valid. */
 int clusterStartHandshake(char *ip, int port) {
     clusterNode *n;
-    char norm_ip[DISQUE_IP_STR_LEN];
+    char norm_ip[NET_IP_STR_LEN];
     struct sockaddr_storage sa;
 
     /* IP sanity check */
@@ -930,15 +930,15 @@ int clusterStartHandshake(char *ip, int port) {
 
     /* Set norm_ip as the normalized string representation of the node
      * IP address. */
-    memset(norm_ip,0,DISQUE_IP_STR_LEN);
+    memset(norm_ip,0,NET_IP_STR_LEN);
     if (sa.ss_family == AF_INET)
         inet_ntop(AF_INET,
             (void*)&(((struct sockaddr_in *)&sa)->sin_addr),
-            norm_ip,DISQUE_IP_STR_LEN);
+            norm_ip,NET_IP_STR_LEN);
     else
         inet_ntop(AF_INET6,
             (void*)&(((struct sockaddr_in6 *)&sa)->sin6_addr),
-            norm_ip,DISQUE_IP_STR_LEN);
+            norm_ip,NET_IP_STR_LEN);
 
     if (clusterHandshakeInProgress(norm_ip,port)) {
         errno = EAGAIN;
@@ -1030,7 +1030,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
 
 /* IP -> string conversion. 'buf' is supposed to at least be 46 bytes. */
 void nodeIp2String(char *buf, clusterLink *link) {
-    anetPeerToString(link->fd, buf, DISQUE_IP_STR_LEN, NULL);
+    anetPeerToString(link->fd, buf, NET_IP_STR_LEN, NULL);
 }
 
 /* Update the node address to the IP address that can be extracted
@@ -1044,7 +1044,7 @@ void nodeIp2String(char *buf, clusterLink *link) {
  * The function returns 0 if the node address is still the same,
  * otherwise 1 is returned. */
 int nodeUpdateAddressIfNeeded(clusterNode *node, clusterLink *link, int port) {
-    char ip[DISQUE_IP_STR_LEN] = {0};
+    char ip[NET_IP_STR_LEN] = {0};
 
     /* We don't proceed if the link is the same as the sender link, as this
      * function is designed to see if the node link is consistent with the
@@ -1154,12 +1154,12 @@ int clusterProcessPacket(clusterLink *link) {
          * even with a normal PING packet. If it's wrong it will be fixed
          * by MEET later. */
         if (type == CLUSTERMSG_TYPE_MEET || myself->ip[0] == '\0') {
-            char ip[DISQUE_IP_STR_LEN];
+            char ip[NET_IP_STR_LEN];
 
             if (anetSockName(link->fd,ip,sizeof(ip),NULL) != -1 &&
                 strcmp(ip,myself->ip))
             {
-                memcpy(myself->ip,ip,DISQUE_IP_STR_LEN);
+                memcpy(myself->ip,ip,NET_IP_STR_LEN);
                 serverLog(DISQUE_WARNING,"IP address for this node updated to %s",
                     myself->ip);
                 clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);

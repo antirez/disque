@@ -233,8 +233,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define UNIT_MILLISECONDS 1
 
 /* SHUTDOWN flags */
-#define SHUTDOWN_NOFLAGS 0 /* No flags. */
-#define SHUTDOWN_REWRITE_AOF 1 /* Sync AOF rewrite before exiting. */
+#define SHUTDOWN_NOFLAGS 0      /* No flags. */
+#define SHUTDOWN_REWRITE_AOF 1  /* Sync AOF rewrite before exiting. */
 
 /* Command call flags, see call() function */
 #define CMD_CALL_NONE 0

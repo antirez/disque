@@ -763,7 +763,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* We need to do a few operations on clients asynchronously. */
     clientsCron();
 
-    /* Handle background operations on Disque. */
+    /* Handle background operations on Disque jobs and queues. */
     databasesCron();
 
     /* Start a scheduled AOF rewrite if this was requested by the user while

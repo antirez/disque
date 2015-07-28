@@ -493,17 +493,15 @@ void tryResizeHashTables(void) {
  * The function returns 1 if some rehashing was performed, otherwise 0
  * is returned. */
 int incrementallyRehash(void) {
-    int workdone = 0;
-
     if (dictIsRehashing(server.jobs)) {
         dictRehashMilliseconds(server.jobs,1);
-        workdone = 1;
+        return 1; /* already used our millisecond for this loop... */
     }
     if (dictIsRehashing(server.queues)) {
         dictRehashMilliseconds(server.queues,1);
-        workdone = 1;
+        return 1; /* already used our millisecond for this loop... */
     }
-    return workdone;
+    return 0;
 }
 
 /* This function is called once a background process of some kind terminates,

@@ -308,7 +308,7 @@ int dictSdsKeyCaseCompare(void *privdata, const void *key1,
     return strcasecmp(key1, key2) == 0;
 }
 
-void dictDisqueObjectDestructor(void *privdata, void *val)
+void dictObjectDestructor(void *privdata, void *val)
 {
     DICT_NOTUSED(privdata);
 
@@ -390,7 +390,7 @@ dictType setDictType = {
     NULL,                      /* key dup */
     NULL,                      /* val dup */
     dictEncObjKeyCompare,      /* key compare */
-    dictDisqueObjectDestructor, /* key destructor */
+    dictObjectDestructor, /* key destructor */
     NULL                       /* val destructor */
 };
 
@@ -467,7 +467,7 @@ dictType queuesDictType = {
     NULL,                      /* key dup */
     NULL,                      /* val dup */
     dictObjKeyCompare,         /* key compare */
-    dictDisqueObjectDestructor, /* key destructor */
+    dictObjectDestructor, /* key destructor */
     NULL                       /* val destructor */
 };
 

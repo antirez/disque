@@ -1135,7 +1135,7 @@ void addjobCommand(client *c) {
 
     /* If maxlen was specified, check that the local queue len is
      * within the requested limits. */
-    if (maxlen && queueNameLength(c->argv[1]) > (unsigned long) maxlen) {
+    if (maxlen && queueNameLength(c->argv[1]) >= (unsigned long) maxlen) {
         addReplySds(c,
             sdsnew("-MAXLEN Queue is already longer than "
                    "the specified MAXLEN count\r\n"));

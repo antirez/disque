@@ -299,6 +299,8 @@ To play with Disque please do the following:
 2. Run a few Disque nodes in different ports. Create different `disque.conf` files following the example `disque.conf` in the source distribution.
 3. After you have them running, you need to join the cluster. Just select a random node among the nodes you are running, and send the command `CLUSTER MEET <ip> <port>` for every other node in the cluster.
 
+**Please note that you nede to open two TCP ports on each node**, the base port of the Disque instance, for example 7711, plus the cluster bus port, which is always at a fixed offset, obtained summing 10000 to the base port, so in the above example, you need to open both 7711 and 17711. Disque uses the base port to communicate with clients and the cluster bus port to communicate with other Disque processes.
+
 To run a node, just call `./disque-server`.
 
 For example if you are running three Disque servers in port 7711, 7712, 7713 in order to join the cluster you should use the `disque` command line tool and run the following commands:

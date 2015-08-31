@@ -2361,7 +2361,7 @@ void clusterUpdateReachableNodes(void) {
         zrealloc(server.cluster->reachable_nodes,maxsize);
     server.cluster->reachable_nodes_count = 0;
 
-    di = dictGetSafeIterator(server.cluster->nodes);
+    di = dictGetIterator(server.cluster->nodes);
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
 

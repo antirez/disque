@@ -851,7 +851,7 @@ void qpeekCommand(client *c) {
     setDeferredMultiBulkLength(c,deflen,returned);
 }
 
-/* QSCAN [<cursor>] [COUNT <count>] [BLOCKING] [MINLEN <len>] [MAXLEN <len>]
+/* QSCAN [<cursor>] [COUNT <count>] [BUSYLOOP] [MINLEN <len>] [MAXLEN <len>]
  * [IMPORTRATE <rate>]
  *
  * The command provides an interface to iterate all the existing queues in

@@ -484,7 +484,7 @@ The cursor argument can be in any place, the first non matching option
 that has valid cursor form of an usigned number will be sensed as a valid
 cursor.
 
-## `JSCAN [<cursor>] [COUNT <count>] [BLOCKING] [QUEUE <queue>] [STATE <state1> STATE <state2> ... STATE <stateN>] [REPLY all|id]`
+## `JSCAN [<cursor>] [COUNT <count>] [BUSYLOOP] [QUEUE <queue>] [STATE <state1> STATE <state2> ... STATE <stateN>] [REPLY all|id]`
 
 The command provides an interface to iterate all the existing jobs in
 the local node, providing a cursor in the form of an integer that is passed

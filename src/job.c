@@ -1367,7 +1367,7 @@ void deljobCommand(client *c) {
     addReplyLongLong(c,evicted);
 }
 
-/* JSCAN [<cursor>] [COUNT <count>] [BLOCKING] [QUEUE <queue>]
+/* JSCAN [<cursor>] [COUNT <count>] [BUSYLOOP] [QUEUE <queue>]
  * [STATE <state1> STATE <state2> ... STATE <stateN>]
  * [REPLY all|id]
  *

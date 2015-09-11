@@ -1412,9 +1412,9 @@ void jscanCallback(void *privdata, const dictEntry *de) {
     struct jscanFilter *filter = pd[1];
     job *job = dictGetKey(de);
 
-    /* Skip dummy job which is created by ackCommand */
-    if (job->queue == NULL)
-        return;
+    /* Skip dummy jobs created by ACK command when job ID is unknown. */
+    if (dictSize(job->nodes_delivered) == 0) return;
+
     /* Don't add the item if it does not satisfies our filter. */
     if (filter->queue && !equalStringObjects(job->queue,filter->queue)) return;
     if (filter->numstates && !filter->state[job->state]) return;

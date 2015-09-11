@@ -574,6 +574,7 @@ API on top of Disque:
 *Ruby*
 
 - [disque-rb](https://github.com/soveran/disque-rb)
+- [disque_jockey](https://github.com/DevinRiley/disque_jockey)
 
 *Rust*
 

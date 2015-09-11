@@ -570,6 +570,10 @@ API on top of Disque:
 
 - [disque-rb](https://github.com/soveran/disque-rb)
 
+*Rust*
+
+- [disque-rs](https://github.com/seppo0010/disque-rs)
+
 *.NET*
 
 - [Disque.Net](https://github.com/ziyasal/Disque.Net)

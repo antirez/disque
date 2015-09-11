@@ -96,6 +96,22 @@ void tryJobGC(job *job) {
         return;
     }
 
+    /* Check ASAP if we already reached all the nodes.
+     * This special case here is mainly useful when it is a dummy job
+     * (created by ack) and the clusterSize is 1, so we can remove the
+     * dummy job directly.
+     */
+    if (dictSize(job->nodes_delivered) == 0 &&
+        dictSize(server.cluster->nodes) == 1)
+    {
+        serverLog(LL_VERBOSE,
+            "Deleting %.48s: dummy ACK not known cluster-wide",
+            job->id);
+        unregisterJob(job);
+        freeJob(job);
+        return;
+    }
+
     /* Send a SETACK message to all the nodes that may have a message but are
      * still not listed in the nodes_confirmed hash table. However if this
      * is a dumb ACK (created by ACKJOB command acknowledging a job we don't

@@ -223,20 +223,23 @@ void ackjobCommand(client *c) {
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
-        /* Case 1: No such job. Create one just to hold the ACK. */
-        if (job == NULL) {
+        /* Case 1: No such job. Create one just to hold the ACK. However
+         * if the cluster is composed by a single node we are sure the job
+         * does not exist in the whole cluster, so do this only if the
+         * cluster size is greater than one. */
+        if (job == NULL && server.cluster->size > 1) {
             job = createJob(c->argv[j]->ptr,JOB_STATE_ACKED,0);
             setJobTtlFromId(job);
             serverAssert(registerJob(job) == C_OK);
         }
         /* Case 2: Job exists and is not acknowledged. Change state. */
-        if (job && job->state != JOB_STATE_ACKED) {
+        else if (job && job->state != JOB_STATE_ACKED) {
             dequeueJob(job); /* Safe to call if job is not queued. */
             acknowledgeJob(job);
             known++;
         }
         /* Anyway... start a GC attempt on the acked job. */
-        tryJobGC(job);
+        if (job) tryJobGC(job);
     }
     addReplyLongLong(c,known);
 }

@@ -68,6 +68,8 @@ mstime_t getNextGCRetryTime(job *job) {
 /* Try to garbage collect the job. */
 void tryJobGC(job *job) {
     if (job->state != JOB_STATE_ACKED) return;
+
+    int dummy_ack = dictSize(job->nodes_delivered) == 0;
     serverLog(LL_VERBOSE,"GC %.48s", job->id);
 
     /* Don't overflow the count, it's only useful for the exponential delay.
@@ -84,10 +86,19 @@ void tryJobGC(job *job) {
 
     /* Check ASAP if we already reached all the nodes. This special case
      * here is mainly useful when the job replication factor is 1, so
-     * there is no SETACK to send, nor GOTCAK to receive. */
-    if (dictSize(job->nodes_delivered) != 0 &&
-        dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed))
-    {
+     * there is no SETACK to send, nor GOTCAK to receive.
+     *
+     * Also check if this is a dummy ACK but the cluster size is now 1:
+     * in such a case we don't have other nodes to send SETACK to, we can
+     * just remove the ACK. Note that dummy ACKs are not created at all
+     * if the cluster size is 1, but this code path may be entered as a result
+     * of the cluster getting resized to a single node. */
+    int all_nodes_reached =
+        (!dummy_ack) &&
+        (dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed));
+    int dummy_ack_single_node = dummy_ack && server.cluster->size == 1;
+
+    if (all_nodes_reached || dummy_ack_single_node) {
         serverLog(LL_VERBOSE,
             "Deleting %.48s: all nodes reached in tryJobGC()",
             job->id);
@@ -96,25 +107,9 @@ void tryJobGC(job *job) {
         return;
     }
 
-    /* Check ASAP if we already reached all the nodes.
-     * This special case here is mainly useful when it is a dummy job
-     * (created by ack) and the clusterSize is 1, so we can remove the
-     * dummy job directly.
-     */
-    if (dictSize(job->nodes_delivered) == 0 &&
-        dictSize(server.cluster->nodes) == 1)
-    {
-        serverLog(LL_VERBOSE,
-            "Deleting %.48s: dummy ACK not known cluster-wide",
-            job->id);
-        unregisterJob(job);
-        freeJob(job);
-        return;
-    }
-
     /* Send a SETACK message to all the nodes that may have a message but are
      * still not listed in the nodes_confirmed hash table. However if this
-     * is a dumb ACK (created by ACKJOB command acknowledging a job we don't
+     * is a dummy ACK (created by ACKJOB command acknowledging a job we don't
      * know) we have to broadcast the SETACK to everybody in search of the
      * owner. */
     dict *targets = dictSize(job->nodes_delivered) == 0 ?

@@ -1389,7 +1389,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (j && j->state <= JOB_STATE_QUEUED) {
             serverLog(LL_VERBOSE,"UPDATING QTIME FOR JOB %.48s", j->id);
             /* Move the time we'll re-queue this job in the future. Moreover
-             * if the sender has a Node ID greate than our node ID, and we
+             * if the sender has a Node ID greater than our node ID, and we
              * have the message queued as well, dequeue it, to avoid an
              * useless multiple delivery.
              *

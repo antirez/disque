@@ -190,6 +190,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CLIENT_CLOSE_ASAP (1<<4)  /* Close this client ASAP */
 #define CLIENT_UNIX_SOCKET (1<<5) /* Client connected via Unix domain socket */
 #define CLIENT_AOF_CLIENT (1<<6)  /* AOF loading client. */
+#define CLIENT_PENDING_WRITE (1<<7) /* Client has output to send but a write
+                                       handler is yet not installed. */
 
 /* Client block type (btype field in client structure)
  * if CLIENT_BLOCKED flag is set. */
@@ -427,6 +429,7 @@ struct disqueServer {
     int cfd_count;              /* Used slots in cfd[] */
     list *clients;              /* List of active clients */
     list *clients_to_close;     /* Clients to close asynchronously */
+    list *clients_pending_write; /* There is to write or install handler. */
     list *monitors;             /* List of MONITORs */
     client *current_client; /* Current client, only used on crash report */
     int clients_paused;         /* True if clients are currently paused */

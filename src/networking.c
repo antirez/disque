@@ -131,8 +131,19 @@ int prepareClientToWrite(client *c) {
     if (c->flags & CLIENT_AOF_CLIENT) return C_ERR;
     if (c->fd <= 0) return C_ERR; /* Fake client */
     if (c->bufpos == 0 && listLength(c->reply) == 0 &&
-        aeCreateFileEvent(server.el, c->fd, AE_WRITABLE,
-        sendReplyToClient, c) == AE_ERR) return C_ERR;
+        !(c->flags & CLIENT_PENDING_WRITE))
+    {
+        /* Here instead of installing the write handler, we just flag the
+         * client and put it into a list of clients that have something
+         * to write to the socket. This way before re-entering the event
+         * loop, we can try to directly write to the client sockets avoiding
+         * a system call. We'll only really install the write handler if
+         * we'll not be able to write the whole reply at once. */
+        c->flags |= CLIENT_PENDING_WRITE;
+        listAddNodeTail(server.clients_pending_write,c);
+    }
+
+    /* Authorize the caller to queue in the output buffer of this client. */
     return C_OK;
 }
 
@@ -648,6 +659,12 @@ void freeClient(client *c) {
         ln = listSearchKey(server.clients,c);
         serverAssert(ln != NULL);
         listDelNode(server.clients,ln);
+    }
+
+    /* Remove from the list of pending writes if needed. */
+    if (c->flags & CLIENT_PENDING_WRITE) {
+        ln = listSearchKey(server.clients_pending_write,c);
+        listDelNode(server.clients_pending_write,ln);
     }
 
     /* When client was just unblocked because of a blocking operation,

@@ -130,7 +130,7 @@ client *createClient(int fd) {
 int prepareClientToWrite(client *c) {
     if (c->flags & CLIENT_AOF_CLIENT) return C_ERR;
     if (c->fd <= 0) return C_ERR; /* Fake client */
-    if (c->bufpos == 0 && listLength(c->reply) == 0 &&
+    if (!clientHasPendingReplies(c) &&
         !(c->flags & CLIENT_PENDING_WRITE))
     {
         /* Here instead of installing the write handler, we just flag the
@@ -554,6 +554,12 @@ void copyClientOutputBuffer(client *dst, client *src) {
     dst->reply_bytes = src->reply_bytes;
 }
 
+/* Return true if the specified client has pending reply buffers to write to
+ * the socket. */
+int clientHasPendingReplies(client *c) {
+    return c->bufpos || listLength(c->reply);
+}
+
 #define MAX_ACCEPTS_PER_CALL 1000
 static void acceptCommonHandler(int fd, int flags) {
     client *c;
@@ -727,7 +733,7 @@ int writeToClient(int fd, client *c, int handler_installed) {
     size_t objmem;
     robj *o;
 
-    while(c->bufpos > 0 || listLength(c->reply)) {
+    while(clientHasPendingReplies(c)) {
         if (c->bufpos > 0) {
             nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
             if (nwritten <= 0) break;
@@ -787,7 +793,7 @@ int writeToClient(int fd, client *c, int handler_installed) {
         }
     }
     if (totwritten > 0) c->lastinteraction = server.unixtime;
-    if (c->bufpos == 0 && listLength(c->reply) == 0) {
+    if (!clientHasPendingReplies(c)) {
         c->sentlen = 0;
         if (handler_installed) aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
 
@@ -826,7 +832,7 @@ void handleClientsWithPendingWrites(void) {
 
         /* If there is nothing left, do nothing. Otherwise install
          * the write handler. */
-        if ((c->bufpos || listLength(c->reply)) &&
+        if (clientHasPendingReplies(c) &&
             aeCreateFileEvent(server.el, c->fd, AE_WRITABLE,
                 sendReplyToClient, c) == AE_ERR)
         {

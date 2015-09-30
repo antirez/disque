@@ -636,40 +636,35 @@ static void freeClientArgv(client *c) {
     c->cmd = NULL;
 }
 
-void freeClient(client *c) {
+/* Remove the specified client from global lists where the client could
+ * be referenced, not including the Pub/Sub channels.
+ * This is used by freeClient() and replicationCacheMaster(). */
+void unlinkClient(client *c) {
     listNode *ln;
 
-    /* If this is marked as current client unset it */
+    /* If this is marked as current client unset it. */
     if (server.current_client == c) server.current_client = NULL;
 
-    /* Free the query buffer */
-    sdsfree(c->querybuf);
-    c->querybuf = NULL;
-
-    /* Deallocate structures used to block on blocking ops. */
-    if (c->flags & CLIENT_BLOCKED) unblockClient(c);
-    dictRelease(c->bpop.queues);
-
-    /* Close socket, unregister events, and remove list of replies and
-     * accumulated arguments. */
+    /* Certain operations must be done only if the client has an active socket.
+     * If the client was already unlinked or if it's a "fake client" the
+     * fd is already set to -1. */
     if (c->fd != -1) {
-        aeDeleteFileEvent(server.el,c->fd,AE_READABLE);
-        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
-        close(c->fd);
-    }
-    listRelease(c->reply);
-    freeClientArgv(c);
-
-    /* Remove from the list of clients */
-    if (c->fd != -1) {
+        /* Remove from the list of active clients. */
         ln = listSearchKey(server.clients,c);
         serverAssert(ln != NULL);
         listDelNode(server.clients,ln);
+
+        /* Unregister async I/O handlers and close the socket. */
+        aeDeleteFileEvent(server.el,c->fd,AE_READABLE);
+        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+        close(c->fd);
+        c->fd = -1;
     }
 
     /* Remove from the list of pending writes if needed. */
     if (c->flags & CLIENT_PENDING_WRITE) {
         ln = listSearchKey(server.clients_pending_write,c);
+        serverAssert(ln != NULL);
         listDelNode(server.clients_pending_write,ln);
     }
 
@@ -680,6 +675,27 @@ void freeClient(client *c) {
         serverAssert(ln != NULL);
         listDelNode(server.unblocked_clients,ln);
     }
+}
+
+void freeClient(client *c) {
+    listNode *ln;
+
+    /* Free the query buffer */
+    sdsfree(c->querybuf);
+    c->querybuf = NULL;
+
+    /* Deallocate structures used to block on blocking ops. */
+    if (c->flags & CLIENT_BLOCKED) unblockClient(c);
+    dictRelease(c->bpop.queues);
+
+    /* Free data structures. */
+    listRelease(c->reply);
+    freeClientArgv(c);
+
+    /* Unlink the client: this will close the socket, remove the I/O
+     * handlers, and remove references of the client from different
+     * places where active clients may be referenced. */
+    unlinkClient(c);
 
     /* Monitors cleanup. */
     if (c->flags & CLIENT_MONITOR) {

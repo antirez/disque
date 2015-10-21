@@ -132,8 +132,15 @@ client *createClient(int fd) {
  * data to the clients output buffers. If the function returns C_ERR no
  * data should be appended to the output buffers. */
 int prepareClientToWrite(client *c) {
+    /* CLIENT REPLY OFF / SKIP handling: don't send replies. */
+    if (c->flags & (CLIENT_REPLY_OFF|CLIENT_REPLY_SKIP)) return C_ERR;
     if (c->flags & CLIENT_AOF_CLIENT) return C_ERR;
     if (c->fd <= 0) return C_ERR; /* Fake client */
+
+    /* Schedule the client to write the output buffers to the socket only
+     * if not already done (there were no pending writes already and the client
+     * was yet not flagged), and, for slaves, if the slave can actually
+     * receive writes at this stage. */
     if (!clientHasPendingReplies(c) &&
         !(c->flags & CLIENT_PENDING_WRITE))
     {
@@ -838,6 +845,15 @@ void resetClient(client *c) {
     c->reqtype = 0;
     c->multibulklen = 0;
     c->bulklen = -1;
+
+    /* Remove the CLIENT_REPLY_SKIP flag if any so that the reply
+     * to the next command will be sent, but set the flag if the command
+     * we just processed was "CLIENT REPLY SKIP". */
+    c->flags &= ~CLIENT_REPLY_SKIP;
+    if (c->flags & CLIENT_REPLY_SKIP_NEXT) {
+        c->flags |= CLIENT_REPLY_SKIP;
+        c->flags &= ~CLIENT_REPLY_SKIP_NEXT;
+    }
 }
 
 int processInlineBuffer(client *c) {
@@ -1281,6 +1297,20 @@ void clientCommand(client *c) {
         sds o = getAllClientsInfoString();
         addReplyBulkCBuffer(c,o,sdslen(o));
         sdsfree(o);
+    } else if (!strcasecmp(c->argv[1]->ptr,"reply") && c->argc == 3) {
+        /* CLIENT REPLY ON|OFF|SKIP */
+        if (!strcasecmp(c->argv[2]->ptr,"on")) {
+            c->flags &= ~(CLIENT_REPLY_SKIP|CLIENT_REPLY_OFF);
+            addReply(c,shared.ok);
+        } else if (!strcasecmp(c->argv[2]->ptr,"off")) {
+            c->flags |= CLIENT_REPLY_OFF;
+        } else if (!strcasecmp(c->argv[2]->ptr,"skip")) {
+            if (!(c->flags & CLIENT_REPLY_OFF))
+                c->flags |= CLIENT_REPLY_SKIP_NEXT;
+        } else {
+            addReply(c,shared.syntaxerr);
+            return;
+        }
     } else if (!strcasecmp(c->argv[1]->ptr,"kill")) {
         /* CLIENT KILL <ip:port>
          * CLIENT KILL <option> [value] ... <option> [value] */

@@ -79,6 +79,7 @@ void debugCommand(client *c) {
         flushServerData();
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"loadaof")) {
+        if (server.aof_state == AOF_ON) flushAppendOnlyFile(1);
         flushServerData();
         if (loadAppendOnlyFile(server.aof_filename) != C_OK) {
             addReply(c,shared.err);

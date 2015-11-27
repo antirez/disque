@@ -1,4 +1,11 @@
 language: c
-before_script: sudo apt-get install tcl8.5
-install: make
+sudo: false
+addons:
+  apt:
+    packages:
+      - tcl8.5
+cache:
+  directories:
+    - $HOME/.ccache
+install: make CC="ccache $CC"
 script: make test

@@ -117,3 +117,10 @@ test "Single node jobs are correctly ordered in a FIFO fashion" {
         assert {$body == $j}
     }
 }
+
+test "ADDJOB fails if queue length exceeds MAXLEN" {
+    set qname [randomQueue]
+    D 0 addjob $qname myjob 5000 maxlen 1
+    catch {D 0 addjob $qname myjob 5000 maxlen 1} job_id
+    assert_match {MAXLEN*} $job_id
+}

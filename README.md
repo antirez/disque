@@ -526,6 +526,10 @@ API on top of Disque:
 
 - [disque C++ client](https://github.com/zhengshuxin/acl/tree/master/lib_acl_cpp/samples/disque)
 
+*Common Lisp*
+
+- [cl-disque](https://github.com/CodyReichert/cl-disque)
+
 *Elixir*
 
 - [exdisque](https://github.com/mosic/exdisque)
@@ -549,6 +553,7 @@ API on top of Disque:
 
 - [disque.js](https://www.npmjs.com/package/disque.js)
 - [thunk-disque](https://github.com/thunks/thunk-disque)
+- [disqueue-node](https://www.npmjs.com/package/disqueue-node)
 
 *Perl*
 
@@ -569,6 +574,7 @@ API on top of Disque:
 *Ruby*
 
 - [disque-rb](https://github.com/soveran/disque-rb)
+- [disque_jockey](https://github.com/DevinRiley/disque_jockey)
 
 *Rust*
 

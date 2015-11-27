@@ -192,8 +192,9 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CLIENT_AOF_CLIENT (1<<6)  /* AOF loading client. */
 #define CLIENT_PENDING_WRITE (1<<7) /* Client has output to send but a write
                                        handler is yet not installed. */
-#define CLIENT_REPLY_SKIP_NEXT (1<<8)  /* Set CLIENT_REPLY_SKIP for next cmd */
-#define CLIENT_REPLY_SKIP (1<<9)  /* Don't send just this reply. */
+#define CLIENT_REPLY_OFF (1<<8)   /* Don't send replies to client. */
+#define CLIENT_REPLY_SKIP_NEXT (1<<9)  /* Set CLIENT_REPLY_SKIP for next cmd */
+#define CLIENT_REPLY_SKIP (1<<10)  /* Don't send just this reply. */
 
 /* Client block type (btype field in client structure)
  * if CLIENT_BLOCKED flag is set. */

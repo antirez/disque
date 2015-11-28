@@ -2231,6 +2231,10 @@ int freeMemoryIfNeeded(void) {
          * case, otherwise keep counting the number of iterations we failed
          * to free jobs. */
         de = dictGetRandomKey(server.jobs);
+
+        /* If there are no jobs at all, there is nothing we can release. */
+        if (de == NULL) return C_ERR;
+
         delta = (long long) zmalloc_used_memory();
         job *job = dictGetKey(de);
         if (job->state == JOB_STATE_ACKED) {

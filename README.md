@@ -283,7 +283,7 @@ In case of collisions, the workers may just do a non-efficient choice.
 Collisions in the 128 bits random part are believed to be impossible,
 since it is computed as follows.
 
-    128 bit ID = SHA1(seed || counter)
+    128 bit ID = HIGH_128_BITS_OF_SHA1(seed || counter)
 
 Where:
 

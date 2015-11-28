@@ -2231,22 +2231,25 @@ int freeMemoryIfNeeded(void) {
          * case, otherwise keep counting the number of iterations we failed
          * to free jobs. */
         de = dictGetRandomKey(server.jobs);
-        delta = (long long) zmalloc_used_memory();
-        job *job = dictGetKey(de);
-        if (job->state == JOB_STATE_ACKED) {
-            unregisterJob(job);
-            freeJob(job);
-            not_freed = 0;
-        } else {
-            not_freed++;
+        if (de != NULL) {
+            delta = (long long) zmalloc_used_memory();
+            job *job = dictGetKey(de);
+            if (job->state == JOB_STATE_ACKED) {
+                unregisterJob(job);
+                freeJob(job);
+                not_freed = 0;
+            } else {
+                not_freed++;
+            }
+            delta -= (long long) zmalloc_used_memory();
+            mem_freed += delta;
         }
-        delta -= (long long) zmalloc_used_memory();
-        mem_freed += delta;
 
         /* If no object was freed in the latest N iterations or we are here
          * for more than 1 or 2 milliseconds, return to the caller with a
          * failure return value. */
-        if (not_freed > DISQUE_NOT_FREED_MAX_LEN || (mstime() - latency) > 1) {
+        if (de == NULL || not_freed > DISQUE_NOT_FREED_MAX_LEN ||
+                (mstime() - latency) > 1) {
             latencyEndMonitor(latency);
             latencyAddSampleIfNeeded("eviction-cycle",latency);
             return C_ERR; /* nothing to free... */

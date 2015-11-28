@@ -37,7 +37,7 @@
  * the Job can correctly expire ACKs if they can't be garbage collected. */
 #define JOB_ID_LEN 48
 
-/* This represent a Job across the system.
+/* This represents a Job across the system.
  *
  * The Job ID is the unique identifier of the job, both in the client
  * protocol and in the cluster messages between nodes.

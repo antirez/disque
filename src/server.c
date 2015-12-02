@@ -2241,7 +2241,7 @@ int freeMemoryIfNeeded(void) {
         delta = (long long) zmalloc_used_memory();
         job *job = dictGetKey(de);
         if ((job->state == JOB_STATE_ACKED) ||
-            (job->state != JOB_STATE_QUEUED && job->retry == 0))
+            (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED))
         {
             unregisterJob(job);
             freeJob(job);

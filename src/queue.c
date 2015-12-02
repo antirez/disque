@@ -136,14 +136,15 @@ void addReplyJob(client *c, job *j, int flags) {
 /* ------------------------ Queue higher level API -------------------------- */
 
 /* Queue the job and change its state accordingly. If the job is already
- * in QUEUED state, C_ERR is returned, otherwise C_OK is returned
- * and the operation succeeds.
+ * in QUEUED state, or the job has retry set to 0 and the JOB_FLAG_DELIVERED
+ * flat set, C_ERR is returned, otherwise C_OK is returned and the operation
+ * succeeds.
  *
  * The nack argument is set to 1 if the enqueue is the result of a client
  * negative acknowledge. */
 int enqueueJob(job *job, int nack) {
-    if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
-        return C_ERR;
+    if (job->state == JOB_STATE_QUEUED || job->qtime == 0) return C_ERR;
+    if (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED) return C_ERR;
 
     serverLog(LL_VERBOSE,"QUEUED %.48s", job->id);
 
@@ -169,7 +170,7 @@ int enqueueJob(job *job, int nack) {
         clusterBroadcastQueued(job, flags);
         /* Other nodes will increment their NACKs / additional deliveries
          * counters when they'll receive the QUEUED message. We need to
-         * do teh same for the local copy of the job. */
+         * do the same for the local copy of the job. */
         if (nack)
             job->num_nacks++;
         else
@@ -213,6 +214,7 @@ job *queueFetchJob(queue *q, unsigned long *qlen) {
     if (skiplistLength(q->sl) == 0) return NULL;
     job *j = skiplistPopHead(q->sl);
     j->state = JOB_STATE_ACTIVE;
+    j->flags |= JOB_FLAG_DELIVERED;
     q->atime = server.unixtime;
     if (qlen) *qlen = skiplistLength(q->sl);
     return j;
@@ -628,6 +630,17 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
         serverAssert(jobs[j] != NULL);
     }
     clusterSendYourJobs(node,jobs,replyjobs);
+
+    /* It's possible that we sent jobs with retry=0. Remove them from
+     * the local node since to take duplicates does not make sense for
+     * jobs having the replication level of 1 by contract. */
+    for (j = 0; j < replyjobs; j++) {
+        job *job = jobs[j];
+        if (job->retry == 0) {
+            unregisterJob(job);
+            freeJob(job);
+        }
+    }
 }
 
 /* ------------------------- Queue related commands ------------------------- */

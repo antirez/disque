@@ -524,6 +524,34 @@ The cursor argument can be in any place, the first non matching option
 that has valid cursor form of an usigned number will be sensed as a valid
 cursor.
 
+Special handling of messages with RETRY set to 0
+===
+
+In order to provide a coherent API, messages with an almost once delivery
+semantics are still retained after being delivered a first time, and should
+be acknowledged like any other message. Of course the acknowledge is not
+mandatory, since the message may be lost and there is no way for the receiver
+to get the same message again, since the message is associated with a retry
+value of 0.
+
+In order to avoid non acknowledged messages with retry set to 0, from leaking
+into Disque and eating all the memory, when the Disque server memory is full
+and starts to evict, it does not just evict acknowledged messages, but also
+can evict non acknowledged messages having, at the same time, the following
+two properties:
+
+1. Their retry is set to 0.
+2. The job was already delivered.
+
+In theory to acknowledge a job that will never be retried is a waste of time
+and resources, however this design has hidden advantages:
+
+1. The API is exactly the same for all the kinds of jobs.
+2. After the job is delivered, it is yet possible to examine it. Observability is a very good property of messaging systems.
+
+However not acknowledging the job does not result in big issues since they
+are evicted eventually during memory pressure.
+
 Client libraries
 ===
 

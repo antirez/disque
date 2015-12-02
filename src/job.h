@@ -84,6 +84,7 @@
 
 #define JOB_FLAG_BCAST_QUEUED (1<<0) /* Broadcast msg when re-queued. */
 #define JOB_FLAG_BCAST_WILLQUEUE (1<<1) /* Broadcast msg before re-quequeing. */
+#define JOB_FLAG_DELIVERED (1<<2) /* This node delivered this job >= 1 times. */
 
 #define JOB_WILLQUEUE_ADVANCE 500   /* Milliseconds of WILLQUEUE advance. */
 #define JOB_GC_RETRY_MIN_PERIOD 1000 /* Initial GC retry time is 1 seconds. */

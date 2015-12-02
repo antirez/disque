@@ -65,9 +65,14 @@
  * original job in *minutes*, not seconds, and is encoded in as a
  * 4 digits hexadecimal number.
  *
+ * The TTL is even if the job retry value is 0 (at most once jobs),
+ * otherwise is odd, so the actual precision of the value is 2 minutes.
+ * This is useful since the receiver of an ACKJOB command can avoid
+ * creating a "dummy ack" for unknown job IDs for at most once jobs.
+ *
  * "SQ" is just a fixed string. All Disque job IDs end with this two bytes.
  */
-void generateJobID(char *id, int ttl) {
+void generateJobID(char *id, int ttl, int retry) {
     char *charset = "0123456789abcdef";
     SHA1_CTX ctx;
     unsigned char hash[22]; /* 16 + 2 bytes for TTL. */
@@ -83,6 +88,11 @@ void generateJobID(char *id, int ttl) {
 
     ttl /= 60; /* Store TTL in minutes. */
     if (ttl > 65535) ttl = 65535;
+    if (ttl < 0) ttl = 1;
+
+    /* Force the TTL to be odd if retry > 0, even if retry == 0. */
+    ttl = (retry > 0) ? (ttl|1) : (ttl & ~1);
+
     hash[16] = (ttl&0xff00)>>8;
     hash[17] = ttl&0xff;
 
@@ -129,12 +139,19 @@ uint64_t hexToInt(char *p, size_t count) {
     return value;
 }
 
+/* Return the raw TTL (in minutes) from a well-formed Job ID.
+ * The caller should do sanity check on the job ID before calling this
+ * function. Note that the 'id' field of a a job structure is always valid. */
+int getRawTtlFromJobId(char *id) {
+    return hexToInt(id+42,4);
+}
+
 /* Set the job ttl from the encoded ttl in its ID. This is useful when we
  * create a new job just to store the fact it's acknowledged. Thanks to
  * the TTL encoded in the ID we are able to set the expire time for the job
  * regardless of the fact we have no info about the job. */
 void setJobTtlFromId(job *job) {
-    int expire_minutes = hexToInt(job->id+42,4);
+    int expire_minutes = getRawTtlFromJobId(job->id);
     /* Convert back to absolute unix time. */
     job->etime = server.unixtime + expire_minutes*60;
 }
@@ -161,17 +178,18 @@ int validateJobIdOrReply(client *c, char *id, size_t len) {
     return retval;
 }
 
-/* Create a new job in a given state. If "ID" is NULL, a new ID will be
- * created as assigned.
+/* Create a new job in a given state. If 'id' is NULL, a new ID will be
+ * created as assigned, otherwise the specified ID is used.
+ * The 'ttl' and 'retry' arguments are only used if 'id' is not NULL.
  *
  * This function only creates the job without any body, the only populated
  * fields are the ID and the state. */
-job *createJob(char *id, int state, int ttl) {
+job *createJob(char *id, int state, int ttl, int retry) {
     job *j = zmalloc(sizeof(job));
 
     /* Generate a new Job ID if not specified by the caller. */
     if (id == NULL)
-        generateJobID(j->id,ttl);
+        generateJobID(j->id,ttl,retry);
     else
         memcpy(j->id,id,JOB_ID_LEN);
 
@@ -1149,7 +1167,7 @@ void addjobCommand(client *c) {
     int discard_local_copy = async && extrepl;
 
     /* Create a new job. */
-    job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl);
+    job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl,retry);
     job->queue = c->argv[1];
     incrRefCount(c->argv[1]);
     job->repl = replicate;

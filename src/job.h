@@ -150,7 +150,7 @@ typedef struct job {
 #define SER_MESSAGE 0
 #define SER_STORAGE 1
 
-job *createJob(char *id, int state, int ttl);
+job *createJob(char *id, int state, int ttl, int retry);
 void deleteJobFromCluster(job *j);
 sds serializeJob(sds msg, job *j, int sertype);
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next, int sertype);
@@ -163,6 +163,7 @@ int jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
 void updateJobAwakeTime(job *j, mstime_t at);
 void updateJobRequeueTime(job *j, mstime_t qtime);
+int getRawTtlFromJobId(char *id);
 void setJobTtlFromId(job *job);
 int validateJobIdOrReply(client *c, char *id, size_t len);
 void setJobAssociatedValue(job *j, void *val);

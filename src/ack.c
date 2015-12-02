@@ -228,9 +228,16 @@ void ackjobCommand(client *c) {
          * does not exist in the whole cluster, so do this only if the
          * cluster size is greater than one. */
         if (job == NULL && server.cluster->size > 1) {
-            job = createJob(c->argv[j]->ptr,JOB_STATE_ACKED,0);
-            setJobTtlFromId(job);
-            serverAssert(registerJob(job) == C_OK);
+            char *id = c->argv[j]->ptr;
+            int ttl = getRawTtlFromJobId(id);
+
+            /* TTL is even for "at most once" jobs. In this case we
+             * don't need to create a dummy hack. */
+            if (ttl & 1) {
+                job = createJob(id,JOB_STATE_ACKED,0,0);
+                setJobTtlFromId(job);
+                serverAssert(registerJob(job) == C_OK);
+            }
         }
         /* Case 2: Job exists and is not acknowledged. Change state. */
         else if (job && job->state != JOB_STATE_ACKED) {

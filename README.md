@@ -290,6 +290,15 @@ Where:
 * **seed** is a seed generated via `/dev/urandom` at startup.
 * **counter** is a 64 bit counter incremented at every ID generation.
 
+The encoded TTL in minutes has a special property: it is always even for
+at most once jobs (job retry value set to 0), and is always odd otherwise.
+This changes the encoded TTL precision to 2 minutes, but allows to tell
+if a Job ID is about a job with deliveries guarantees or not.
+Note that this fact does not mean that Disque jobs TTLs have a precision of
+two minutes. The TTL field is only used to expire job IDs of jobs a given
+node does not actually have a copy, search "dummy ACK" in this documentation
+for more information.
+
 Setup
 ===
 
@@ -361,6 +370,16 @@ Options:
 ## `ACKJOB jobid1 jobid2 ... jobidN`
 
 Acknowledges the execution of one or more jobs via job IDs. The node receiving the ACK will replicate it to multiple nodes and will try to garbage collect both the job and the ACKs from the cluster so that memory can be freed.
+
+A node receiving an ACKJOB command about a job ID it does not know, will create
+a special empty job, with the state set to "acknowledged", called a "dummy ACK".
+The dummy ACK is used in order to retain the acknolwedge during a netsplit if
+the ACKJOB is send to a node that does not have a copy of the job. When the
+partition heals, a job garbage collection will be attempted.
+
+However since the job ID encodes information about the job being an "at most
+once" or an "at least once" job, the dummy ACK is only created for at least
+once jobs.
 
 ## `FASTACK jobid1 jobid2 ... jobidN`
 

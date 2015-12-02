@@ -2227,9 +2227,12 @@ int freeMemoryIfNeeded(void) {
         long long delta;
         dictEntry *de;
 
-        /* Get a random job, check if it is an ACK, release it in that
-         * case, otherwise keep counting the number of iterations we failed
-         * to free jobs. */
+        /* Get a random job, check if it is a job we can evict safely,
+         * whic happens in the following two cases:
+         * 1) Acknowledged jobs.
+         * 2) Jobs with retry set to 0 which were already delivered.
+         * Release it in the above two cases, otherwise keep counting the
+         * number of iterations we failed to free jobs. */
         de = dictGetRandomKey(server.jobs);
 
         /* If there are no jobs at all, there is nothing we can release. */
@@ -2237,7 +2240,9 @@ int freeMemoryIfNeeded(void) {
 
         delta = (long long) zmalloc_used_memory();
         job *job = dictGetKey(de);
-        if (job->state == JOB_STATE_ACKED) {
+        if ((job->state == JOB_STATE_ACKED) ||
+            (job->state != JOB_STATE_QUEUED && job->retry == 0))
+        {
             unregisterJob(job);
             freeJob(job);
             not_freed = 0;

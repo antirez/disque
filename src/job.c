@@ -552,6 +552,10 @@ char *serializeSdsString(char *p, sds s) {
  * loaded at a latter time from disk, and is used in order to emit
  * LOADJOB commands in the AOF file.
  *
+ * Moreover if SER_MESSAGE is used, the JOB_FLAG_DELIVERED is cleared before
+ * the serialization, since this is a local node flag and should not be
+ * propagated.
+ *
  * When the job is deserialized with deserializeJob() function call, the
  * appropriate type must be passed, depending on how the job was serialized.
  *
@@ -622,6 +626,7 @@ sds serializeJob(sds jobs, job *j, int sertype) {
             sj->etime = sj->etime - server.unixtime + 1;
         else
             sj->etime = 1;
+        sj->flags &= ~JOB_FLAG_DELIVERED;
     }
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->delay);

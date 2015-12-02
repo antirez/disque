@@ -1125,9 +1125,11 @@ void addjobCommand(client *c) {
         return;
     }
 
-    /* When retry is not specified, it defaults to 1/10 of the TTL. */
+    /* When retry is not specified, it defaults to 1/10 of the TTL, with
+     * an hard limit of JOB_DEFAULT_RETRY_MAX seconds (5 minutes normally). */
     if (retry == -1) {
         retry = ttl/10;
+        if (retry > JOB_DEFAULT_RETRY_MAX) retry = JOB_DEFAULT_RETRY_MAX;
         if (retry == 0) retry = 1;
     }
 

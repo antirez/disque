@@ -88,6 +88,7 @@
 #define JOB_WILLQUEUE_ADVANCE 500   /* Milliseconds of WILLQUEUE advance. */
 #define JOB_GC_RETRY_MIN_PERIOD 1000 /* Initial GC retry time is 1 seconds. */
 #define JOB_GC_RETRY_MAX_PERIOD (60000*3) /* Exponentially up to 3 minutes... */
+#define JOB_DEFAULT_RETRY_MAX (60*5) /* Maximum default retry value. */
 
 /* In the job structure we have a counter for the GC attempt. The only use
  * for this is to calcualte an exponential time for the retry, starting from

@@ -113,7 +113,7 @@ void generateJobID(char *id, int ttl, int retry) {
     *id++ = 'Q';
 }
 
-/* Helper function for setJobTtlFromId() in order to extract the TTL stored
+/* Helper function for setJobTTLFromID() in order to extract the TTL stored
  * as hex big endian number in the Job ID. The function is only used for this
  * but is more generic. 'p' points to the first digit for 'count' hex digits.
  * The number is assumed to be stored in big endian format. For each byte
@@ -142,7 +142,7 @@ uint64_t hexToInt(char *p, size_t count) {
 /* Return the raw TTL (in minutes) from a well-formed Job ID.
  * The caller should do sanity check on the job ID before calling this
  * function. Note that the 'id' field of a a job structure is always valid. */
-int getRawTtlFromJobId(char *id) {
+int getRawTTLFromJobID(char *id) {
     return hexToInt(id+42,4);
 }
 
@@ -150,8 +150,8 @@ int getRawTtlFromJobId(char *id) {
  * create a new job just to store the fact it's acknowledged. Thanks to
  * the TTL encoded in the ID we are able to set the expire time for the job
  * regardless of the fact we have no info about the job. */
-void setJobTtlFromId(job *job) {
-    int expire_minutes = getRawTtlFromJobId(job->id);
+void setJobTTLFromID(job *job) {
+    int expire_minutes = getRawTTLFromJobID(job->id);
     /* Convert back to absolute unix time. */
     job->etime = server.unixtime + expire_minutes*60;
 }
@@ -160,7 +160,7 @@ void setJobTtlFromId(job *job) {
  * string is composed of. The function just checks length and prefix/suffix.
  * It's pretty pointless to use more CPU to validate it better since anyway
  * the lookup will fail. */
-int validateJobId(char *id, size_t len) {
+int validateJobID(char *id, size_t len) {
     if (len != JOB_ID_LEN) return C_ERR;
     if (id[0] != 'D' ||
         id[1] != 'I' ||
@@ -169,10 +169,10 @@ int validateJobId(char *id, size_t len) {
     return C_OK;
 }
 
-/* Like validateJobId() but if the ID is invalid an error message is sent
+/* Like validateJobID() but if the ID is invalid an error message is sent
  * to the client 'c' if not NULL. */
 int validateJobIdOrReply(client *c, char *id, size_t len) {
-    int retval = validateJobId(id,len);
+    int retval = validateJobID(id,len);
     if (retval == C_ERR && c)
         addReplySds(c,sdsnew("-BADID Invalid Job ID format.\r\n"));
     return retval;

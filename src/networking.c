@@ -1178,11 +1178,11 @@ void getClientsMaxBuffers(unsigned long *longest_output_list,
     *biggest_input_buffer = bib;
 }
 
-/* This is a helper function for genClientPeerId().
+/* This is a helper function for genClientPeerID().
  * It writes the specified ip/port to "peerid" as a null termiated string
  * in the form ip:port if ip does not contain ":" itself, otherwise
  * [ip]:port format is used (for IPv6 addresses basically). */
-void formatPeerId(char *peerid, size_t peerid_len, char *ip, int port) {
+void formatPeerID(char *peerid, size_t peerid_len, char *ip, int port) {
     if (strchr(ip,':'))
         snprintf(peerid,peerid_len,"[%s]:%d",ip,port);
     else
@@ -1202,7 +1202,7 @@ void formatPeerId(char *peerid, size_t peerid_len, char *ip, int port) {
  * On failure the function still populates 'peerid' with the "?:0" string
  * in case you want to relax error checking or need to display something
  * anyway (see anetPeerToString implementation for more info). */
-int genClientPeerId(client *client, char *peerid, size_t peerid_len) {
+int genClientPeerID(client *client, char *peerid, size_t peerid_len) {
     char ip[NET_IP_STR_LEN];
     int port;
 
@@ -1213,7 +1213,7 @@ int genClientPeerId(client *client, char *peerid, size_t peerid_len) {
     } else {
         /* TCP client. */
         int retval = anetPeerToString(client->fd,ip,sizeof(ip),&port);
-        formatPeerId(peerid,peerid_len,ip,port);
+        formatPeerID(peerid,peerid_len,ip,port);
         return (retval == -1) ? C_ERR : C_OK;
     }
 }
@@ -1226,7 +1226,7 @@ char *getClientPeerId(client *c) {
     char peerid[NET_PEER_ID_LEN];
 
     if (c->peerid == NULL) {
-        genClientPeerId(c,peerid,sizeof(peerid));
+        genClientPeerID(c,peerid,sizeof(peerid));
         c->peerid = sdsnew(peerid);
     }
     return c->peerid;

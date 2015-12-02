@@ -229,13 +229,13 @@ void ackjobCommand(client *c) {
          * cluster size is greater than one. */
         if (job == NULL && server.cluster->size > 1) {
             char *id = c->argv[j]->ptr;
-            int ttl = getRawTtlFromJobId(id);
+            int ttl = getRawTTLFromJobID(id);
 
             /* TTL is even for "at most once" jobs. In this case we
              * don't need to create a dummy hack. */
             if (ttl & 1) {
                 job = createJob(id,JOB_STATE_ACKED,0,0);
-                setJobTtlFromId(job);
+                setJobTTLFromID(job);
                 serverAssert(registerJob(job) == C_OK);
             }
         }

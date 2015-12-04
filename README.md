@@ -552,6 +552,55 @@ and resources, however this design has hidden advantages:
 However not acknowledging the job does not result in big issues since they
 are evicted eventually during memory pressure.
 
+Adding and removing nodes at runtime
+===
+
+Adding nodes is trivial, just consists in starting a new node and sending it
+a `CLUSTER MEET` command. Assuming the node you just started is located
+at address 192.168.1.10 port 7714, and a random (you can use any) node of
+the existing cluster is located at 192.168.1.9 port 7711, all you need to do
+is:
+
+    ./disque -h 192.168.1.10 -p 7714 cluster meet 192.168.1.9 7711
+
+Note that you can invert the source and destination arguments and still the
+new node will join the cluster. It does not matter if it's the old node to
+meet the new one or the other way around.
+
+In order to remove a node, it is possible to use the crude way of just
+shutting it down, and the use `CLUSTER FORGET <old-node-id>` in all the
+other nodes in order to remove references to it from the configuration of
+the other nodes. However this means that, for example, messages that had
+a replication factor of 3, and one of the replicas was the node you are
+shutting down, suddenly are left with just 2 replicas even if no *actual*
+failure happened. Moreover if the node you are removing had messages in
+queue, you'll need to wait the retry time before the messages will be
+queued again. For all this reasons Disque has a better way to remove nodes
+which is described in the next section.
+
+Gracefully removal of nodes
+===
+
+In order to empty a node of its content before to remove it, it is possible
+to use a feature that puts a node in *leaving* state. To enable this feature
+just contact the node to remove, and use the following command:
+
+    CLUSTER LEAVING yes
+
+The node will start advertising it as *leaving*, so in a matter of seconds
+all the cluster will know (if there are partitions, when the partition heals
+all the nodes will eventually be informed), and this is what happens
+when the node is in this state:
+
+1. When the node receives `ADDJOB` commands, it performs external replication, like when a node is near the memory limits. This means that it will make sure
+to create the number of replicas of the message in the cluster **without using itself** as a replica. So no new messages are created in the context of a node which is leaving.
+2. The node starts to send `-LEAVING` messages to all the clients that use `GETJOB` but would block waiting for jobs. The `-LEAVING` error means the clients should connect to another node. Clients that were already blocked waiting for messages will be unblocked and a `-LEAVING` error will be sent to them as well.
+3. The node no longer sends `NEEDJOBS` messages in the context of Disque federation, so it will never ask other nodes to transfer messages to it.
+4. The node and all the other nodes will advertise it with a bad priority in the `HELLO` command output, so that clients will select a different node.
+5. The node will no longer create *dummy acks* in response to an `ACKJOB` command about a job it does not know.
+
+All this behavior changes result in the node participating only as a source of messages, so eventually its messages count will drop to zero (it is possible to check for this condition using `INFO jobs`). When this happens the node can be stopped and removed from the other nodes tables using `CLUSTER FORGET` as described in the section above.
+
 Client libraries
 ===
 

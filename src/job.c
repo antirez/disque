@@ -1061,7 +1061,13 @@ void addjobCommand(client *c) {
     int j, retval;
     int async = 0;  /* Asynchronous request? */
     int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
+    int leaving = server.cluster->myself->flags & CLUSTER_NODE_LEAVING;
     static uint64_t prev_ctime = 0;
+
+    /* Another case for external replication, other than memory pressure, is
+     * if this node is leaving the cluster. In this case we don't want to create
+     * new messages here. */
+    if (leaving) extrepl = 1;
 
     /* Parse args. */
     for (j = 4; j < c->argc; j++) {
@@ -1146,10 +1152,13 @@ void addjobCommand(client *c) {
             additional_nodes-1 == server.cluster->reachable_nodes_count)
         {
             addReplySds(c,
-                sdsnew("-NOREPL Not enough reachable nodes "
+                sdscatprintf(sdsempty(),
+                       "-NOREPL Not enough reachable nodes "
                        "for the requested replication level, since I'm unable "
-                       "to hold a copy of the message for memory usage "
-                       "problems.\r\n"));
+                       "to hold a copy of the message for the following "
+                       "reason: %s.\r\n",
+                       leaving ? "I'm leaving the cluster" :
+                                 "I'm out of memory"));
         } else {
             addReplySds(c,
                 sdsnew("-NOREPL Not enough reachable nodes "

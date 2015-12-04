@@ -38,6 +38,7 @@ typedef struct clusterLink {
 #define CLUSTER_NODE_NOADDR    (1<<4) /* Node address unknown */
 #define CLUSTER_NODE_MEET      (1<<5) /* Send a MEET message to this node */
 #define CLUSTER_NODE_DELETED   (1<<6) /* Node no longer part of the cluster */
+#define CLUSTER_NODE_LEAVING   (1<<7) /* Node is leaving the cluster. */
 #define CLUSTER_NODE_NULL_NAME "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
 
 #define nodeInHandshake(n) ((n)->flags & CLUSTER_NODE_HANDSHAKE)

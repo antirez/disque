@@ -173,6 +173,8 @@ int clusterLoadConfig(char *filename) {
                 n->flags |= CLUSTER_NODE_HANDSHAKE;
             } else if (!strcasecmp(s,"noaddr")) {
                 n->flags |= CLUSTER_NODE_NOADDR;
+            } else if (!strcasecmp(s,"leaving")) {
+                n->flags |= CLUSTER_NODE_LEAVING;
             } else if (!strcasecmp(s,"noflags")) {
                 /* nothing to do */
             } else {
@@ -1238,6 +1240,21 @@ int clusterProcessPacket(clusterLink *link) {
             }
         }
 
+        /* Copy certain flags from what the node publishes. */
+        if (sender) {
+            int old_flags = sender->flags;
+            int reported_flags = ntohs(hdr->flags);
+            int flags_to_copy = CLUSTER_NODE_LEAVING;
+            sender->flags &= ~flags_to_copy;
+            sender->flags |= (reported_flags & flags_to_copy);
+
+            /* Currently we just save the config without FSYNC nor
+             * update of the cluster state, since the only flag we update
+             * here is LEAVING which is non critical to persist. */
+            if (sender->flags != old_flags)
+                clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
+        }
+
         /* Get info from the gossip section */
         if (sender) clusterProcessGossipSection(hdr,link);
     } else if (type == CLUSTERMSG_TYPE_FAIL) {
@@ -1265,8 +1282,10 @@ int clusterProcessPacket(clusterLink *link) {
         /* Only replicate jobs by known nodes. */
         if (!sender || numjobs != 1) return 1;
 
-        /* Don't replicate jobs if we got already memory issues. */
-        if (getMemoryWarningLevel() > 0) return 1;
+        /* Don't replicate jobs if we got already memory issues or if we
+         * are leaving the cluster. */
+        if (getMemoryWarningLevel() > 0 ||
+            myself->flags & CLUSTER_NODE_LEAVING) return 1;
 
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL,SER_MESSAGE);
         if (j == NULL) {
@@ -2267,7 +2286,8 @@ static struct disqueNodeFlags disqueNodeFlagsTable[] = {
     {CLUSTER_NODE_PFAIL,     "fail?,"},
     {CLUSTER_NODE_FAIL,      "fail,"},
     {CLUSTER_NODE_HANDSHAKE, "handshake,"},
-    {CLUSTER_NODE_NOADDR,    "noaddr,"}
+    {CLUSTER_NODE_NOADDR,    "noaddr,"},
+    {CLUSTER_NODE_LEAVING,   "leaving,"}
 };
 
 /* Concatenate the comma separated list of node flags to the given SDS
@@ -2367,6 +2387,7 @@ void clusterUpdateReachableNodes(void) {
 
         if (node->flags & (CLUSTER_NODE_MYSELF|
                            CLUSTER_NODE_HANDSHAKE|
+                           CLUSTER_NODE_LEAVING|
                            CLUSTER_NODE_PFAIL|
                            CLUSTER_NODE_FAIL)) continue;
         server.cluster->reachable_nodes[server.cluster->reachable_nodes_count++]
@@ -2492,6 +2513,30 @@ void clusterCommand(client *c) {
 
         clusterReset(hard);
         addReply(c,shared.ok);
+    } else if (!strcasecmp(c->argv[1]->ptr,"leaving") &&
+               (c->argc == 2 || c->argc == 3))
+    {
+        /* CLUSTER LEAVING [yes|no] */
+        if (c->argc == 3) {
+            int oldflags = myself->flags;
+            if (!strcasecmp(c->argv[2]->ptr,"yes")) {
+                myself->flags |= CLUSTER_NODE_LEAVING;
+                addReply(c,shared.ok);
+            } else if (!strcasecmp(c->argv[2]->ptr,"no")) {
+                myself->flags &= ~CLUSTER_NODE_LEAVING;
+                addReply(c,shared.ok);
+            } else {
+                addReplyError(c,
+                    "Wrong argument for CLUSTER LEAVING. Use 'yes' or 'no'");
+            }
+            if (oldflags != myself->flags)
+                clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
+        } else {
+            addReplySds(c,
+                (myself->flags & CLUSTER_NODE_LEAVING) ?
+                sdsnew("+yes\r\n") : sdsnew("+no\r\n")
+            );
+        }
     } else {
         addReplyError(c,"Wrong CLUSTER subcommand or number of arguments");
     }
@@ -2512,7 +2557,8 @@ void helloCommand(client *c) {
         int priority = 1;
         if (node->link == NULL) priority = 5;
         if (node->flags & CLUSTER_NODE_PFAIL) priority = 10;
-        if (node->flags & CLUSTER_NODE_FAIL) priority = 100;
+        if (node->flags & (CLUSTER_NODE_FAIL|CLUSTER_NODE_LEAVING))
+            priority = 100;
         addReplyMultiBulkLen(c,4);
         addReplyBulkCBuffer(c,node->name,CLUSTER_NAMELEN); /* ID. */
         addReplyBulkCString(c,node->ip); /* IP address. */

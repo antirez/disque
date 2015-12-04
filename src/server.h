@@ -349,7 +349,7 @@ typedef struct client {
 struct sharedObjectsStruct {
     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
     *colon, *nullbulk, *nullmultibulk, *queued,
-    *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
+    *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *leavingerr,
     *outofrangeerr, *noscripterr, *loadingerr, *slowscripterr,
     *masterdownerr, *roslaveerr, *execaborterr, *noautherr, *noreplicaserr,
     *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk, *subscribebulk,

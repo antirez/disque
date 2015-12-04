@@ -475,6 +475,9 @@ void needJobsForQueue(queue *q, int type) {
     mstime_t bcast_delay, adhoc_delay;
     mstime_t now = mstime();
 
+    /* Don't ask for jobs if we are leaving the cluster. */
+    if (server.cluster->myself->flags & CLUSTER_NODE_LEAVING) return;
+
     import_per_sec = getQueueImportRate(q);
 
     /* When called with NEEDJOBS_REACHED_ZERO, we have to do something only
@@ -745,6 +748,14 @@ void getjobCommand(client *c) {
     /* If NOHANG was given and there are no jobs, return NULL. */
     if (nohang) {
         addReply(c,shared.nullmultibulk);
+        return;
+    }
+
+    /* If this node is leaving the cluster, we can't block waiting for
+     * jobs: this would trigger the federation with other nodes in order
+     * to import jobs here. Just return a -LEAVING error. */
+    if (server.cluster->myself->flags & CLUSTER_NODE_LEAVING) {
+        addReply(c,shared.leavingerr);
         return;
     }
 

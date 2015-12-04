@@ -584,6 +584,7 @@ long long getInstantaneousMetric(int metric) {
  * each iteration would be costly without any actual gain. */
 int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
     time_t now = now_ms/1000;
+    int leaving = server.cluster->myself->flags & CLUSTER_NODE_LEAVING;
 
     if (server.maxidletime &&
         !(c->flags & CLIENT_BLOCKED) &&  /* no timeout for blocked clients. */
@@ -599,6 +600,9 @@ int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
 
         if (c->bpop.timeout != 0 && c->bpop.timeout < now_ms) {
             replyToBlockedClientTimedOut(c);
+            unblockClient(c);
+        } else if (leaving) {
+            addReply(c,shared.leavingerr);
             unblockClient(c);
         }
     }
@@ -892,8 +896,9 @@ void createSharedObjects(void) {
         "-ERR no such key\r\n"));
     shared.syntaxerr = createObject(OBJ_STRING,sdsnew(
         "-ERR syntax error\r\n"));
-    shared.sameobjecterr = createObject(OBJ_STRING,sdsnew(
-        "-ERR source and destination objects are the same\r\n"));
+    shared.leavingerr = createObject(OBJ_STRING,sdsnew(
+        "-LEAVING This node is leaving the cluster, "
+        "please connect to a different one\r\n"));
     shared.outofrangeerr = createObject(OBJ_STRING,sdsnew(
         "-ERR index out of range\r\n"));
     shared.noscripterr = createObject(OBJ_STRING,sdsnew(

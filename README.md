@@ -562,6 +562,7 @@ While a vanilla Redis client may work well with Disque, clients should optionall
 1. The client should be given a number of IP addresses and ports where nodes are located. The client should select random nodes and should try to connect until one available is found.
 2. On a successful connection the `HELLO` command should be used in order to retrieve the Node ID and other potentially useful information (server version, number of nodes).
 3. If a consumer sees a high message rate received from foreign nodes, it may optionally have logic in order to retrieve messages directly from the nodes where producers are producing the messages for a given topic. The consumer can easily check the source of the messages by checking the Node ID prefix in the messages IDs.
+4. The `GETJOB` command, or other commands, may return a `-LEAVING` error instead of blocking. This error should be considered by the client library as a request to connect to a different node, since the node it is connected to is not able to serve the requet since it is leaving the cluster. Nodes in this state have a very high *priority* number published via `HELLO`, so will hardly be picked at the next connection attempt.
 
 This way producers and consumers will eventually try to minimize nodes messages exchanges whenever possible.
 

@@ -973,14 +973,6 @@ int jobReplicationAchieved(job *j) {
      * will be freed by unblockClient() if found still in the old state. */
     j->state = JOB_STATE_ACTIVE;
 
-    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
-     * hash table again for ACKs tracking in order to garbage collect the
-     * job once processed. */
-    if (j->nodes_confirmed) {
-        dictRelease(j->nodes_confirmed);
-        j->nodes_confirmed = NULL;
-    }
-
     /* Reply to the blocked client with the Job ID and unblock the client. */
     client *c = jobGetAssociatedValue(j);
     setJobAssociatedValue(j,NULL);
@@ -998,6 +990,14 @@ int jobReplicationAchieved(job *j) {
         unregisterJob(j);
         freeJob(j);
         return C_ERR;
+    }
+
+    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
+     * hash table again for ACKs tracking in order to garbage collect the
+     * job once processed. */
+    if (j->nodes_confirmed) {
+        dictRelease(j->nodes_confirmed);
+        j->nodes_confirmed = NULL;
     }
 
     /* Queue the job locally. */

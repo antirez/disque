@@ -476,7 +476,7 @@ void needJobsForQueue(queue *q, int type) {
     mstime_t now = mstime();
 
     /* Don't ask for jobs if we are leaving the cluster. */
-    if (server.cluster->myself->flags & CLUSTER_NODE_LEAVING) return;
+    if (myselfLeaving()) return;
 
     import_per_sec = getQueueImportRate(q);
 
@@ -754,7 +754,7 @@ void getjobCommand(client *c) {
     /* If this node is leaving the cluster, we can't block waiting for
      * jobs: this would trigger the federation with other nodes in order
      * to import jobs here. Just return a -LEAVING error. */
-    if (server.cluster->myself->flags & CLUSTER_NODE_LEAVING) {
+    if (myselfLeaving()) {
         addReply(c,shared.leavingerr);
         return;
     }

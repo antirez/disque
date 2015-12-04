@@ -584,7 +584,6 @@ long long getInstantaneousMetric(int metric) {
  * each iteration would be costly without any actual gain. */
 int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
     time_t now = now_ms/1000;
-    int leaving = server.cluster->myself->flags & CLUSTER_NODE_LEAVING;
 
     if (server.maxidletime &&
         !(c->flags & CLIENT_BLOCKED) &&  /* no timeout for blocked clients. */
@@ -601,7 +600,7 @@ int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
         if (c->bpop.timeout != 0 && c->bpop.timeout < now_ms) {
             replyToBlockedClientTimedOut(c);
             unblockClient(c);
-        } else if (leaving) {
+        } else if (myselfLeaving()) {
             addReply(c,shared.leavingerr);
             unblockClient(c);
         }

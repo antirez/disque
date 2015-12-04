@@ -46,6 +46,8 @@ typedef struct clusterLink {
 #define nodeWithoutAddr(n) ((n)->flags & CLUSTER_NODE_NOADDR)
 #define nodeTimedOut(n) ((n)->flags & CLUSTER_NODE_PFAIL)
 #define nodeFailed(n) ((n)->flags & CLUSTER_NODE_FAIL)
+#define nodeLeaving(n) ((n)->flags & CLUSTER_NODE_LEAVING)
+#define myselfLeaving() nodeLeaving(server.cluster->myself)
 
 /* This structure represent elements of node->fail_reports. */
 typedef struct clusterNodeFailReport {

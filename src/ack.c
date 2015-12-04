@@ -217,7 +217,6 @@ void gotAckReceived(clusterNode *sender, job *job, int known) {
  */
 void ackjobCommand(client *c) {
     int j, known = 0;
-    int leaving = server.cluster->myself->flags & CLUSTER_NODE_LEAVING;
 
     if (validateJobIDs(c,c->argv+1,c->argc-1) == C_ERR) return;
 
@@ -228,7 +227,7 @@ void ackjobCommand(client *c) {
          * if the cluster is composed by a single node we are sure the job
          * does not exist in the whole cluster, so do this only if the
          * cluster size is greater than one. */
-        if (job == NULL && server.cluster->size > 1 && !leaving) {
+        if (job == NULL && server.cluster->size > 1 && !myselfLeaving()) {
             char *id = c->argv[j]->ptr;
             int ttl = getRawTTLFromJobID(id);
 

@@ -1284,8 +1284,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         /* Don't replicate jobs if we got already memory issues or if we
          * are leaving the cluster. */
-        if (getMemoryWarningLevel() > 0 ||
-            myself->flags & CLUSTER_NODE_LEAVING) return 1;
+        if (getMemoryWarningLevel() > 0 || myselfLeaving()) return 1;
 
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL,SER_MESSAGE);
         if (j == NULL) {

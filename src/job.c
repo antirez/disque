@@ -1061,7 +1061,7 @@ void addjobCommand(client *c) {
     int j, retval;
     int async = 0;  /* Asynchronous request? */
     int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
-    int leaving = server.cluster->myself->flags & CLUSTER_NODE_LEAVING;
+    int leaving = myselfLeaving();
     static uint64_t prev_ctime = 0;
 
     /* Another case for external replication, other than memory pressure, is

@@ -2492,6 +2492,7 @@ void clusterCommand(client *c) {
         }
         clusterBlacklistAddNode(n);
         clusterDelNode(n);
+        clusterUpdateReachableNodes();
         clusterDoBeforeSleep(CLUSTER_TODO_UPDATE_STATE|
                              CLUSTER_TODO_SAVE_CONFIG);
         addReply(c,shared.ok);

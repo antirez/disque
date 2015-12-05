@@ -152,7 +152,10 @@ typedef struct job {
 #define SER_MESSAGE 0
 #define SER_STORAGE 1
 
+struct clusterNode;
+
 job *createJob(char *id, int state, int ttl, int retry);
+int compareNodeIDsByJob(struct clusterNode *nodea, struct clusterNode *nodeb, job *j);
 void deleteJobFromCluster(job *j);
 sds serializeJob(sds msg, job *j, int sertype);
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next, int sertype);

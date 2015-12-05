@@ -139,6 +139,32 @@ uint64_t hexToInt(char *p, size_t count) {
     return value;
 }
 
+/* Disque aims to avoid to deliver duplicated message whenever possible, so
+ * it is always desirable that a given message is not queued by multiple owners
+ * at the same time. This cannot be guaranteed because of partitions, but one
+ * of the best-effort things we do is that, when a QUEUED message is received
+ * by a node about a job, the node IDs of the sender and the receiver are
+ * compared: If the sender has a greater node ID, we drop the message from our
+ * queue (but retain a copy of the message to retry again later).
+ *
+ * However comparing nodes just by node ID means that a given node is always
+ * greater than the other. So before comparing the node IDs, we mix the IDs
+ * with the pseudorandom part of the Job ID, using the XOR function. This way
+ * the comparision depends on the job. */
+int compareNodeIDsByJob(clusterNode *nodea, clusterNode *nodeb, job *j) {
+    int i;
+    char ida[CLUSTER_NAMELEN], idb[CLUSTER_NAMELEN];
+    memcpy(ida,nodea->name,CLUSTER_NAMELEN);
+    memcpy(idb,nodeb->name,CLUSTER_NAMELEN);
+    for (i = 0; i < CLUSTER_NAMELEN; i++) {
+        /* The Job ID has 32 bytes of pseudo random bits starting at
+         * offset 10. */
+        ida[i] ^= j->id[10 + i%32];
+        idb[i] ^= j->id[10 + i%32];
+    }
+    return memcmp(ida,idb,CLUSTER_NAMELEN);
+}
+
 /* Return the raw TTL (in minutes) from a well-formed Job ID.
  * The caller should do sanity check on the job ID before calling this
  * function. Note that the 'id' field of a a job structure is always valid. */

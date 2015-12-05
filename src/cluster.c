@@ -1416,7 +1416,7 @@ int clusterProcessPacket(clusterLink *link) {
              * message. */
             if (j->state == JOB_STATE_QUEUED &&
                 (type == CLUSTERMSG_TYPE_WORKING ||
-                 memcmp(sender->name,myself->name,CLUSTER_NAMELEN) > 0))
+                 compareNodeIDsByJob(sender,myself,j) > 0))
             {
                 dequeueJob(j);
             }

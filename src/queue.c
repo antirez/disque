@@ -164,7 +164,7 @@ int enqueueJob(job *job, int nack) {
      * message, to save bandwidth. But the next times, when the job is
      * re-queued for lack of acknowledge, this is useful to (best effort)
      * avoid multiple nodes to re-queue the same job. */
-    if (job->flags & JOB_FLAG_BCAST_QUEUED) {
+    if (job->flags & JOB_FLAG_BCAST_QUEUED || nack) {
         unsigned char flags = nack ? CLUSTERMSG_FLAG0_INCR_NACKS :
                                      CLUSTERMSG_FLAG0_INCR_DELIV;
         clusterBroadcastQueued(job, flags);

@@ -1411,6 +1411,9 @@ int clusterProcessPacket(clusterLink *link) {
              * have the message queued as well, dequeue it, to avoid an
              * useless multiple delivery.
              *
+             * The message is always dequeued in case the message is of
+             * type WORKING, since this is the explicit semantics of WORKING.
+             *
              * If the message is WORKING always dequeue regardless of the
              * sender name, since there is a client claiming to work on the
              * message. */

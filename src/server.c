@@ -670,7 +670,7 @@ void clientsCron(void) {
      * second. */
     int numclients = listLength(server.clients);
     int iterations = numclients/server.hz;
-    mstime_t now = mstime();
+    server.mstime = mstime(); /* Refresh the global time. */
 
     /* Process at least a few clients while we are at it, even if we need
      * to process less than CLIENTS_CRON_MIN_ITERATIONS to meet our contract
@@ -692,7 +692,7 @@ void clientsCron(void) {
         /* The following functions do different service checks on the client.
          * The protocol is that they return non-zero if the client was
          * terminated. */
-        if (clientsCronHandleTimeout(c,now)) continue;
+        if (clientsCronHandleTimeout(c,server.mstime)) continue;
         if (clientsCronResizeQueryBuffer(c)) continue;
         if (clientsCronHandleDelayedJobReplication(c)) continue;
         if (clientsCronSendNeedJobs(c)) continue;

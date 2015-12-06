@@ -1051,9 +1051,15 @@ int clientsCronHandleDelayedJobReplication(client *c) {
     if (!(c->flags & CLIENT_BLOCKED) || c->btype != BLOCKED_JOB_REPL)
         return 0;
 
+    /* Note that clientsCronHandleDelayedJobReplication() is called after
+     * refreshing server.mstime, so no need to call mstime() again here,
+     * we can use the cached value. However we use a fresh timestamp if
+     * we have to set added_node_time again. */
     mstime_t elapsed = server.mstime - c->bpop.added_node_time;
-    if (elapsed >= DELAYED_JOB_ADD_NODE_MIN_PERIOD)
-        clusterReplicateJob(c->bpop.job, 1, 0);
+    if (elapsed >= DELAYED_JOB_ADD_NODE_MIN_PERIOD) {
+        if (clusterReplicateJob(c->bpop.job, 1, 0) > 0)
+            c->bpop.added_node_time = mstime();
+    }
     return 0;
 }
 
@@ -1263,7 +1269,7 @@ void addjobCommand(client *c) {
     if (replicate > 1 && !async) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
-        c->bpop.added_node_time = server.mstime;
+        c->bpop.added_node_time = mstime();
         blockClient(c,BLOCKED_JOB_REPL);
         setJobAssociatedValue(job,c);
         /* Create the nodes_confirmed dictionary only if we actually need

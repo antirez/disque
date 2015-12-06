@@ -205,6 +205,30 @@ void serverLog(int level, const char *fmt, ...) {
     serverLogRaw(level,msg);
 }
 
+/* Log stuff to /tmp/disque.dbg. For debugging purposes during development. */
+void serverDebug(const char *fmt, ...) {
+    va_list ap;
+    char buf[LOG_MAX_LEN];
+    struct timeval tv;
+    int off;
+    FILE *fp = fopen("/tmp/disque.dbg","a");
+
+    if (!fp) return;
+
+    gettimeofday(&tv,NULL);
+    off = strftime(buf,sizeof(buf),"%d %b %H:%M:%S.",localtime(&tv.tv_sec));
+    snprintf(buf+off,sizeof(buf)-off,"%03d:%03d",(int)tv.tv_usec/1000,
+                                                 (int)tv.tv_usec%1000);
+    fprintf(fp,"%s %.40s> ",buf,server.cluster->myself->name);
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    fprintf(fp,"%s\n",buf);
+    fclose(fp);
+}
+
 /* Log a fixed message without printf-alike capabilities, in a way that is
  * safe to call from a signal handler.
  *

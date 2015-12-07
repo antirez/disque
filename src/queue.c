@@ -242,27 +242,30 @@ unsigned long queueNameLength(robj *qname) {
  * blocked, has no jobs inside. If the queue is removed C_OK is
  * returned, otherwise C_ERR is returned. */
 #define QUEUE_MAX_IDLE_TIME (60*5)
-int GCQueue(queue *q) {
-    time_t elapsed = server.unixtime - q->atime;
-    if (elapsed < QUEUE_MAX_IDLE_TIME) return C_ERR;
+int GCQueue(queue *q, time_t max_idle_time) {
+    time_t idle = server.unixtime - q->atime;
+    if (idle < max_idle_time) return C_ERR;
     if (q->clients && listLength(q->clients) != 0) return C_ERR;
     if (skiplistLength(q->sl)) return C_ERR;
     destroyQueue(q->name);
     return C_OK;
 }
 
-/* This function is called form serverCron() in order to incrementally remove
+/* This function is called from serverCron() in order to incrementally remove
  * from memory queues which are found to be idle and empty. */
-void queueCron(void) {
+int evictIdleQueues(void) {
     mstime_t start = mstime();
+    time_t max_idle_time = QUEUE_MAX_IDLE_TIME;
     long sampled = 0, evicted = 0;
 
+    if (getMemoryWarningLevel() > 0) max_idle_time /= 30;
+    if (getMemoryWarningLevel() > 1) max_idle_time = 2;
     while (dictSize(server.queues) != 0) {
         dictEntry *de = dictGetRandomKey(server.queues);
         queue *q = dictGetVal(de);
 
         sampled++;
-        if (GCQueue(q) == C_OK) evicted++;
+        if (GCQueue(q,max_idle_time) == C_OK) evicted++;
 
         /* First exit condition: we are able to expire less than 10% of
          * entries. */
@@ -272,6 +275,7 @@ void queueCron(void) {
          * we are using more than one or two milliseconds of time. */
         if (((sampled+1) % 1000) == 0 && mstime()-start > 1) break;
     }
+    return evicted;
 }
 
 /* -------------------------- Blocking on queues ---------------------------- */
@@ -324,7 +328,7 @@ void unblockClientBlockedForJobs(client *c) {
         if (listLength(q->clients) == 0) {
             listRelease(q->clients);
             q->clients = NULL;
-            GCQueue(q);
+            GCQueue(q,QUEUE_MAX_IDLE_TIME);
         }
     }
     dictReleaseIterator(di);

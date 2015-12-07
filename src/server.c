@@ -838,7 +838,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Queue cron function: deletes idle empty queues that are just using
      * memory. */
     run_with_period(100) {
-        queueCron();
+        evictIdleQueues();
     }
 
     /* AOF postponed flush: Try at every cron cycle if the slow fsync
@@ -2240,7 +2240,7 @@ int freeMemoryIfNeeded(void) {
 
     /* The following check is not actaully needed since we already checked
      * that getMemoryWarningLevel() returned 2 or greater, but it is safer
-     * to have given that we are workign with unsigned integers to compute
+     * to have given that we are working with unsigned integers to compute
      * mem_tofree. */
     if (mem_used <= mem_target) return C_OK;
 
@@ -2262,21 +2262,25 @@ int freeMemoryIfNeeded(void) {
          * Release it in the above two cases, otherwise keep counting the
          * number of iterations we failed to free jobs. */
         de = dictGetRandomKey(server.jobs);
-
-        /* If there are no jobs at all, there is nothing we can release. */
-        if (de == NULL) return C_ERR;
-
         delta = (long long) zmalloc_used_memory();
-        job *job = dictGetKey(de);
-        if ((job->state == JOB_STATE_ACKED) ||
-            (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED))
-        {
-            unregisterJob(job);
-            freeJob(job);
-            not_freed = 0;
+
+        /* If there are no jobs at all, try with idle queues. Otherwise
+         * there is nothing we can release. */
+        if (de == NULL) {
+            if (evictIdleQueues() == 0) return C_ERR;
         } else {
-            not_freed++;
+            job *job = dictGetKey(de);
+            if ((job->state == JOB_STATE_ACKED) ||
+                (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED))
+            {
+                unregisterJob(job);
+                freeJob(job);
+                not_freed = 0;
+            } else {
+                not_freed++;
+            }
         }
+
         delta -= (long long) zmalloc_used_memory();
         mem_freed += delta;
 

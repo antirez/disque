@@ -247,20 +247,21 @@ Job IDs
 
 Disque jobs are uniquely identified by an ID like the following:
 
-DI0f0c644fd3ccb51c2cedbd47fcb6f312646c993c05a0SQ
+    D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1A$
 
-Job IDs always start with "DI" and end with "SQ" and are always composed of
-exactly 48 characters.
+Job IDs always start with "D-" and end with "$" and are always composed of
+exactly 42 characters.
 
 We can split an ID into multiple parts:
 
-DI | 0f0c644f | d3ccb51c2cedbd47fcb6f312646c993c | 05a0 | SQ
+    D- | dcb833cf | 8YL1NT17e9+wsA/09NqxscQI | 05a1 | A | $
 
-1. DI is the prefix
-2. 0f0c644f is the first 8 bytes of the node ID where the message was generated.
-3. d3ccb51c2cedbd47fcb6f312646c993c is the 128 bit ID pesudo random part in hex.
-4. 05a0 is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
-5. SQ is the suffix.
+1. "D-" is the prefix
+2. dcb833cf is the first 8 bytes of the node ID where the message was generated.
+3. 8YL1NT17e9+wsA/09NqxscQI is the 144 bit ID pesudo random part encoded in base 64.
+4. 05a1 is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
+5. "A" is a byte reserved for future uses. Implementations should never expect it to have a particular value, it may be anything.
+6. "$" signals the end of the ID.
 
 IDs are returned by ADDJOB when a job is successfully created, are part of
 the GETJOB output, and are used in order to acknowledge that a job was
@@ -280,15 +281,19 @@ identical 32 bit ID prefixes is given by the birthday paradox:
 
 In case of collisions, the workers may just do a non-efficient choice.
 
-Collisions in the 128 bits random part are believed to be impossible,
+Collisions in the 144 bits random part are believed to be impossible,
 since it is computed as follows.
 
-    128 bit ID = HIGH_128_BITS_OF_SHA1(seed || counter)
+    144 bit ID = HIGH_144_BITS_OF_SHA1(seed || counter)
 
 Where:
 
 * **seed** is a seed generated via `/dev/urandom` at startup.
 * **counter** is a 64 bit counter incremented at every ID generation.
+
+So there are 22300745198530623141535718272648361505980416 possible IDs,
+selected in an uniform way. While the probability of a collision is non-zero
+mathematically, in practice each ID can be regarded as unique.
 
 The encoded TTL in minutes has a special property: it is always even for
 at most once jobs (job retry value set to 0), and is always odd otherwise.
@@ -322,10 +327,10 @@ in order to test if everything is working:
 
     ./disque -p 7711
     127.0.0.1:7711> ADDJOB queue body 0
-    DI0f0c644ffca14064ced6f8f997361a5c0af65ca305a0SQ
+    D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1A
     127.0.0.1:7711> GETJOB FROM queue
     1) 1) "queue"
-       2) "DI0f0c644ffca14064ced6f8f997361a5c0af65ca305a0SQ"
+       2) "D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1A"
        3) "body"
 
 Remember that you can add and get jobs from different nodes as Disque

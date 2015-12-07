@@ -46,7 +46,7 @@
  * An ID is 42 byes string composed as such:
  *
  * +--+-----------------+-+--------------------- --------+-+-----+--+
- * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |0$|
+ * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |A$|
  * +--+-----------------+-+------------------------------+-+-----+--+
  *
  * "D-" is just a fixed string. All Disque job IDs start with this
@@ -71,10 +71,12 @@
  * This is useful since the receiver of an ACKJOB command can avoid
  * creating a "dummy ack" for unknown job IDs for at most once jobs.
  *
- * The final sequence "0$" has the following use:
+ * The final sequence "A$" has the following use:
  *
- * "0" is reserved for future uses, so clients should never assume that
- * this byte will be set to a specific value.
+ * "A" is reserved for future uses, so clients should never assume that
+ * this byte will be set to a specific value. It is set to "A" since it
+ * is the logical zero from the point of view of the base64 encoding we
+ * use.
  *
  * "$" is just a fixed string that marks the end of the Dique ID.
  */
@@ -133,7 +135,7 @@ void generateJobID(char *id, int ttl, int retry) {
     id[3] = hexcset[ttlbytes[1]&0xf];
     id += 4;
 
-    *id++ = '0'; /* Reserved for future uses. */
+    *id++ = 'A'; /* Reserved for future uses. */
     *id++ = '$';
 }
 

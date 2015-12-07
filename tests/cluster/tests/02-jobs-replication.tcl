@@ -72,7 +72,7 @@ for {set j 1} {$j <= 3} {incr j} {
         # nodes before the timeout.
         set max_possible_repl [expr {$::instances_count-3}]
         catch {D 0 addjob myqueue myjob 5000 replicate $max_possible_repl} job_id
-        assert_match {DI*} $job_id
+        assert_match {D-*} $job_id
         restart_instance disque 1
         restart_instance disque 2
         restart_instance disque 3

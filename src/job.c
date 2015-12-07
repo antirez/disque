@@ -46,7 +46,7 @@
  * An ID is 42 byes string composed as such:
  *
  * +--+-----------------+-+--------------------- --------+-+-----+--+
- * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |A$|
+ * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |AA|
  * +--+-----------------+-+------------------------------+-+-----+--+
  *
  * "D-" is just a fixed string. All Disque job IDs start with this
@@ -73,12 +73,10 @@
  *
  * The final sequence "A$" has the following use:
  *
- * "A" is reserved for future uses, so clients should never assume that
+ * "AA" is reserved for future uses, so clients should never assume that
  * this byte will be set to a specific value. It is set to "A" since it
  * is the logical zero from the point of view of the base64 encoding we
  * use.
- *
- * "$" is just a fixed string that marks the end of the Dique ID.
  */
 void generateJobID(char *id, int ttl, int retry) {
     char *b64cset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -135,8 +133,9 @@ void generateJobID(char *id, int ttl, int retry) {
     id[3] = hexcset[ttlbytes[1]&0xf];
     id += 4;
 
-    *id++ = 'A'; /* Reserved for future uses. */
-    *id++ = '$';
+    /* Reserved for future uses. */
+    *id++ = 'A';
+    *id++ = 'A';
 }
 
 /* Helper function for setJobTTLFromID() in order to extract the TTL stored
@@ -217,8 +216,7 @@ int validateJobID(char *id, size_t len) {
     if (id[0] != 'D' ||
         id[1] != '-' ||
         id[10] != '-' ||
-        id[35] != '-' ||
-        id[JOB_ID_LEN-1] != '$') return C_ERR;
+        id[35] != '-') return C_ERR;
     return C_OK;
 }
 

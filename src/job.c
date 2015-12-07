@@ -43,13 +43,13 @@
 /* Generate a new Job ID and writes it to the string pointed by 'id'
  * (NOT including a null term), that must be JOB_ID_LEN or more.
  *
- * An ID is composed as such:
+ * An ID is 42 byes string composed as such:
  *
- * +--+--------------------------+------------------------------+----+--+
- * |DI| Node ID prefix (8 bytes) | 128-bit rand (hex: 32 bytes) |TTL |SQ|
- * +--+--------------------------+------------------------------+----+--+
+ * +--+-----------------+-+--------------------- --------+-+-----+--+
+ * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |0$|
+ * +--+-----------------+-+------------------------------+-+-----+--+
  *
- * "DI" is just a fixed string. All Disque job IDs start with this
+ * "D-" is just a fixed string. All Disque job IDs start with this
  * two bytes.
  *
  * Node ID is the first 8 bytes of the hexadecimal Node ID where the
@@ -57,7 +57,8 @@
  * messages from a given queue can collect stats about where the producers
  * are connected, and switch to improve the cluster efficiency.
  *
- * 128 bit rand (in hex format) is 32 random chars.
+ * The 144 bit ID is the unique message ID, encoded in base 64 with
+ * the standard charset "A-Za-z0-9+/".
  *
  * The TTL is a big endian 16 bit unsigned number ceiled to 2^16-1
  * if greater than that, and is only used in order to expire ACKs
@@ -70,12 +71,20 @@
  * This is useful since the receiver of an ACKJOB command can avoid
  * creating a "dummy ack" for unknown job IDs for at most once jobs.
  *
- * "SQ" is just a fixed string. All Disque job IDs end with this two bytes.
+ * The final sequence "0$" has the following use:
+ *
+ * "0" is reserved for future uses, so clients should never assume that
+ * this byte will be set to a specific value.
+ *
+ * "$" is just a fixed string that marks the end of the Dique ID.
  */
 void generateJobID(char *id, int ttl, int retry) {
-    char *charset = "0123456789abcdef";
+    char *b64cset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    "abcdefghijklmnopqrstuvwxyz"
+                    "0123456789+/";
+    char *hexcset = "0123456789abcdef";
     SHA1_CTX ctx;
-    unsigned char hash[22]; /* 16 + 2 bytes for TTL. */
+    unsigned char ttlbytes[2], hash[20];
     int j;
     static uint64_t counter;
 
@@ -93,24 +102,39 @@ void generateJobID(char *id, int ttl, int retry) {
     /* Force the TTL to be odd if retry > 0, even if retry == 0. */
     ttl = (retry > 0) ? (ttl|1) : (ttl & ~1);
 
-    hash[16] = (ttl&0xff00)>>8;
-    hash[17] = ttl&0xff;
+    ttlbytes[0] = (ttl&0xff00)>>8;
+    ttlbytes[1] = ttl&0xff;
 
     *id++ = 'D';
-    *id++ = 'I';
+    *id++ = '-';
 
-    /* 8 bytes from Node ID */
+    /* 8 bytes from Node ID + separator */
     for (j = 0; j < 8; j++) *id++ = server.cluster->myself->name[j];
+    *id++ = '-';
 
-    /* Convert 18 bytes (16 pseudorandom + 2 TTL in minutes) to hex. */
-    for (j = 0; j < 18; j++) {
-        id[0] = charset[(hash[j]&0xf0)>>4];
-        id[1] = charset[hash[j]&0xf];
-        id += 2;
+    /* Pseudorandom Message ID + separator. We encode 4 base64 chars
+     * per loop (3 digest bytes), and each char encodes 6 bits, so we have
+     * to loop 6 times to encode all the 144 bits into 24 destination chars. */
+    unsigned char *h = hash;
+    for (j = 0; j < 6; j++) {
+        id[0] = b64cset[h[0]>>2];
+        id[1] = b64cset[(h[0]<<4|h[1]>>4)&63];
+        id[2] = b64cset[(h[1]<<2|h[2]>>6)&63];
+        id[3] = b64cset[h[3]&63];
+        id += 4;
+        h += 3;
     }
+    *id++ = '-';
 
-    *id++ = 'S';
-    *id++ = 'Q';
+    /* 4 TTL bytes in hex. */
+    id[0] = hexcset[(ttlbytes[0]&0xf0)>>4];
+    id[1] = hexcset[ttlbytes[0]&0xf];
+    id[2] = hexcset[(ttlbytes[1]&0xf0)>>4];
+    id[3] = hexcset[ttlbytes[1]&0xf];
+    id += 4;
+
+    *id++ = '0'; /* Reserved for future uses. */
+    *id++ = '$';
 }
 
 /* Helper function for setJobTTLFromID() in order to extract the TTL stored
@@ -157,10 +181,10 @@ int compareNodeIDsByJob(clusterNode *nodea, clusterNode *nodeb, job *j) {
     memcpy(ida,nodea->name,CLUSTER_NAMELEN);
     memcpy(idb,nodeb->name,CLUSTER_NAMELEN);
     for (i = 0; i < CLUSTER_NAMELEN; i++) {
-        /* The Job ID has 32 bytes of pseudo random bits starting at
-         * offset 10. */
-        ida[i] ^= j->id[10 + i%32];
-        idb[i] ^= j->id[10 + i%32];
+        /* The Job ID has 24 bytes of pseudo random bits starting at
+         * offset 11. */
+        ida[i] ^= j->id[11 + i%24];
+        idb[i] ^= j->id[11 + i%24];
     }
     return memcmp(ida,idb,CLUSTER_NAMELEN);
 }
@@ -169,7 +193,7 @@ int compareNodeIDsByJob(clusterNode *nodea, clusterNode *nodeb, job *j) {
  * The caller should do sanity check on the job ID before calling this
  * function. Note that the 'id' field of a a job structure is always valid. */
 int getRawTTLFromJobID(char *id) {
-    return hexToInt(id+42,4);
+    return hexToInt(id+36,4);
 }
 
 /* Set the job ttl from the encoded ttl in its ID. This is useful when we
@@ -189,9 +213,10 @@ void setJobTTLFromID(job *job) {
 int validateJobID(char *id, size_t len) {
     if (len != JOB_ID_LEN) return C_ERR;
     if (id[0] != 'D' ||
-        id[1] != 'I' ||
-        id[JOB_ID_LEN-2] != 'S' ||
-        id[JOB_ID_LEN-1] != 'Q') return C_ERR;
+        id[1] != '-' ||
+        id[10] != '-' ||
+        id[35] != '-' ||
+        id[JOB_ID_LEN-1] != '$') return C_ERR;
     return C_OK;
 }
 
@@ -429,7 +454,7 @@ void processJob(job *j) {
     mstime_t old_awakeme = j->awakeme;
 
     serverLog(LL_VERBOSE,
-        "PROCESS %.48s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
+        "PROCESS %.42s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
         j->id,
         (int)j->state,
         (long long)mstime(),
@@ -442,7 +467,7 @@ void processJob(job *j) {
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
-        serverLog(LL_VERBOSE,"EVICT %.48s", j->id);
+        serverLog(LL_VERBOSE,"EVICT %.42s", j->id);
         unregisterJob(j);
         freeJob(j);
         return;
@@ -482,7 +507,7 @@ void processJob(job *j) {
     }
 
     if (old_awakeme == j->awakeme)
-        serverLog(LL_WARNING,"Warning: not processed job %.48s", j->id);
+        serverLog(LL_WARNING,"Warning: not processed job %.42s", j->id);
 }
 
 int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
@@ -514,7 +539,7 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
 #ifdef DEBUG_SCHEDULER
         if (canlog) {
-            printf("%.48s %d (in %d) [%s]\n",
+            printf("%.42s %d (in %d) [%s]\n",
                 j->id,
                 (int) j->awakeme,
                 (int) (j->awakeme-server.mstime),
@@ -993,7 +1018,7 @@ void addReplyJobID(client *c, job *j) {
  * replicated, C_ERR is returned, in order to signal the client further
  * accesses to the job are not allowed. */
 int jobReplicationAchieved(job *j) {
-    serverLog(LL_VERBOSE,"Replication ACHIEVED %.48s",j->id);
+    serverLog(LL_VERBOSE,"Replication ACHIEVED %.42s",j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */

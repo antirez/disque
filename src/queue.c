@@ -146,7 +146,7 @@ int enqueueJob(job *job, int nack) {
     if (job->state == JOB_STATE_QUEUED || job->qtime == 0) return C_ERR;
     if (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED) return C_ERR;
 
-    serverLog(LL_VERBOSE,"QUEUED %.48s", job->id);
+    serverLog(LL_VERBOSE,"QUEUED %.42s", job->id);
 
     job->state = JOB_STATE_QUEUED;
 
@@ -197,7 +197,7 @@ int dequeueJob(job *job) {
     if (!q) return C_ERR;
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
-    serverLog(LL_VERBOSE,"DE-QUEUED %.48s", job->id);
+    serverLog(LL_VERBOSE,"DE-QUEUED %.42s", job->id);
     return C_OK;
 }
 

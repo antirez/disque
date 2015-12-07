@@ -31,11 +31,8 @@
 #ifndef __DISQUE_JOB_H
 #define __DISQUE_JOB_H
 
-/* A Job ID is 48 bytes:
- * "DISQ" + 40 bytes random hex (160 bits) + 4 bytes TTL.
- * The TTL is encoded inside the Job ID so that nodes without info about
- * the Job can correctly expire ACKs if they can't be garbage collected. */
-#define JOB_ID_LEN 48
+/* A Job ID is 42 bytes, check generateJobID() inside job.c for more info. */
+#define JOB_ID_LEN 42
 
 /* This represents a Job across the system.
  *

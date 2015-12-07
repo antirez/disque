@@ -70,7 +70,7 @@ void tryJobGC(job *job) {
     if (job->state != JOB_STATE_ACKED) return;
 
     int dummy_ack = dictSize(job->nodes_delivered) == 0;
-    serverLog(LL_VERBOSE,"GC %.48s", job->id);
+    serverLog(LL_VERBOSE,"GC %.42s", job->id);
 
     /* Don't overflow the count, it's only useful for the exponential delay.
      * Actually we'll keep trying forever. */

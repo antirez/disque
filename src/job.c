@@ -71,12 +71,10 @@
  * This is useful since the receiver of an ACKJOB command can avoid
  * creating a "dummy ack" for unknown job IDs for at most once jobs.
  *
- * The final sequence "A$" has the following use:
- *
- * "AA" is reserved for future uses, so clients should never assume that
- * this byte will be set to a specific value. It is set to "A" since it
- * is the logical zero from the point of view of the base64 encoding we
- * use.
+ * Finally the last two bytes "AA" are reserved for future uses, clients
+ * should never assume that this byte will be set to a specific value.
+ * It is set to "A" since it is the logical zero from the point of view
+ * of the base64 encoding we use.
  */
 void generateJobID(char *id, int ttl, int retry) {
     char *b64cset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"

@@ -557,27 +557,17 @@ struct disqueServer {
 
 typedef void serverCommandProc(client *c);
 
-typedef int *redisGetKeysProc(struct serverCommand *cmd, robj **argv, int argc, int *numkeys);
-
 struct serverCommand {
     char *name;
     serverCommandProc *proc;
     int arity;
     char *sflags; /* Flags as string representation, one char per flag. */
     int flags;    /* The actual flags, obtained from the 'sflags' field. */
-    /* Use a function to determine keys arguments in a command line.
-     * Used for Disque Cluster redirect. */
-    redisGetKeysProc *getkeys_proc;
     /* What keys should be loaded in background when calling this command? */
     int firstkey; /* The first argument that's a key (0 = no keys) */
     int lastkey;  /* The last argument that's a key */
     int keystep;  /* The step between first and last key */
     long long microseconds, calls;
-};
-
-struct redisFunctionSym {
-    char *name;
-    unsigned long pointer;
 };
 
 /* Structure to hold list iteration abstraction. */
@@ -648,7 +638,6 @@ mstime_t randomTimeError(mstime_t milliseconds);
 void getRandomHexChars(char *p, unsigned int len);
 uint64_t crc64(uint64_t crc, const unsigned char *s, uint64_t l);
 void exitFromChild(int retcode);
-size_t redisPopcount(void *s, long count);
 void serverSetProcTitle(char *title);
 
 /* networking.c -- Networking and Client related operations */

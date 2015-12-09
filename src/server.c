@@ -108,42 +108,42 @@ struct disqueServer server; /* server global state */
  */
 struct serverCommand serverCommandTable[] = {
     /* Server commands. */
-    {"auth",authCommand,2,"rlF",0,NULL,0,0,0,0,0},
-    {"ping",pingCommand,-1,"rF",0,NULL,0,0,0,0,0},
-    {"info",infoCommand,-1,"rl",0,NULL,0,0,0,0,0},
-    {"shutdown",shutdownCommand,-1,"arl",0,NULL,0,0,0,0,0},
-    {"monitor",monitorCommand,1,"ar",0,NULL,0,0,0,0,0},
-    {"debug",debugCommand,-2,"a",0,NULL,0,0,0,0,0},
-    {"config",configCommand,-2,"ar",0,NULL,0,0,0,0,0},
-    {"cluster",clusterCommand,-2,"ar",0,NULL,0,0,0,0,0},
-    {"client",clientCommand,-2,"ar",0,NULL,0,0,0,0,0},
-    {"slowlog",slowlogCommand,-2,"r",0,NULL,0,0,0,0,0},
-    {"time",timeCommand,1,"rF",0,NULL,0,0,0,0,0},
-    {"command",commandCommand,0,"rl",0,NULL,0,0,0,0,0},
-    {"latency",latencyCommand,-2,"arl",0,NULL,0,0,0,0,0},
-    {"hello",helloCommand,1,"rF",0,NULL,0,0,0,0,0},
+    {"auth",authCommand,2,"rlF",0,0,0,0,0,0},
+    {"ping",pingCommand,-1,"rF",0,0,0,0,0,0},
+    {"info",infoCommand,-1,"rl",0,0,0,0,0,0},
+    {"shutdown",shutdownCommand,-1,"arl",0,0,0,0,0,0},
+    {"monitor",monitorCommand,1,"ar",0,0,0,0,0,0},
+    {"debug",debugCommand,-2,"a",0,0,0,0,0,0},
+    {"config",configCommand,-2,"ar",0,0,0,0,0,0},
+    {"cluster",clusterCommand,-2,"ar",0,0,0,0,0,0},
+    {"client",clientCommand,-2,"ar",0,0,0,0,0,0},
+    {"slowlog",slowlogCommand,-2,"r",0,0,0,0,0,0},
+    {"time",timeCommand,1,"rF",0,0,0,0,0,0},
+    {"command",commandCommand,0,"rl",0,0,0,0,0,0},
+    {"latency",latencyCommand,-2,"arl",0,0,0,0,0,0},
+    {"hello",helloCommand,1,"rF",0,0,0,0,0,0},
 
     /* Jobs */
-    {"addjob",addjobCommand,-4,"wmF",0,NULL,0,0,0,0,0},
-    {"getjob",getjobCommand,-2,"wF",0,NULL,0,0,0,0,0},
-    {"ackjob",ackjobCommand,-1,"wF",0,NULL,0,0,0,0,0},
-    {"fastack",fastackCommand,-1,"wF",0,NULL,0,0,0,0,0},
-    {"deljob",deljobCommand,-1,"wF",0,NULL,0,0,0,0,0},
-    {"show",showCommand,2,"rF",0,NULL,0,0,0,0,0},
+    {"addjob",addjobCommand,-4,"wmF",0,0,0,0,0,0},
+    {"getjob",getjobCommand,-2,"wF",0,0,0,0,0,0},
+    {"ackjob",ackjobCommand,-1,"wF",0,0,0,0,0,0},
+    {"fastack",fastackCommand,-1,"wF",0,0,0,0,0,0},
+    {"deljob",deljobCommand,-1,"wF",0,0,0,0,0,0},
+    {"show",showCommand,2,"rF",0,0,0,0,0,0},
 
     /* AOF specific. */
-    {"loadjob",loadjobCommand,2,"w",0,NULL,0,0,0,0,0},
-    {"bgrewriteaof",bgrewriteaofCommand,1,"ar",0,NULL,0,0,0,0,0},
+    {"loadjob",loadjobCommand,2,"w",0,0,0,0,0,0},
+    {"bgrewriteaof",bgrewriteaofCommand,1,"ar",0,0,0,0,0,0},
 
     /* Queues */
-    {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
-    {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
-    {"qscan",qscanCommand,-1,"r",0,NULL,0,0,0,0,0},
-    {"jscan",jscanCommand,-1,"r",0,NULL,0,0,0,0,0},
-    {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
-    {"nack",nackCommand,-1,"mwF",0,NULL,0,0,0,0,0},
-    {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
-    {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0}
+    {"qlen",qlenCommand,2,"rF",0,0,0,0,0,0},
+    {"qpeek",qpeekCommand,3,"r",0,0,0,0,0,0},
+    {"qscan",qscanCommand,-1,"r",0,0,0,0,0,0},
+    {"jscan",jscanCommand,-1,"r",0,0,0,0,0,0},
+    {"enqueue",enqueueCommand,-1,"mwF",0,0,0,0,0,0},
+    {"nack",nackCommand,-1,"mwF",0,0,0,0,0,0},
+    {"dequeue",dequeueCommand,-1,"wF",0,0,0,0,0,0},
+    {"working",workingCommand,2,"wF",0,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */
@@ -1106,7 +1106,7 @@ int restartServer(int flags, mstime_t delay) {
         prepareForShutdown(SHUTDOWN_NOFLAGS) != C_OK) return C_ERR;
 
     /* Close all file descriptors, with the exception of stdin, stdout, strerr
-     * which are useful if we restart a Redis server which is not daemonized. */
+     * which are useful if we restart a Disque server which is not daemonized. */
     for (j = 3; j < (int)server.maxclients + 1024; j++) close(j);
 
     /* Execute the server with the original command line. */

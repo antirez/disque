@@ -779,14 +779,6 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         server.shutdown_asap = 0;
     }
 
-    /* Show information about connected clients */
-    run_with_period(5000) {
-        serverLog(LL_VERBOSE,
-            "%lu clients connected, %zu bytes in use",
-            listLength(server.clients),
-            zmalloc_used_memory());
-    }
-
     /* We need to do a few operations on clients asynchronously. */
     clientsCron();
 

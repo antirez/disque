@@ -471,19 +471,26 @@ void processJob(job *j) {
         return;
     }
 
-    /* Inform other nodes we are going to requeue the job. */
+    /* Broadcast WILLQUEUE to inform other nodes we are going to re-queue
+     * the job shortly. */
     if ((j->state == JOB_STATE_ACTIVE ||
          j->state == JOB_STATE_QUEUED) &&
          j->flags & JOB_FLAG_BCAST_WILLQUEUE &&
          j->qtime-JOB_WILLQUEUE_ADVANCE <= server.mstime)
     {
         if (j->state != JOB_STATE_QUEUED) clusterSendWillQueue(j);
+        /* Clear the WILLQUEUE flag, so that the job will be rescheduled
+         * for when we need to queue it (otherwise it is scheduled
+         * JOB_WILLQUEUE_ADVANCE milliseconds before). */
         j->flags &= ~JOB_FLAG_BCAST_WILLQUEUE;
         updateJobAwakeTime(j,0);
     }
 
-    /* Requeue job if needed. */
+    /* Requeue job if needed. This will also care about putting the job
+     * into the queue for the first time for delayed jobs, including the
+     * ones with retry=0. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
+        /* Note that enqueueJob() takes care to call updateJobAwakeTime(). */
         enqueueJob(j,0);
     }
 

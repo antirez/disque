@@ -458,7 +458,7 @@ Return the length of the queue.
 
 #### `QSTAT <qname> (TODO)`
 
-Return produced ... consumed ... idle ... sources [...] ctime ...
+Work in progress, see [issue #48](https://github.com/antirez/disque/issues/48).
 
 #### `QPEEK <qname> <count>`
 

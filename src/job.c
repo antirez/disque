@@ -446,22 +446,31 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
     return memcmp(ja->id,jb->id,JOB_ID_LEN);
 }
 
+/* Used to show jobs info for debugging or under unexpected conditions. */
+void logJobsDebugInfo(int level, char *msg, job *j) {
+    serverLog(level,
+        "%s %.42s: state=%d retry=%d delay=%d replicate=%d flags=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld",
+        msg,
+        j->id,
+        (int)j->state,
+        (int)j->retry,
+        (int)j->delay,
+        (int)j->repl,
+        (int)j->flags,
+        (long long)mstime(),
+        (long long)j->awakeme-mstime(),
+        (long long)j->awakeme,
+        (long long)j->qtime-mstime(),
+        (long long)j->etime*1000-mstime()
+        );
+}
+
 /* Process the specified job to perform asynchronous operations on it.
  * Check processJobs() for more info. */
 void processJob(job *j) {
     mstime_t old_awakeme = j->awakeme;
 
-    serverLog(LL_VERBOSE,
-        "PROCESS %.42s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
-        j->id,
-        (int)j->state,
-        (long long)mstime(),
-        (long long)j->awakeme-mstime(),
-        (long long)j->awakeme,
-        (long long)j->qtime-mstime(),
-        (long long)j->etime*1000-mstime(),
-        (int)j->delay
-        );
+    logJobsDebugInfo(LL_VERBOSE,"PROCESSING",j);
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
@@ -512,7 +521,7 @@ void processJob(job *j) {
     }
 
     if (old_awakeme == j->awakeme)
-        serverLog(LL_WARNING,"Warning: not processed job %.42s", j->id);
+        logJobsDebugInfo(LL_WARNING, "~~~WARNING~~~ NOT PROCESSABLE JOB", j);
 }
 
 int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {

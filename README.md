@@ -456,9 +456,53 @@ Disque node.
 
 Return the length of the queue.
 
-#### `QSTAT <qname> (TODO)`
+#### `QSTAT <qname>`
 
-Work in progress, see [issue #48](https://github.com/antirez/disque/issues/48).
+Show information about a queue as an array of key value pairs.
+This is an example of the output, however implementations should not rely
+on the order of the fields nor on the existance of the fields listed
+above. They may be (unlikely) removed or more can be (likely) added
+in the future.
+
+If a queue does not exist, NULL is returned. Note that queues are
+automatically evicted after some time if empty and without clients blocked
+waiting for jobs, even if there are active jobs for the queue. So the
+non existance of a queue does not mean there are not jobs in the node
+or in the whole cluster about this queue. The queue will be immediately
+created again when needed to serve requests.
+
+Example output:
+
+```
+QSTAT foo
+ 1) "name"
+ 2) "foo"
+ 3) "len"
+ 4) (integer) 56520
+ 5) "age"
+ 6) (integer) 601
+ 7) "idle"
+ 8) (integer) 3
+ 9) "blocked"
+10) (integer) 50
+11) "import-from"
+12) 1) "dcb833cf8f42fbb7924d92335ff6d67d3cea6e3d"
+    2) "4377bdf656040a18d8caf4d9f409746f1f9e6396"
+13) "import-rate"
+14) (integer) 19243
+15) "jobs-in"
+16) (integer) 3462847
+17) "jobs-out"
+18) (integer) 3389522
+```
+
+Most fields should be obvious. The `import-from` field shows a list of node
+IDs this node is importing jobs from, for this queue, in order to serve
+clients requests. The `import-rate` is the instantaneous amount of jos/sec
+we import in order to handle our outgoing traffic (GETJOB commadns).
+`blocked` is the number of clients blocked on this queue right now.
+`age` and `idle` are reported in seconds. Jobs in and out counters are
+incremented every time job is enqueued or dequeued for any reason.
 
 #### `QPEEK <qname> <count>`
 

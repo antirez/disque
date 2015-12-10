@@ -78,6 +78,8 @@ queue *createQueue(robj *name) {
     q->current_import_jobs_count = 0;
     q->prev_import_jobs_time = server.mstime;
     q->prev_import_jobs_count = 0;
+    q->jobs_in = 0;
+    q->jobs_out = 0;
 
     incrRefCount(name); /* Another refernce in the hash table key. */
     dictAdd(server.queues,q->name,q);
@@ -184,6 +186,7 @@ int enqueueJob(job *job, int nack) {
     if (!q) q = createQueue(job->queue);
     serverAssert(skiplistInsert(q->sl,job) != NULL);
     q->atime = server.unixtime;
+    q->jobs_in++;
     signalQueueAsReady(q);
     return C_OK;
 }
@@ -216,6 +219,7 @@ job *queueFetchJob(queue *q, unsigned long *qlen) {
     j->state = JOB_STATE_ACTIVE;
     j->flags |= JOB_FLAG_DELIVERED;
     q->atime = server.unixtime;
+    q->jobs_out++;
     if (qlen) *qlen = skiplistLength(q->sl);
     return j;
 }
@@ -1052,4 +1056,56 @@ void workingCommand(client *c) {
                          randomTimeError(DISQUE_TIME_ERR));
     clusterBroadcastWorking(job);
     addReplyLongLong(c,job->retry);
+}
+
+/* QSTAT queue-name
+ *
+ * Returns statistics and information about the specified queue. */
+void qstatCommand(client *c) {
+    queue *q = lookupQueue(c->argv[1]);
+    if (!q) {
+        addReply(c,shared.nullmultibulk);
+        return;
+    }
+    time_t idle = time(NULL) - q->atime;
+    time_t age = time(NULL) - q->ctime;
+    if (idle < 0) idle = 0;
+    if (age < 0) age = 0;
+
+    addReplyMultiBulkLen(c,18);
+
+    addReplyBulkCString(c,"name");
+    addReplyBulk(c,q->name);
+
+    addReplyBulkCString(c,"len");
+    addReplyLongLong(c,queueLength(q));
+
+    addReplyBulkCString(c,"age");
+    addReplyLongLong(c,age);
+
+    addReplyBulkCString(c,"idle");
+    addReplyLongLong(c,idle);
+
+    addReplyBulkCString(c,"blocked");
+    addReplyLongLong(c,(q->clients == NULL) ? 0 : listLength(q->clients));
+
+    addReplyBulkCString(c,"import-from");
+    if (q->needjobs_responders) {
+        addReplyMultiBulkLen(c,dictSize(q->needjobs_responders));
+        dictForeach(q->needjobs_responders,de)
+            clusterNode *n = dictGetKey(de);
+            addReplyBulkCBuffer(c,n->name,CLUSTER_NAMELEN);
+        dictEndForeach
+    } else {
+        addReply(c,shared.emptymultibulk);
+    }
+
+    addReplyBulkCString(c,"import-rate");
+    addReplyLongLong(c,getQueueImportRate(q));
+
+    addReplyBulkCString(c,"jobs-in");
+    addReplyLongLong(c,q->jobs_in);
+
+    addReplyBulkCString(c,"jobs-out");
+    addReplyLongLong(c,q->jobs_out);
 }

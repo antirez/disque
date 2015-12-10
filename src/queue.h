@@ -71,6 +71,7 @@ typedef struct queue {
     uint32_t prev_import_jobs_count;
     uint32_t needjobs_bcast_attempt; /* Num of tries without new nodes. */
     uint32_t needjobs_adhoc_attempt; /* Num of tries without new jobs. */
+    uint64_t jobs_in, jobs_out;      /* Num of jobs enqueued and dequeued. */
 } queue;
 
 struct clusterNode;

@@ -499,8 +499,26 @@ void processJob(job *j) {
      * into the queue for the first time for delayed jobs, including the
      * ones with retry=0. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
-        /* Note that enqueueJob() takes care to call updateJobAwakeTime(). */
-        enqueueJob(j,0);
+        queue *q;
+
+        /* We need to check if the queue is paused in input. If that's
+         * the case, we do:
+         *
+         * If retry != 0, postpone the enqueue-time of "retry" time.
+         *
+         * If retry == 0 (at most once job), this is a job with a delay that
+         * will never be queued again, and we are the only owner.
+         * In such a case, put it into the queue, or the job will be leaked. */
+        if (j->retry != 0 &&
+            (q = lookupQueue(j->queue)) != NULL &&
+            q->flags & QUEUE_FLAG_PAUSED_IN)
+        {
+            updateJobRequeueTime(j,server.mstime+
+                                 j->retry*1000+
+                                 randomTimeError(DISQUE_TIME_ERR));
+        } else {
+            enqueueJob(j,0);
+        }
     }
 
     /* Update job re-queue time if job is already queued. */
@@ -1227,7 +1245,7 @@ void addjobCommand(client *c) {
                        "-NOREPL Not enough reachable nodes "
                        "for the requested replication level, since I'm unable "
                        "to hold a copy of the message for the following "
-                       "reason: %s.\r\n",
+                       "reason: %s\r\n",
                        leaving ? "I'm leaving the cluster" :
                                  "I'm out of memory"));
         } else {
@@ -1238,12 +1256,23 @@ void addjobCommand(client *c) {
         return;
     }
 
+    /* Lookup the queue by the name, in order to perform checks for
+     * MAXLEN and to check for paused queue. */
+    queue *q = lookupQueue(c->argv[1]);
+
     /* If maxlen was specified, check that the local queue len is
      * within the requested limits. */
-    if (maxlen && queueNameLength(c->argv[1]) >= (unsigned long) maxlen) {
+    if (maxlen && q && queueLength(q) >= (unsigned long) maxlen) {
         addReplySds(c,
             sdsnew("-MAXLEN Queue is already longer than "
                    "the specified MAXLEN count\r\n"));
+        return;
+    }
+
+    /* If the queue is paused in input, refuse the job. */
+    if (q && q->flags & QUEUE_FLAG_PAUSED_IN) {
+        addReplySds(c,
+            sdsnew("-PAUSED Queue paused in input, try later\r\n"));
         return;
     }
 

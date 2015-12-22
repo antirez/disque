@@ -63,6 +63,7 @@ queue *createQueue(robj *name) {
 
     queue *q = zmalloc(sizeof(queue));
     q->name = name;
+    q->flags = 0;
     incrRefCount(name);
     q->sl = skiplistCreate(skiplistCompareJobsInQueue);
     q->ctime = server.unixtime;
@@ -187,7 +188,7 @@ int enqueueJob(job *job, int nack) {
     serverAssert(skiplistInsert(q->sl,job) != NULL);
     q->atime = server.unixtime;
     q->jobs_in++;
-    signalQueueAsReady(q);
+    if (!(q->flags & QUEUE_FLAG_PAUSED_OUT)) signalQueueAsReady(q);
     return C_OK;
 }
 
@@ -628,6 +629,9 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
      * 2) We are actively importing jobs ourselves for this queue. */
     if (qlen == 0 || getQueueImportRate(q) > 0) return;
 
+    /* Ignore request if queue is paused in output. */
+    if (q->flags & QUEUE_FLAG_PAUSED_OUT) return;
+
     /* To avoid that a single node is able to deplete our queue easily,
      * we provide the number of jobs requested only if we have more than
      * 2 times what it requested. Otherwise we provide at max half the jobs
@@ -725,7 +729,8 @@ void getjobCommand(client *c) {
             unsigned long qlen;
             queue *q = lookupQueue(queues[j]);
             job *job = NULL;
-            if (q) job = queueNameFetchJob(queues[j],&qlen);
+            if (q && !(q->flags & QUEUE_FLAG_PAUSED_OUT))
+                job = queueFetchJob(q,&qlen);
 
             if (!job) {
                 if (!q)
@@ -1108,4 +1113,69 @@ void qstatCommand(client *c) {
 
     addReplyBulkCString(c,"jobs-out");
     addReplyLongLong(c,q->jobs_out);
+}
+
+/* Helper for pauseCommand(). Changes the paused state of the queue
+ * and handles serving again blocked clients if needed.
+ *
+ * 'flag' must be QUEUE_FLAG_PAUSED_IN or QUEUE_FLAG_PAUSED_OUT
+ * while 'set' is true if we have to set this state or 0 if we have
+ * to clear this state. */
+void queueChangePausedState(queue *q, int flag, int set) {
+    uint32_t orig_flags = q->flags;
+
+    if (set) q->flags |= flag;
+    else     q->flags &= ~flag;
+
+    if ((orig_flags & QUEUE_FLAG_PAUSED_OUT) &&
+        !(q->flags & QUEUE_FLAG_PAUSED_OUT))
+    {
+        signalQueueAsReady(q);
+    }
+}
+
+/* PAUSE queue [option1 option2 ... optionN]
+ *
+ * Change queue paused state. */
+void pauseCommand(client *c) {
+    int j;
+    uint32_t flags;
+
+    queue *q = lookupQueue(c->argv[1]);
+
+    for (j = 2; j < c->argc; j++) {
+        if (!strcasecmp(c->argv[j]->ptr,"none")) {
+            if (q) {
+                queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,0);
+                queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,0);
+            }
+        } else if (!strcasecmp(c->argv[j]->ptr,"in")) {
+            if (!q) q = createQueue(c->argv[1]);
+            queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,1);
+        } else if (!strcasecmp(c->argv[j]->ptr,"out")) {
+            if (!q) q = createQueue(c->argv[1]);
+            queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,1);
+        } else if (!strcasecmp(c->argv[j]->ptr,"all")) {
+            if (!q) q = createQueue(c->argv[1]);
+            queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,1);
+            queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,1);
+        } else if (!strcasecmp(c->argv[j]->ptr,"state")) {
+            /* Nothing to do, we reply with the state regardless. */
+        } else {
+            addReply(c,shared.syntaxerr);
+            return;
+        }
+    }
+
+    flags = q ? q->flags : 0;
+    flags &= QUEUE_FLAG_PAUSED_ALL;
+    if (flags == QUEUE_FLAG_PAUSED_ALL) {
+        addReplySds(c,sdsnew("+all\r\n"));
+    } else if (flags == QUEUE_FLAG_PAUSED_IN) {
+        addReplySds(c,sdsnew("+in\r\n"));
+    } else if (flags == QUEUE_FLAG_PAUSED_OUT) {
+        addReplySds(c,sdsnew("+out\r\n"));
+    } else {
+        addReplySds(c,sdsnew("+none\r\n"));
+    }
 }

@@ -144,7 +144,8 @@ struct serverCommand serverCommandTable[] = {
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"nack",nackCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
-    {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0}
+    {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0},
+    {"pause",pauseCommand,-3,"rF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */

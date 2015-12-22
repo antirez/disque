@@ -33,6 +33,10 @@
 
 #include "skiplist.h"
 
+#define QUEUE_FLAG_PAUSED_IN (1<<0)
+#define QUEUE_FLAG_PAUSED_OUT (1<<1)
+#define QUEUE_FLAG_PAUSED_ALL (QUEUE_FLAG_PAUSED_IN|QUEUE_FLAG_PAUSED_OUT)
+
 typedef struct queue {
     robj *name;      /* Queue name as a string object. */
     skiplist *sl;    /* The skiplist with the queued jobs. */
@@ -72,6 +76,8 @@ typedef struct queue {
     uint32_t needjobs_bcast_attempt; /* Num of tries without new nodes. */
     uint32_t needjobs_adhoc_attempt; /* Num of tries without new jobs. */
     uint64_t jobs_in, jobs_out;      /* Num of jobs enqueued and dequeued. */
+    uint32_t flags;                  /* Queue flags. QUEUE_FLAG_* macros. */
+    uint32_t padding;                /* Not used. Makes alignment obvious. */
 } queue;
 
 struct clusterNode;
@@ -82,6 +88,7 @@ struct clusterNode;
 #define NEEDJOBS_CLIENTS_WAITING 0 /* Called because clients are waiting. */
 #define NEEDJOBS_REACHED_ZERO 1    /* Called since we just ran out of jobs. */
 
+queue *lookupQueue(robj *name);
 int destroyQueue(robj *name);
 int enqueueJob(job *job, int nack);
 int dequeueJob(job *job);

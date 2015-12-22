@@ -870,6 +870,7 @@ void qscanCommand(client *c);
 void jscanCommand(client *c);
 void workingCommand(client *c);
 void qstatCommand(client *c);
+void pauseCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

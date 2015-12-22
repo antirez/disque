@@ -1292,6 +1292,12 @@ int clusterProcessPacket(clusterLink *link) {
                 "Received corrupted job description from node %.40s",
                 hdr->sender);
         } else {
+            /* Don't replicate jobs about queues paused in input. */
+            queue *q = lookupQueue(j->queue);
+            if (q && q->flags & QUEUE_FLAG_PAUSED_IN) {
+                freeJob(j);
+                return 1;
+            }
             j->flags |= JOB_FLAG_BCAST_QUEUED;
             j->state = JOB_STATE_ACTIVE;
             if (registerJob(j) == C_ERR) {
@@ -1388,15 +1394,19 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state < JOB_STATE_QUEUED) {
-            /* We received an ENQUEUE message: consider this node as the
-             * first to queue the job, so no need to broadcast a QUEUED
-             * message the first time we queue it. */
-            j->flags &= ~JOB_FLAG_BCAST_QUEUED;
-            serverLog(LL_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.42s", j->id);
-            if (delay == 0) {
-                enqueueJob(j,0);
-            } else {
-                updateJobRequeueTime(j,server.mstime+delay*1000);
+            /* Discard this message if the queue is paused in input. */
+            queue *q = lookupQueue(j->queue);
+            if (q == NULL || !(q->flags & QUEUE_FLAG_PAUSED_IN)) {
+                /* We received an ENQUEUE message: consider this node as the
+                 * first to queue the job, so no need to broadcast a QUEUED
+                 * message the first time we queue it. */
+                j->flags &= ~JOB_FLAG_BCAST_QUEUED;
+                serverLog(LL_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.42s", j->id);
+                if (delay == 0) {
+                    enqueueJob(j,0);
+                } else {
+                    updateJobRequeueTime(j,server.mstime+delay*1000);
+                }
             }
         }
     } else if (type == CLUSTERMSG_TYPE_QUEUED ||

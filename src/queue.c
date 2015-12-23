@@ -683,6 +683,24 @@ void queueChangePausedState(queue *q, int flag, int set) {
     }
 }
 
+/* Called from cluster.c when a PAUSE message is received. */
+void receivePauseQueue(robj *qname, uint32_t flags) {
+    queue *q = lookupQueue(qname);
+
+    /* If the queue does not exist, and flags are cleared, there is nothing
+     * to do. Otherwise we have to create the queue. */
+    if (!q) {
+        if (flags == 0) return;
+        q = createQueue(qname);
+    }
+
+    /* Replicate the sender pause flag in our queue. */
+    queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,
+        (flags & QUEUE_FLAG_PAUSED_IN) != 0);
+    queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,
+        (flags & QUEUE_FLAG_PAUSED_OUT) != 0);
+}
+
 /* ------------------------- Queue related commands ------------------------- */
 
 /* QLEN <qname> -- Return the number of jobs queued. */

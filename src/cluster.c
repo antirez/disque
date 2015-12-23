@@ -1098,7 +1098,9 @@ int clusterProcessPacket(clusterLink *link) {
 
         explen += sizeof(clusterMsgDataJobID);
         if (totlen != explen) return 1;
-    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
+    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS ||
+               type == CLUSTERMSG_TYPE_PAUSE)
+    {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         explen += sizeof(clusterMsgDataQueueOp) - 8;
         if (totlen < explen) return 1;
@@ -1469,15 +1471,21 @@ int clusterProcessPacket(clusterLink *link) {
                 clusterBroadcastQueued(j,CLUSTERMSG_NOFLAGS);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }
-    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
+    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS ||
+               type == CLUSTERMSG_TYPE_PAUSE)
+    {
         if (!sender) return 1;
         uint32_t qnamelen = ntohl(hdr->data.queueop.about.qnamelen);
         uint32_t count = ntohl(hdr->data.queueop.about.aux);
         robj *qname = createStringObject(hdr->data.queueop.about.qname,
                                          qnamelen);
-        serverLog(LL_VERBOSE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
+        serverLog(LL_VERBOSE,"RECEIVED %s FOR QUEUE %s (%d)",
+            (type == CLUSTERMSG_TYPE_NEEDJOBS) ? "NEEDJOBS" : "PAUSE",
             (char*)qname->ptr,count);
-        receiveNeedJobs(sender,qname,count);
+        if (type == CLUSTERMSG_TYPE_NEEDJOBS)
+            receiveNeedJobs(sender,qname,count);
+        else
+            receivePauseQueue(qname,count);
         decrRefCount(qname);
     } else {
         serverLog(LL_WARNING,"Received unknown packet type: %d", type);
@@ -1991,6 +1999,36 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
     hdr->totlen = htonl(totlen);
     clusterBroadcastMessage(nodes,hdr,totlen);
     zfree(hdr);
+}
+
+/* Send a PAUSE message to the specified set of nodes. */
+void clusterSendPause(robj *qname, uint32_t flags, dict *nodes) {
+    uint32_t totlen, qnamelen = sdslen(qname->ptr);
+    uint32_t alloclen;
+    clusterMsg *hdr;
+
+    serverLog(LL_VERBOSE,"Sending PAUSE for %s flags=%d, %d nodes",
+        (char*)qname->ptr, (int)flags, (int)dictSize(nodes));
+
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataQueueOp) - 8 + qnamelen;
+    alloclen = totlen;
+    if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
+    hdr = zmalloc(alloclen);
+
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_NEEDJOBS);
+    hdr->data.queueop.about.aux = htonl(flags);
+    hdr->data.queueop.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);
+    hdr->totlen = htonl(totlen);
+    clusterBroadcastMessage(nodes,hdr,totlen);
+    zfree(hdr);
+}
+
+/* Same as clusterSendPause() but broadcasts the message to the
+ * whole cluster. */
+void clusterBroadcastPause(robj *qname, uint32_t flags) {
+    clusterSendPause(qname,flags,server.cluster->nodes);
 }
 
 /* Send a YOURJOBS message to the specified node, with a serialized copy of

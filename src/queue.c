@@ -658,6 +658,31 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
     }
 }
 
+/* ------------------------------ Queue pausing -----------------------------
+ *
+ * There is very little here since pausing a queue is basically just changing
+ * its flags. Then what changing the PAUSE flags means, is up to the different
+ * parts of Disque implementing the behavior of queues. */
+
+/* Changes the paused state of the queue and handles serving again blocked
+ * clients if needed.
+ *
+ * 'flag' must be QUEUE_FLAG_PAUSED_IN or QUEUE_FLAG_PAUSED_OUT
+ * 'set' is true if we have to set this state or 0 if we have
+ * to clear this state. */
+void queueChangePausedState(queue *q, int flag, int set) {
+    uint32_t orig_flags = q->flags;
+
+    if (set) q->flags |= flag;
+    else     q->flags &= ~flag;
+
+    if ((orig_flags & QUEUE_FLAG_PAUSED_OUT) &&
+        !(q->flags & QUEUE_FLAG_PAUSED_OUT))
+    {
+        signalQueueAsReady(q);
+    }
+}
+
 /* ------------------------- Queue related commands ------------------------- */
 
 /* QLEN <qname> -- Return the number of jobs queued. */
@@ -1115,65 +1140,58 @@ void qstatCommand(client *c) {
     addReplyLongLong(c,q->jobs_out);
 }
 
-/* Helper for pauseCommand(). Changes the paused state of the queue
- * and handles serving again blocked clients if needed.
- *
- * 'flag' must be QUEUE_FLAG_PAUSED_IN or QUEUE_FLAG_PAUSED_OUT
- * while 'set' is true if we have to set this state or 0 if we have
- * to clear this state. */
-void queueChangePausedState(queue *q, int flag, int set) {
-    uint32_t orig_flags = q->flags;
-
-    if (set) q->flags |= flag;
-    else     q->flags &= ~flag;
-
-    if ((orig_flags & QUEUE_FLAG_PAUSED_OUT) &&
-        !(q->flags & QUEUE_FLAG_PAUSED_OUT))
-    {
-        signalQueueAsReady(q);
-    }
-}
-
-/* PAUSE queue [option1 option2 ... optionN]
+/* PAUSE queue option1 [option2 ... optionN]
  *
  * Change queue paused state. */
 void pauseCommand(client *c) {
-    int j;
-    uint32_t flags;
+    int j, bcast = 0, update = 0;
+    uint32_t old_flags = 0, new_flags = 0;
 
     queue *q = lookupQueue(c->argv[1]);
+    if (q) old_flags = q->flags;
 
     for (j = 2; j < c->argc; j++) {
         if (!strcasecmp(c->argv[j]->ptr,"none")) {
-            if (q) {
-                queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,0);
-                queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,0);
-            }
+            new_flags = 0;
+            update = 1;
         } else if (!strcasecmp(c->argv[j]->ptr,"in")) {
-            if (!q) q = createQueue(c->argv[1]);
-            queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,1);
+            new_flags |= QUEUE_FLAG_PAUSED_IN; update = 1;
         } else if (!strcasecmp(c->argv[j]->ptr,"out")) {
-            if (!q) q = createQueue(c->argv[1]);
-            queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,1);
+            new_flags |= QUEUE_FLAG_PAUSED_OUT; update = 1;
         } else if (!strcasecmp(c->argv[j]->ptr,"all")) {
-            if (!q) q = createQueue(c->argv[1]);
-            queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,1);
-            queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,1);
+            new_flags |= QUEUE_FLAG_PAUSED_ALL; update = 1;
         } else if (!strcasecmp(c->argv[j]->ptr,"state")) {
             /* Nothing to do, we reply with the state regardless. */
+        } else if (!strcasecmp(c->argv[j]->ptr,"bcast")) {
+            bcast = 1;
         } else {
             addReply(c,shared.syntaxerr);
             return;
         }
     }
 
-    flags = q ? q->flags : 0;
-    flags &= QUEUE_FLAG_PAUSED_ALL;
-    if (flags == QUEUE_FLAG_PAUSED_ALL) {
+    /* Update the queue pause state, if needed. */
+    if (!q && update && old_flags != new_flags) q = createQueue(c->argv[1]);
+    if (q && update) {
+        queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,
+            (new_flags & QUEUE_FLAG_PAUSED_IN) != 0);
+        queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,
+            (new_flags & QUEUE_FLAG_PAUSED_OUT) != 0);
+    }
+
+    /* Get the queue flags after the operation. */
+    new_flags = q ? q->flags : 0;
+    new_flags &= QUEUE_FLAG_PAUSED_ALL;
+
+    /* TODO: Broadcast a PAUSE command if the user specified BCAST. */
+    // XXX if (bcast) clusterBroadcastPause(new_flags);
+
+    /* Always reply with the current queue state. */
+    if (new_flags == QUEUE_FLAG_PAUSED_ALL) {
         addReplySds(c,sdsnew("+all\r\n"));
-    } else if (flags == QUEUE_FLAG_PAUSED_IN) {
+    } else if (new_flags == QUEUE_FLAG_PAUSED_IN) {
         addReplySds(c,sdsnew("+in\r\n"));
-    } else if (flags == QUEUE_FLAG_PAUSED_OUT) {
+    } else if (new_flags == QUEUE_FLAG_PAUSED_OUT) {
         addReplySds(c,sdsnew("+out\r\n"));
     } else {
         addReplySds(c,sdsnew("+none\r\n"));

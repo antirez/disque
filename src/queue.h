@@ -102,5 +102,6 @@ void needJobsForQueue(queue *q, int type);
 void needJobsForQueueName(robj *qname, int type);
 void receiveYourJobs(struct clusterNode *node, uint32_t numjobs, unsigned char *serializedjobs, uint32_t serializedlen);
 void receiveNeedJobs(struct clusterNode *node, robj *qname, uint32_t count);
+void queueChangePausedState(queue *q, int flag, int set);
 
 #endif

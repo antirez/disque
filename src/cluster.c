@@ -1100,9 +1100,9 @@ int clusterProcessPacket(clusterLink *link) {
         if (totlen != explen) return 1;
     } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-        explen += sizeof(clusterMsgDataNeedJobs) - 8;
+        explen += sizeof(clusterMsgDataQueueOp) - 8;
         if (totlen < explen) return 1;
-        explen += ntohl(hdr->data.jobsreq.about.qnamelen);
+        explen += ntohl(hdr->data.queueop.about.qnamelen);
         if (totlen != explen) return 1;
     }
 
@@ -1471,9 +1471,9 @@ int clusterProcessPacket(clusterLink *link) {
         }
     } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
         if (!sender) return 1;
-        uint32_t qnamelen = ntohl(hdr->data.jobsreq.about.qnamelen);
-        uint32_t count = ntohl(hdr->data.jobsreq.about.count);
-        robj *qname = createStringObject(hdr->data.jobsreq.about.qname,
+        uint32_t qnamelen = ntohl(hdr->data.queueop.about.qnamelen);
+        uint32_t count = ntohl(hdr->data.queueop.about.aux);
+        robj *qname = createStringObject(hdr->data.queueop.about.qname,
                                          qnamelen);
         serverLog(LL_VERBOSE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
             (char*)qname->ptr,count);
@@ -1979,15 +1979,15 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
         (char*)qname->ptr, (int)numjobs, (int)dictSize(nodes));
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-    totlen += sizeof(clusterMsgDataNeedJobs) - 8 + qnamelen;
+    totlen += sizeof(clusterMsgDataQueueOp) - 8 + qnamelen;
     alloclen = totlen;
     if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
     hdr = zmalloc(alloclen);
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_NEEDJOBS);
-    hdr->data.jobsreq.about.count = htonl(numjobs);
-    hdr->data.jobsreq.about.qnamelen = htonl(qnamelen);
-    memcpy(hdr->data.jobsreq.about.qname, qname->ptr, qnamelen);
+    hdr->data.queueop.about.aux = htonl(numjobs);
+    hdr->data.queueop.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);
     hdr->totlen = htonl(totlen);
     clusterBroadcastMessage(nodes,hdr,totlen);
     zfree(hdr);

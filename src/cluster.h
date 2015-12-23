@@ -156,12 +156,14 @@ typedef struct {
 } clusterMsgDataJobID;
 
 /* This data section is used by NEEDJOBS to specify in what queue we need
- * a job, and how many jobs we request. */
+ * a job, and how many jobs we request. The same format is also used by
+ * the PAUSE command to specify the queue to change the paused state. */
 typedef struct {
-    uint32_t count;     /* How many jobs we request. */
+    uint32_t aux;       /* For NEEDJOB, how many jobs we request.
+                         * FOR PAUSE, the pause flags to set on the queue. */
     uint32_t qnamelen;  /* Queue name total length. */
     char qname[8];      /* Defined as 8 bytes just for alignment. */
-} clusterMsgDataNeedJobs;
+} clusterMsgDataQueueOp;
 
 union clusterMsgData {
     /* PING, MEET and PONG. */
@@ -187,8 +189,8 @@ union clusterMsgData {
 
     /* Messages requesting jobs (NEEDJOBS). */
     struct {
-        clusterMsgDataNeedJobs about;
-    } jobsreq;
+        clusterMsgDataQueueOp about;
+    } queueop;
 };
 
 #define CLUSTER_PROTO_VER 0 /* Cluster bus protocol version. */

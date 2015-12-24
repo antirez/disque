@@ -247,20 +247,19 @@ Job IDs
 
 Disque jobs are uniquely identified by an ID like the following:
 
-    D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1AA
+    D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1
 
 Job IDs always start with "D-" and end with "$" and are always composed of
 exactly 42 characters.
 
 We can split an ID into multiple parts:
 
-    D- | dcb833cf | 8YL1NT17e9+wsA/09NqxscQI | 05a1 | AA
+    D- | dcb833cf | 8YL1NT17e9+wsA/09NqxscQI | 05a1
 
 1. "D-" is the prefix
 2. dcb833cf is the first 8 bytes of the node ID where the message was generated.
 3. 8YL1NT17e9+wsA/09NqxscQI is the 144 bit ID pesudo random part encoded in base 64.
 4. 05a1 is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
-5. "AA" is two bytes reserved for future uses. Implementations should never expect it to have a particular value, it may be anything.
 
 IDs are returned by ADDJOB when a job is successfully created, are part of
 the GETJOB output, and are used in order to acknowledge that a job was
@@ -326,10 +325,10 @@ in order to test if everything is working:
 
     ./disque -p 7711
     127.0.0.1:7711> ADDJOB queue body 0
-    D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1AA
+    D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1
     127.0.0.1:7711> GETJOB FROM queue
     1) 1) "queue"
-       2) "D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1AA"
+       2) "D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1"
        3) "body"
 
 Remember that you can add and get jobs from different nodes as Disque

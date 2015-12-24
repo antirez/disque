@@ -32,7 +32,7 @@
 #define __DISQUE_JOB_H
 
 /* A Job ID is 42 bytes, check generateJobID() inside job.c for more info. */
-#define JOB_ID_LEN 42
+#define JOB_ID_LEN 40
 
 /* This represents a Job across the system.
  *
@@ -102,6 +102,7 @@ typedef struct job {
     unsigned int state:4;   /* Job state: one of JOB_STATE_* states. */
     unsigned int gc_retry:4;/* GC attempts counter, for exponential delay. */
     uint8_t flags;          /* Job flags. */
+    uint16_t repl;          /* Replication factor. */
     uint32_t etime;         /* Job expire time. */
     uint64_t ctime;         /* Job creation time, local node at creation.
                                ctime is time in milliseconds * 1000000, each
@@ -111,7 +112,6 @@ typedef struct job {
     uint32_t retry;         /* Job re-queue time: re-queue period in seconds. */
     uint16_t num_nacks;     /* Number of NACKs this node observed. */
     uint16_t num_deliv;     /* Number of deliveries this node observed. */
-    uint16_t repl;          /* Replication factor. */
 
     /* --------------------------------------------------------------------
      * Up to this point we use the structure for on-wire serialization,
@@ -120,7 +120,6 @@ typedef struct job {
      * native endianess, and only normalized during serialization.
      * -------------------------------------------------------------------- */
 
-    uint16_t notused;       /* Not used, for padding. */
     robj *queue;            /* Job queue name. */
     sds body;               /* Body, or NULL if job is just an ACK. */
     dict *nodes_delivered;  /* Nodes we delievered the job for replication. */
@@ -144,7 +143,7 @@ typedef struct job {
 } job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
-#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+4+8+4+4+2+2+2)
+#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4+2+2)
 
 /* Serialization types for serializeJob() deserializejob(). */
 #define SER_MESSAGE 0

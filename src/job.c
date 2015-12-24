@@ -43,11 +43,11 @@
 /* Generate a new Job ID and writes it to the string pointed by 'id'
  * (NOT including a null term), that must be JOB_ID_LEN or more.
  *
- * An ID is 42 byes string composed as such:
+ * An ID is 40 bytes string composed as such:
  *
- * +--+-----------------+-+--------------------- --------+-+-----+--+
- * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |AA|
- * +--+-----------------+-+------------------------------+-+-----+--+
+ * +--+-----------------+-+--------------------- --------+-+-----+
+ * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |
+ * +--+-----------------+-+------------------------------+-+-----+
  *
  * "D-" is just a fixed string. All Disque job IDs start with this
  * two bytes.
@@ -70,11 +70,6 @@
  * otherwise is odd, so the actual precision of the value is 2 minutes.
  * This is useful since the receiver of an ACKJOB command can avoid
  * creating a "dummy ack" for unknown job IDs for at most once jobs.
- *
- * Finally the last two bytes "AA" are reserved for future uses, clients
- * should never assume that this byte will be set to a specific value.
- * It is set to "A" since it is the logical zero from the point of view
- * of the base64 encoding we use.
  */
 void generateJobID(char *id, int ttl, int retry) {
     char *b64cset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -130,10 +125,6 @@ void generateJobID(char *id, int ttl, int retry) {
     id[2] = hexcset[(ttlbytes[1]&0xf0)>>4];
     id[3] = hexcset[ttlbytes[1]&0xf];
     id += 4;
-
-    /* Reserved for future uses. */
-    *id++ = 'A';
-    *id++ = 'A';
 }
 
 /* Helper function for setJobTTLFromID() in order to extract the TTL stored
@@ -254,7 +245,6 @@ job *createJob(char *id, int state, int ttl, int retry) {
      * are incremented as QUEUED messages are received or sent. */
     j->num_nacks = 0;
     j->num_deliv = 0;
-    j->notused = 0;
     return j;
 }
 

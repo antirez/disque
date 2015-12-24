@@ -2016,7 +2016,7 @@ void clusterSendPause(robj *qname, uint32_t flags, dict *nodes) {
     if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
     hdr = zmalloc(alloclen);
 
-    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_NEEDJOBS);
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_PAUSE);
     hdr->data.queueop.about.aux = htonl(flags);
     hdr->data.queueop.about.qnamelen = htonl(qnamelen);
     memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);

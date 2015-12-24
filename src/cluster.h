@@ -239,5 +239,6 @@ void clusterSendSetAck(clusterNode *node, job *j);
 void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes);
 void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count);
 void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux, unsigned char flags);
+void clusterBroadcastPause(robj *qname, uint32_t flags);
 
 #endif /* __CLUSTER_H */

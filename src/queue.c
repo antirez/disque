@@ -1202,7 +1202,7 @@ void pauseCommand(client *c) {
     new_flags &= QUEUE_FLAG_PAUSED_ALL;
 
     /* TODO: Broadcast a PAUSE command if the user specified BCAST. */
-    // XXX if (bcast) clusterBroadcastPause(new_flags);
+    if (bcast) clusterBroadcastPause(c->argv[1],new_flags);
 
     /* Always reply with the current queue state. */
     if (new_flags == QUEUE_FLAG_PAUSED_ALL) {

@@ -254,6 +254,7 @@ job *createJob(char *id, int state, int ttl, int retry) {
      * are incremented as QUEUED messages are received or sent. */
     j->num_nacks = 0;
     j->num_deliv = 0;
+    j->notused = 0;
     return j;
 }
 

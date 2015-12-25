@@ -701,6 +701,21 @@ void receivePauseQueue(robj *qname, uint32_t flags) {
         (flags & QUEUE_FLAG_PAUSED_OUT) != 0);
 }
 
+/* Return the string "in", "out", "all" or "none" depending on the paused
+ * state of the specified queue flags. */
+char *queueGetPausedStateString(uint32_t qflags) {
+    qflags &= QUEUE_FLAG_PAUSED_ALL;
+    if (qflags == QUEUE_FLAG_PAUSED_ALL) {
+        return "all";
+    } else if (qflags == QUEUE_FLAG_PAUSED_IN) {
+        return "in";
+    } else if (qflags == QUEUE_FLAG_PAUSED_OUT) {
+        return "out";
+    } else {
+        return "none";
+    }
+}
+
 /* ------------------------- Queue related commands ------------------------- */
 
 /* QLEN <qname> -- Return the number of jobs queued. */
@@ -1201,17 +1216,12 @@ void pauseCommand(client *c) {
     new_flags = q ? q->flags : 0;
     new_flags &= QUEUE_FLAG_PAUSED_ALL;
 
-    /* TODO: Broadcast a PAUSE command if the user specified BCAST. */
+    /* Broadcast a PAUSE command if the user specified BCAST. */
     if (bcast) clusterBroadcastPause(c->argv[1],new_flags);
 
     /* Always reply with the current queue state. */
-    if (new_flags == QUEUE_FLAG_PAUSED_ALL) {
-        addReplySds(c,sdsnew("+all\r\n"));
-    } else if (new_flags == QUEUE_FLAG_PAUSED_IN) {
-        addReplySds(c,sdsnew("+in\r\n"));
-    } else if (new_flags == QUEUE_FLAG_PAUSED_OUT) {
-        addReplySds(c,sdsnew("+out\r\n"));
-    } else {
-        addReplySds(c,sdsnew("+none\r\n"));
-    }
+    sds reply = sdsnewlen("+",1);
+    reply = sdscat(reply,queueGetPausedStateString(new_flags));
+    reply = sdscatlen(reply,"\r\n",2);
+    addReplySds(c,reply);
 }

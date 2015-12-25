@@ -440,9 +440,9 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
 /* Used to show jobs info for debugging or under unexpected conditions. */
 void logJobsDebugInfo(int level, char *msg, job *j) {
     serverLog(level,
-        "%s %.42s: state=%d retry=%d delay=%d replicate=%d flags=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld",
+        "%s %.*s: state=%d retry=%d delay=%d replicate=%d flags=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld",
         msg,
-        j->id,
+        JOB_ID_LEN, j->id,
         (int)j->state,
         (int)j->retry,
         (int)j->delay,
@@ -465,7 +465,7 @@ void processJob(job *j) {
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
-        serverLog(LL_VERBOSE,"EVICT %.42s", j->id);
+        serverLog(LL_VERBOSE,"EVICT %.*s", JOB_ID_LEN, j->id);
         unregisterJob(j);
         freeJob(j);
         return;
@@ -562,8 +562,8 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
 #ifdef DEBUG_SCHEDULER
         if (canlog) {
-            printf("%.42s %d (in %d) [%s]\n",
-                j->id,
+            printf("%.*s %d (in %d) [%s]\n",
+                JOB_ID_LEN, j->id,
                 (int) j->awakeme,
                 (int) (j->awakeme-server.mstime),
                 jobStateToString(j->state));
@@ -1041,7 +1041,7 @@ void addReplyJobID(client *c, job *j) {
  * replicated, C_ERR is returned, in order to signal the client further
  * accesses to the job are not allowed. */
 int jobReplicationAchieved(job *j) {
-    serverLog(LL_VERBOSE,"Replication ACHIEVED %.42s",j->id);
+    serverLog(LL_VERBOSE,"Replication ACHIEVED %.*s",JOB_ID_LEN,j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */

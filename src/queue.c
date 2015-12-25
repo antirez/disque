@@ -1135,7 +1135,7 @@ void qstatCommand(client *c) {
     if (idle < 0) idle = 0;
     if (age < 0) age = 0;
 
-    addReplyMultiBulkLen(c,18);
+    addReplyMultiBulkLen(c,20);
 
     addReplyBulkCString(c,"name");
     addReplyBulk(c,q->name);
@@ -1171,6 +1171,9 @@ void qstatCommand(client *c) {
 
     addReplyBulkCString(c,"jobs-out");
     addReplyLongLong(c,q->jobs_out);
+
+    addReplyBulkCString(c,"pause");
+    addReplyBulkCString(c,queueGetPausedStateString(q->flags));
 }
 
 /* PAUSE queue option1 [option2 ... optionN]

@@ -440,7 +440,7 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
 /* Used to show jobs info for debugging or under unexpected conditions. */
 void logJobsDebugInfo(int level, char *msg, job *j) {
     serverLog(level,
-        "%s %.*s: state=%d retry=%d delay=%d replicate=%d flags=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld",
+        "%s %.*s: state=%d retry=%d delay=%d replicate=%d flags=%d now=%lld cached_now=%lld awake=%lld (%lld) qtime=%lld etime=%lld",
         msg,
         JOB_ID_LEN, j->id,
         (int)j->state,
@@ -449,6 +449,7 @@ void logJobsDebugInfo(int level, char *msg, job *j) {
         (int)j->repl,
         (int)j->flags,
         (long long)mstime(),
+        (long long)server.mstime,
         (long long)j->awakeme-mstime(),
         (long long)j->awakeme,
         (long long)j->qtime-mstime(),

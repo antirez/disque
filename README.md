@@ -85,6 +85,15 @@ Disque provides the user with fine-grained control for each job **using three ti
 
 Finally, Disque supports optional disk persistence, which is not enabled by default, but that can be handy in single data center setups and during restarts.
 
+Other minor features are:
+
+* Ability to block queues.
+* A few statistics about queues activity.
+* Stateless iterators for queues and jobs.
+* Commands to control the visiblity of single jobs.
+* Easy resize of the cluster (adding nodes is trivial).
+* Gracefully removal of nodes without losing jobs replicas.
+
 ACKs and retries
 ---
 
@@ -451,11 +460,11 @@ ports, and priority (lower is better, means node more available).
 Clients should use this as an handshake command when connecting with a
 Disque node.
 
-#### `QLEN <qname>`
+#### `QLEN <queue-name>`
 
 Return the length of the queue.
 
-#### `QSTAT <qname>`
+#### `QSTAT <queue-name>`
 
 Show information about a queue as an array of key value pairs.
 This is an example of the output, however implementations should not rely
@@ -493,6 +502,8 @@ QSTAT foo
 16) (integer) 3462847
 17) "jobs-out"
 18) (integer) 3389522
+19) "pause"
+20) "none"
 ```
 
 Most fields should be obvious. The `import-from` field shows a list of node
@@ -503,7 +514,7 @@ we import in order to handle our outgoing traffic (GETJOB commadns).
 `age` and `idle` are reported in seconds. Jobs in and out counters are
 incremented every time job is enqueued or dequeued for any reason.
 
-#### `QPEEK <qname> <count>`
+#### `QPEEK <queue-name> <count>`
 
 Return, without consuming from queue, *count* jobs. If *count* is positive
 the specified number of jobs are returned from the oldest to the newest
@@ -570,6 +581,62 @@ Options:
 The cursor argument can be in any place, the first non matching option
 that has valid cursor form of an usigned number will be sensed as a valid
 cursor.
+
+#### `PAUSE <queue-name> option1 [option2 ... optionN]`
+
+Control the paused state of a queue, possibly broadcasting the command to
+other nodes in the cluster. Disque queues can be paused in both directions,
+input and output, or both. Pausing a queue makes it not available for input
+or output operations. Specifically:
+
+A queue paused in input will have change behavior in the following way:
+
+1. ADDJOB returns a `-PAUSED` error for queues paused in input.
+2. The node where the queue is paused, no longer accept to replicate jobs for this queue when requested by other nodes. Since ADDJOB by default uses synchronous replication, it means that if the queue is paused in enough nodes, adding jobs with a specified level of replication may fail. In general the node where the queue is paused will not create new jobs in the local node about this queue.
+3. The job no longer accepts ENQUEUE messages from other nodes. Those messages are usually used by nodes in out of memory conditions that replicate jobs externally (not holding a copy), in order to put the job in the queue of some random node, among the nodes having a copy of a job.
+4. Active jobs that reach their retry time, are not put back into the queue. Instead their retry timer is updated and the node will try again later.
+
+Basically a queue paused in input never creates new jobs for this queue, and never puts active jobs (jobs for which the node have a copy but are not currently queued) back in the queue, for all the time the queue is paused.
+
+A queue paused in output instead will behave in the following way:
+
+1. GETJOB will block even if there are jobs available in the specified queue, instead of serving the jobs. But GETJOB will unblock if the queue output pause will be cleared later.
+2. The node will not provide jobs to other nodes in the context of nodes federation, for paused queues.
+
+So a queue paused in output will stop to act as a source of messages for both
+local and non local clients.
+
+The paused state can be set for each queue using the PAUSE command followed
+by options to specify how to change the paused state. Possible options are:
+
+* **in**: pause the queue in input.
+* **out**: pause the queue in output.
+* **all**: pause the queue in input and output (same as specifying both the **in** and **out** options).
+* **none**: clear the paused state in input and output.
+* **state**: just report the current queue state.
+* **bcast**: send a PAUSE command to all the reachable nodes of the cluster to set the same queue in the other nodes to the same state.
+
+The command always returns the state of the queue after the execution of the specified options, so the return value is one of **in**, **out**, **all**, **none**.
+
+Queues paused in input or output are never evicted to reclaim memory, even if
+they are empty and inactive for a long time, since otherwise the paused state
+would be forgot.
+
+For example in order to block output for the queue `myqueue` in all the nodes
+currently reachable, the following command should be send to a single node:
+
+    PAUSE myqueue out bcast
+
+To specify all is the same as to specify both in and out, so the two following
+forms are equivalent:
+
+    PAUSE myqueue in out
+    PAUSE myqueue all
+
+To just get the current state use:
+
+    PAUSE myqueue state
+    "none"
 
 Special handling of messages with RETRY set to 0
 ===

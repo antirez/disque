@@ -252,6 +252,7 @@ int GCQueue(queue *q, time_t max_idle_time) {
     if (idle < max_idle_time) return C_ERR;
     if (q->clients && listLength(q->clients) != 0) return C_ERR;
     if (skiplistLength(q->sl)) return C_ERR;
+    if (q->flags & QUEUE_FLAG_PAUSED_ALL) return C_ERR;
     destroyQueue(q->name);
     return C_OK;
 }

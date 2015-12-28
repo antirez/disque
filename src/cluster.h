@@ -101,9 +101,9 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_PONG 1          /* Reply to Ping. */
 #define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message. */
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing. */
-#define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver. */
-#define CLUSTERMSG_TYPE_GOTJOB 5        /* Job received acknowledge. */
-#define CLUSTERMSG_TYPE_ENQUEUE 6      /* Enaueue the specified job. */
+#define CLUSTERMSG_TYPE_REPLJOB 4       /* Add a job to receiver. */
+#define CLUSTERMSG_TYPE_GOTJOB 5        /* REPLJOB received acknowledge. */
+#define CLUSTERMSG_TYPE_ENQUEUE 6       /* Enqueue the specified job. */
 #define CLUSTERMSG_TYPE_QUEUED 7        /* Update your job qtime. */
 #define CLUSTERMSG_TYPE_SETACK 8        /* Move job state as ACKed. */
 #define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */

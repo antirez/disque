@@ -803,8 +803,8 @@ Jobs replication strategy
 ---
 
 1. Disque tries to replicate to W-1 (or W during out of memory) reachable nodes, shuffled.
-2. The cluster ADDJOB message is used to replicate a job to multiple nodes, the job is sent together with the list of nodes that may have a copy.
-2. If the required replication is not reached promptly, the job is send to one additional node every 50 milliseconds. When this happens, a new ADDJOB message is also re-sent to each node that may have already a copy, in order to refresh the list of nodes that have a copy.
+2. The cluster REPLJOB message is used to replicate a job to multiple nodes, the job is sent together with the list of nodes that may have a copy.
+2. If the required replication is not reached promptly, the job is send to one additional node every 50 milliseconds. When this happens, a new REPLJOB message is also re-sent to each node that may have already a copy, in order to refresh the list of nodes that have a copy.
 3. If the specified synchronous replication timeout is reached, the node that originally received the ADDJOB command from the client, gives up and returns an error to the client. When this happens the node performs a best-effort procedure to delete the job from nodes that may have already received a copy of the job.
 
 Cluster topology
@@ -841,8 +841,8 @@ generated.
 Cluster messages related to jobs replication and queueing
 ---
 
-* ADDJOB: ask the receiver to replicate a job, that is, to add a copy of the job among the registered jobs in the target node. When a job is accepted, the receiver replies with GOTJOB to the sender. A job may not be accepted if the receiving node is near out of memory. In this case GOTJOB is not send and the message discarded.
-* GOTJOB: The reply to ADDJOB to confirm the job was replicated.
+* REPLJOB: ask the receiver to replicate a job, that is, to add a copy of the job among the registered jobs in the target node. When a job is accepted, the receiver replies with GOTJOB to the sender. A job may not be accepted if the receiving node is near out of memory. In this case GOTJOB is not send and the message discarded.
+* GOTJOB: The reply to REPLJOB to confirm the job was replicated.
 * ENQUEUE: Ask a node to put a given job into its queue. This message is used when a job is created by a node that does not want to take a copy, so it asks another node (among the ones that acknowledged the job replication) to queue it for the first time. If this message is lost, after the retry time some node will try to re-queue the message, unless retry is set to zero.
 * WILLQUEUE: This message is sent 500 milliseconds before a job is re-queued to all the nodes that may have a copy of the message, according to the sender table. If some of the receivers already have the job queued, they'll reply with QUEUED in order to prevent the sender to queue the job again (avoid multiple delivery when possible).
 * QUEUED: When a node re-queue a job, it sends QUEUED to all the nodes that may have a copy of the message, so that the other nodes will update the time at which they'll retry to queue the job. Moreover every node that already has the same job in queue, but with a node ID which is lexicographically smaller than the sending node, will de-queue the message in order to best-effort de-dup messages that may be queued into multiple nodes at the same time.
@@ -880,7 +880,7 @@ List fields such as `.delivered` and `.confirmed` support methods like `.size` t
 States are as follows:
 
 1. `wait-repl`: the job is waiting to be synchronously replicated.
-2. `active`: the job is active, either it reached the replication factor in the originating node, or it was created because the node received an `ADDJOB` message from another node.
+2. `active`: the job is active, either it reached the replication factor in the originating node, or it was created because the node received an `REPLJOB` message from another node.
 3. `queued`: the job is active and also is pending into a queue in this node.
 4. `acknowledged`: the job is no longer actived since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
 
@@ -922,12 +922,12 @@ and how the cluster replicates jobs across different Disque nodes.
 ON RECV client command `ADDJOB(string queue-name, string body, integer replicate, integer retry, integer ttl, ...):
 
 1. Create a job object in `wait-repl` state, having as body, ttl, retry, queue name, the specified values.
-2. Send ADDJOB(job.serialized) cluster message to `replicate-1` nodes.
+2. Send REPLJOB(job.serialized) cluster message to `replicate-1` nodes.
 3. Block the client without replying.
 
 Step 3: We'll reply to the client in step 4 of `GOTJOB` message processing.
 
-ON RECV cluster message `ADDJOB(object serialized-job)`:
+ON RECV cluster message `REPLJOB(object serialized-job)`:
 
 1. job = Call `LOOKUP-JOB(serialized-job.id)`.
 2. IF `job != NULL` THEN: job.delivered = UNION(job.delivered,serialized-job.delivered). Return ASAP, since we have the job.
@@ -935,7 +935,7 @@ ON RECV cluster message `ADDJOB(object serialized-job)`:
 4. job.state = `active`.
 5. Reply to the sender with `GOTJOB(job.id)`.
 
-Step 1: We may already have the job, since ADDJOB may be duplicated.
+Step 1: We may already have the job, since REPLJOB may be duplicated.
 
 Step 2: If we already have the same job, we update the list of jobs that may have a copy of this job, performing the union of the list of nodes we have with the list of nodes in the serialized job.
 
@@ -952,7 +952,7 @@ TIMER, firing every next 50 milliseconds while a job still did not reached the e
 
 1. Select an additional node not already listed in `job.delivered`, call it `node`.
 2. Add `node` to `job.delivered`.
-3. Send ADDJOB(job.serialized) cluster message to each node in `job.delivered`.
+3. Send REPLJOB(job.serialized) cluster message to each node in `job.delivered`.
 
 Step 3: We send the message to every node again, so that each node will have a chance to update `job.delivered` with the new nodes. It is not required for each node to know the full list of nodes that may have a copy, but doing so improves our approximation of single delivery whenever possible.
 

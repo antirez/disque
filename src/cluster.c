@@ -1077,7 +1077,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         explen += sizeof(clusterMsgDataFail);
         if (totlen != explen) return 1;
-    } else if (type == CLUSTERMSG_TYPE_ADDJOB ||
+    } else if (type == CLUSTERMSG_TYPE_REPLJOB ||
                type == CLUSTERMSG_TYPE_YOURJOBS) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
@@ -1276,7 +1276,7 @@ int clusterProcessPacket(clusterLink *link) {
             clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
                                  CLUSTER_TODO_UPDATE_STATE);
         }
-    } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
+    } else if (type == CLUSTERMSG_TYPE_REPLJOB) {
         uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
         uint32_t datasize = ntohl(hdr->data.jobs.serialized.datasize);
         job *j;
@@ -1847,7 +1847,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
                   sizeof(hdr->data.jobs.serialized.jobs_data) +
                   sdslen(serialized);
 
-        clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_ADDJOB);
+        clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_REPLJOB);
         if (noreply) hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;
         hdr->data.jobs.serialized.numjobs = htonl(1);
         hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));

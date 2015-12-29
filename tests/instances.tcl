@@ -149,6 +149,7 @@ proc parse_options {} {
             puts "--single <pattern>      Only runs tests specified by pattern."
             puts "--pause-on-error        Pause for manual inspection on error."
             puts "--fail                  Simulate a test failure."
+            puts "--valgrind              Run with valgrind."
             puts "--timeout <sec>         Max wait time for tested conditions."
             puts "--help                  Shows this help."
             exit 0

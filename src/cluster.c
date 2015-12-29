@@ -1302,16 +1302,21 @@ int clusterProcessPacket(clusterLink *link) {
             }
             j->flags |= JOB_FLAG_BCAST_QUEUED;
             j->state = JOB_STATE_ACTIVE;
-            if (registerJob(j) == C_ERR) {
+            int retval = registerJob(j);
+            if (retval == C_ERR) {
                 /* The job already exists. Just update the list of nodes
                  * that may have a copy. */
                 updateJobNodes(j);
-                freeJob(j);
             } else {
                 AOFLoadJob(j);
-                if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
-                    clusterSendGotJob(sender,j);
             }
+            /* Reply with a GOTJOB message, even if we already did in the past.
+             * The node receiving ADDJOB may try multiple times, and our
+             * GOTJOB messages may get lost. */
+            if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
+                clusterSendGotJob(sender,j);
+            /* Release the job if we already had it. */
+            if (retval == C_ERR) freeJob(j);
         }
     } else if (type == CLUSTERMSG_TYPE_YOURJOBS) {
         uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
@@ -1806,22 +1811,28 @@ void clusterSendFail(char *nodename) {
  * CLUSTER job related messages
  * -------------------------------------------------------------------------- */
 
-/* Broadcast an ADDJOB message to 'repl' nodes, and populates the list of jobs
+/* Broadcast a REPLJOB message to 'repl' nodes, and populates the list of jobs
  * that may have the job.
  *
  * If there are already nodes that received the message, additional
  * 'repl' nodes will be added to the list (if possible), and the message
- * broadcasted again to all the nodes that may already have the message
+ * broadcasted again to all the nodes that may already have the message,
  * plus the new ones.
  *
+ * However for nodes for which we already have the GOTJOB reply, we flag
+ * the message with the NOREPLY flag. If the 'noreply' argument of the function
+ * is true we also flag the message with NOREPLY regardless of the fact the
+ * node we are sending REPLJOB to already replied or not.
+ *
  * Nodes are selected from server.cluster->reachable_nodes list.
- * The function returns the number of new nodes that MAY have received
- * the message. */
+ * The function returns the number of new (additional) nodes that MAY have
+ * received the message. */
 int clusterReplicateJob(job *j, int repl, int noreply) {
     int i, added = 0;
 
     if (repl <= 0) return 0;
 
+    /* Add the specified number of nodes to the list of receivers. */
     clusterShuffleReachableNodes();
     for (i = 0; i < server.cluster->reachable_nodes_count; i++) {
         clusterNode *node = server.cluster->reachable_nodes[i];
@@ -1834,48 +1845,59 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         }
     }
 
-    /* Resend the message if we have at least one new node in the list. */
-    if (added > 0) {
-        unsigned char buf[sizeof(clusterMsg)], *payload;
-        clusterMsg *hdr = (clusterMsg*) buf;
-        uint32_t totlen;
+    /* Resend the message to all the past and new nodes. */
+    unsigned char buf[sizeof(clusterMsg)], *payload;
+    clusterMsg *hdr = (clusterMsg*) buf;
+    uint32_t totlen;
 
-        sds serialized = serializeJob(sdsempty(),j,SER_MESSAGE);
+    sds serialized = serializeJob(sdsempty(),j,SER_MESSAGE);
 
-        totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-        totlen += sizeof(clusterMsgDataJob) -
-                  sizeof(hdr->data.jobs.serialized.jobs_data) +
-                  sdslen(serialized);
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataJob) -
+              sizeof(hdr->data.jobs.serialized.jobs_data) +
+              sdslen(serialized);
 
-        clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_REPLJOB);
-        if (noreply) hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;
-        hdr->data.jobs.serialized.numjobs = htonl(1);
-        hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
-        hdr->totlen = htonl(totlen);
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_REPLJOB);
+    hdr->data.jobs.serialized.numjobs = htonl(1);
+    hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
+    hdr->totlen = htonl(totlen);
 
-        if (totlen < sizeof(buf)) {
-            payload = buf;
-        } else {
-            payload = zmalloc(totlen);
-            memcpy(payload,buf,sizeof(clusterMsg));
-            hdr = (clusterMsg*) payload;
-        }
-        memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
-        sdsfree(serialized);
-
-        /* Actual delivery of the message to the list of nodes. */
-        dictIterator *di = dictGetIterator(j->nodes_delivered);
-        dictEntry *de;
-
-        while((de = dictNext(di)) != NULL) {
-            clusterNode *node = dictGetVal(de);
-            if (node == myself) continue;
-            if (node->link) clusterSendMessage(node->link,payload,totlen);
-        }
-        dictReleaseIterator(di);
-
-        if (payload != buf) zfree(payload);
+    if (totlen < sizeof(buf)) {
+        payload = buf;
+    } else {
+        payload = zmalloc(totlen);
+        memcpy(payload,buf,sizeof(clusterMsg));
+        hdr = (clusterMsg*) payload;
     }
+    memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
+    sdsfree(serialized);
+
+    /* Actual delivery of the message to the list of nodes. */
+    dictIterator *di = dictGetIterator(j->nodes_delivered);
+    dictEntry *de;
+
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+        if (node == myself) continue;
+
+        /* We ask for reply only if 'noreply' is false and the target node
+         * did not already replied with GOTJOB. */
+        int acked = j->nodes_confirmed && dictFind(j->nodes_confirmed,node);
+        if (noreply || acked) {
+            hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;
+        } else {
+            hdr->mflags[0] &= ~CLUSTERMSG_FLAG0_NOREPLY;
+        }
+
+        /* If the target node acknowledged the message already, send it again
+         * only if there are additional nodes. We want the target node to refresh
+         * its list of receivers. */
+        if (node->link || (acked && added == 0))
+            clusterSendMessage(node->link,payload,totlen);
+    }
+    dictReleaseIterator(di);
+
+    if (payload != buf) zfree(payload);
     return added;
 }
 

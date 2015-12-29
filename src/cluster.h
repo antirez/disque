@@ -194,7 +194,7 @@ union clusterMsgData {
     } queueop;
 };
 
-#define CLUSTER_PROTO_VER 0 /* Cluster bus protocol version. */
+#define CLUSTER_PROTO_VER 1 /* Cluster bus protocol version. */
 
 typedef struct {
     char sig[4];        /* Siganture "DbuZ" (Disque Cluster message bus). */
@@ -204,7 +204,8 @@ typedef struct {
     uint16_t type;      /* Message type */
     uint16_t count;     /* Only used for some kind of messages. */
     char sender[CLUSTER_NAMELEN]; /* Name of the sender node */
-    char notused1[32];  /* 32 bytes reserved for future usage. */
+    char myip[NET_IP_STR_LEN];    /* My IP, if not all zeroed. */
+    char notused1[34];  /* 34 bytes reserved for future usage. */
     uint16_t port;      /* Sender TCP base port */
     uint16_t flags;     /* Sender node flags */
     unsigned char state; /* Cluster state from the POV of the sender */

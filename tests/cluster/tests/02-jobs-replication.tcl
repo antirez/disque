@@ -90,3 +90,24 @@ test "Replicating job expires before reaching the replication level" {
     assert_match {NOREPL*} $job_id
     restart_instance disque 1
 }
+
+test "Sync REPLJOB messages are retried against old nodes" {
+    # We kill one instance and send ADDJOB ASAP before the nodes
+    # are marked as not reachable. However we demand a replication
+    # level that cannot be reached while the node is down.
+    kill_instance disque 1
+    set repl $::instances_count
+    D 0 deferred 1
+    D 0 addjob myqueue myjob 30000 replicate $repl
+
+    # Wait some time to make sure the node sends REPLJOB to other nodes to start.
+    after 2000
+
+    # Restart the instance. If REPLJOB messages are sent again to old nodes
+    # the replication should eventually succeed.
+    restart_instance disque 1
+    D 0 deferred 0
+    set job_id [D 0 read]
+    assert_match {D-*} $job_id
+}
+

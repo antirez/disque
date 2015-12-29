@@ -1892,7 +1892,7 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         /* If the target node acknowledged the message already, send it again
          * only if there are additional nodes. We want the target node to refresh
          * its list of receivers. */
-        if (node->link || (acked && added == 0))
+        if (node->link && !(acked && added == 0))
             clusterSendMessage(node->link,payload,totlen);
     }
     dictReleaseIterator(di);

@@ -1359,7 +1359,7 @@ void addjobCommand(client *c) {
         clusterReplicateJob(job, additional_nodes, async);
 
     /* If the job is asynchronously and externally replicated at the same time,
-     * send a QUEUE message ASAP to one random node, and delete the job from
+     * send an ENQUEUE message ASAP to one random node, and delete the job from
      * this node right now. */
     if (discard_local_copy) {
         dictEntry *de = dictGetRandomKey(job->nodes_delivered);

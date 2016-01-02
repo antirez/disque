@@ -1,1 +1,1 @@
-#define DISQUE_VERSION "0.1"
+#define DISQUE_VERSION "1.0-rc1"

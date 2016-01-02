@@ -1,0 +1,30 @@
+Disque 1.0 release notes
+=======================
+
+Upgrade urgency levels:
+
+* LOW:      No need to upgrade unless there are new features you want to use.
+* MODERATE: Program an upgrade of the server, but it's not urgent.
+* HIGH:     There is a critical bug that may affect a subset of users. Upgrade!
+* CRITICAL: There is a critical bug affecting MOST USERS. Upgrade ASAP.
+
+Disque 1.0 RC1 (2 Jan 2016)
+---
+
+This is the first release candidate of Disque 1.0. 
+Disque is a distributed message broker.
+
+* [NEW] Everything is new :-) Read the README file for more info
+        about what Disque provides.
+
+Credits
+===
+
+Credits: For each release, a list of changes with the relative author is
+provided. Where not specified the implementation and design is done by
+Salvatore Sanfilippo.
+
+Commit messages may contain additional credits.
+
+Cheers,
+Salvatore

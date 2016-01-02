@@ -11,7 +11,7 @@ simple to understand properties and guarantees, but still resembling Redis
 in terms of simplicity, performances, and implementation as a C non-blocking
 networked server.
 
-Currently (2 Jan 2015) the project is in release candidate state. People are
+Currently (2 Jan 2016) the project is in release candidate state. People are
 encouraged to start evaluating it and report bugs and experiences.
 
 **WARNING: This is beta code and may not be suitable for production usage. The API is considered to be stable if not for details that may change in the next release candidates, however it's new code, so handle with care!**

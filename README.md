@@ -260,17 +260,16 @@ Disque jobs are uniquely identified by an ID like the following:
 
     D-dcb833cf-8YL1NT17e9+wsA/09NqxscQI-05a1
 
-Job IDs always start with "D-" and end with "$" and are always composed of
-exactly 42 characters.
+Job IDs are composed of exactly 40 characters and start with the prefix `D-`.
 
 We can split an ID into multiple parts:
 
     D- | dcb833cf | 8YL1NT17e9+wsA/09NqxscQI | 05a1
 
-1. "D-" is the prefix
-2. dcb833cf is the first 8 bytes of the node ID where the message was generated.
-3. 8YL1NT17e9+wsA/09NqxscQI is the 144 bit ID pseudo-random part encoded in base64.
-4. 05a1 is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
+1. `D-` is the prefix.
+2. `dcb833cf` is the first 8 bytes of the node ID where the message was generated.
+3. `8YL1NT17e9+wsA/09NqxscQI` is the 144 bit ID pseudo-random part encoded in base64.
+4. `05a1` is the Job TTL in minutes. Because of it, message IDs can be expired safely even without having the job representation.
 
 IDs are returned by ADDJOB when a job is successfully created, are part of
 the GETJOB output, and are used in order to acknowledge that a job was

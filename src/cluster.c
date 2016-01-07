@@ -321,6 +321,7 @@ int clusterLockConfig(char *filename) {
     return C_OK;
 }
 
+/* Initialize the cluster with defaults */
 void clusterInit(void) {
     int saveconf = 0;
 

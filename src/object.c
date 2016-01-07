@@ -161,16 +161,20 @@ robj *dupStringObject(robj *o) {
     }
 }
 
+/* Remove a string object. */
 void freeStringObject(robj *o) {
     if (o->encoding == OBJ_ENCODING_RAW) {
         sdsfree(o->ptr);
     }
 }
 
+/* Increment the reference counter. */
 void incrRefCount(robj *o) {
     o->refcount++;
 }
 
+/* Decrement the reference counter, if reference counter falls below 0 or
+ * the type of the object is not a string object, then it exits the system. */
 void decrRefCount(robj *o) {
     if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
     if (o->refcount == 1) {
@@ -216,6 +220,11 @@ int checkType(client *c, robj *o, int type) {
     return 0;
 }
 
+/* Verify that an object is represented with a type 'long long'. If the object
+ * type is not a string object, then exit the system. If the object is
+ * can be casted to 'long long' return 'C_OK'. Otherwise convert the string
+ * object to 'long long', if it succeeds then return 'C_OK',
+ * otherwise 'C_ERR'. */
 int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (o->encoding == OBJ_ENCODING_INT) {
@@ -226,7 +235,7 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     }
 }
 
-/* Try to encode a string object in order to save space */
+/* Try to encode a string object in order to save space. */
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
@@ -389,6 +398,7 @@ int equalStringObjects(robj *a, robj *b) {
     }
 }
 
+/* Return the length of a string object. */
 size_t stringObjectLen(robj *o) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (sdsEncodedObject(o)) {

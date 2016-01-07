@@ -9,6 +9,18 @@ test "ADDJOB, single node" {
     assert {[dict get $job state] eq "queued"}
 }
 
+test "ADDJOB, single node, job forwarded" {
+    # We want to set maxmemory so it's between 75% and 95% full
+    # Using 600K for now, this might differ between plaforms
+    D 0 CONFIG SET maxmemory [expr 600*1000]
+    set id [D 0 addjob myqueue myjob 5000 replicate 1]
+    set job [D 0 show $id]
+    assert {$id ne {}}
+    assert {[llength [dict get $job nodes-delivered]] == 1}
+    assert {[dict get $job state] eq "queued"}
+    D 0 CONFIG SET maxmemory [expr 1024*1024*1024]
+}
+
 test "ADDJOB, synchronous replication to multiple nodes" {
     set job_id [D 0 addjob myqueue myjob 5000 replicate 3]
     assert {$job_id ne {}}

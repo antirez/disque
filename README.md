@@ -783,6 +783,7 @@ API on top of Disque:
 - [disq](https://github.com/ryansb/disq) ([PyPi](https://pypi.python.org/pypi/disq))
 - [pydisque](https://github.com/ybrs/pydisque) ([PyPi](https://pypi.python.org/pypi/pydisque))
 - [django-q](https://github.com/koed00/django-q) ([PyPi](https://pypi.python.org/pypi/django-q))
+- [aiodisque](https://lab.errorist.xyz/aio/aiodisque) ([PyPi](https://pypi.python.org/pypi/aiodisque)) Python3.5 with asyncio
 
 *Ruby*
 

@@ -789,6 +789,7 @@ API on top of Disque:
 
 - [disque-rb](https://github.com/soveran/disque-rb)
 - [disque_jockey](https://github.com/DevinRiley/disque_jockey)
+- [Disc](https://github.com/pote/disc)
 
 *Rust*
 

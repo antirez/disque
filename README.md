@@ -427,7 +427,7 @@ Note that `WORKING` returns the number of seconds you (likely) postponed the
 message visiblity for other workers (the command basically returns the
 *retry* time of the job), so the worker should make sure to send the next
 `WORKING` command before this time elapses. Moreover, a worker that may want
-to use this iterface may fetch the retry value with the `SHOW` command
+to use this interface may fetch the retry value with the `SHOW` command
 when starting to process a message, or may simply send a `WORKING` command
 ASAP, like in the following example (in pseudo code):
 

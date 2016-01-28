@@ -2579,7 +2579,7 @@ int main(int argc, char **argv) {
         loadServerConfig(configfile,options);
         sdsfree(options);
     } else {
-        serverLog(LL_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
+        serverLog(LL_WARNING, "WARNING: No config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
     }
     if (server.daemonize) daemonize();
     initServer();

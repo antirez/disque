@@ -92,7 +92,7 @@ Other minor features are:
 * Ability to block queues.
 * A few statistics about queue activity.
 * Stateless iterators for queues and jobs.
-* Commands to control the visiblity of single jobs.
+* Commands to control the visibility of single jobs.
 * Easy resize of the cluster (adding nodes is trivial).
 * Graceful removal of nodes without losing job replicas.
 
@@ -424,10 +424,10 @@ and never process it. After 50% of the TTL has elapsed, the job will be delivere
 to other workers anyway.
 
 Note that `WORKING` returns the number of seconds you (likely) postponed the
-message visiblity for other workers (the command basically returns the
+message visibility for other workers (the command basically returns the
 *retry* time of the job), so the worker should make sure to send the next
 `WORKING` command before this time elapses. Moreover, a worker that may want
-to use this iterface may fetch the retry value with the `SHOW` command
+to use this interface may fetch the retry value with the `SHOW` command
 when starting to process a message, or may simply send a `WORKING` command
 ASAP, like in the following example (in pseudo code):
 
@@ -1036,7 +1036,7 @@ ON RECV cluster message `SETACK(string job-id, integer may-have)`:
 4. IF `job != NULL` and `jobs.delivered.size > may-have` THEN call `START-GC(job)`.
 5. IF `may-have == 0 AND job  != NULL`, reply with `GOTACK(1)` and call `START-GC(job)`.
 
-Steps 3 and 4 makes sure that among the reachalbe nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
+Steps 3 and 4 makes sure that among the reachable nodes that may have a message, garbage collection will be performed by the node that is aware of more nodes that may have a copy.
 
 Step 5 instead is used in order to start a GC attempt if we received a SETACK message from a node just hacking a dummy ACK (an acknowledge about a job it was not aware of).
 
@@ -1080,7 +1080,7 @@ FAQ
 Is Disque part of Redis?
 ---
 
-No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common fundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways bigger than writing Disque itself.
+No, it is a standalone project, however a big part of the Redis networking source code, nodes message bus, libraries, and the client protocol, were reused in this new project. In theory it was possible to extract the common code and release it as a framework to write distributed systems in C. However this is not a perfect solution as well, since the projects are expected to diverge more and more in the future, and to rely on a common foundation was hard. Moreover the initial effort to turn Redis into two different layers: an abstract server, networking stack and cluster bus, and the actual Redis implementation, was a huge effort, ways bigger than writing Disque itself.
 
 However while it is a separated project, conceptually Disque is related to Redis, since it tries to solve a Redis use case in a vertical, ad-hoc way.
 
@@ -1142,7 +1142,7 @@ During step `1` if there was no recent traffic of imported messages for this que
 
 When there is some traffic instead, nodes send `NEEDJOBS` messages ASAP to other nodes that were recent sources of messages. Even when no reply is received, the next `NEEDJOBS` messages will be sent more aggressively to the subset of nodes that had messages in the mast, with a delay that starts at 25 milliseconds and has a maximum value of two seconds.
 
-In order to minimize the latency, `NEEDJOBS` messages are not trottled at all when:
+In order to minimize the latency, `NEEDJOBS` messages are not throttled at all when:
 
 1. A client consumed the last message from a given queue. Source nodes are informed immediately in order to receive messages before the node asks for more.
 2. Blocked clients are served the last message available in the queue.

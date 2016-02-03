@@ -1321,12 +1321,12 @@ void addjobCommand(client *c) {
 
     /* For replicated messages where ASYNC option was not asked, block
      * the client, and wait for acks. Otherwise if no synchronous replication
-     * is used, or ASYNC option was enabled, we just queue the job and
-     * return to the client ASAP.
+     * is used or if we don't have additional copies to deliver, we just queue
+     * the job and return to the client ASAP.
      *
      * Note that for REPLICATE > 1 and ASYNC the replication process is
      * best effort. */
-    if (replicate > 1 && !async) {
+    if ((replicate > 1 || extrepl) && !async) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
         c->bpop.added_node_time = mstime();

@@ -614,6 +614,8 @@ void configSetCommand(client *c) {
       "activerehashing",server.activerehashing) {
     } config_set_bool_field(
       "tcp-keepalive",server.tcpkeepalive) {
+    } config_set_bool_field(
+      "aof-enqueue-jobs-once",server.aof_enqueue_jobs_once) {
 
     /* Numerical fields.
      * config_set_numerical_field(name,var,min,max) */

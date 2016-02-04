@@ -9,16 +9,36 @@ test "ADDJOB, single node" {
     assert {[dict get $job state] eq "queued"}
 }
 
-test "ADDJOB, single node, job forwarded" {
-    # We want to set maxmemory so it's between 75% and 95% full
-    # Using 600K for now, this might differ between plaforms
-    D 0 CONFIG SET maxmemory [expr 600*1000]
-    set id [D 0 addjob myqueue myjob 5000 replicate 1]
-    set job [D 0 show $id]
-    assert {$id ne {}}
-    assert {[llength [dict get $job nodes-delivered]] == 1}
-    assert {[dict get $job state] eq "queued"}
-    D 0 CONFIG SET maxmemory [expr 1024*1024*1024]
+foreach repl {1 2} {
+    test "ADDJOB, single node in OOM, external replication (REPL $repl)" {
+        # We want to reach used memory between 75% and 95% full.
+        # 3Mb should be enough for all platforms to start with some memory
+        # but fill it ASAP.
+        D 0 CONFIG SET maxmemory [expr 1024*1024*3]
+
+        # Add jobs until the target node no longer have a copy
+        while 1 {
+            set id [D 0 addjob myqueue myjob 5000 replicate $repl]
+            set job [D 0 show $id]
+            if {$job eq {}} break
+        }
+
+        # The job should be somewhere even if it is not into the node
+        # we added it to.
+        set job [list id $id]
+        wait_for_condition {
+            [llength [get_job_instances $job {queued active}]] >= $repl 
+        } else {
+            fail "Job was not externally replicated"
+        }
+
+        # Restore the original configuration
+        D 0 CONFIG SET maxmemory [expr 1024*1024*1024]
+    }
+
+    foreach_disque_id id {
+        catch {D $id DEBUG FLUSHALL}
+    }
 }
 
 test "ADDJOB, synchronous replication to multiple nodes" {

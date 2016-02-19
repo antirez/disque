@@ -872,7 +872,7 @@ Note that: `job` is a job object with the following fields:
 1. `job.delivered`: A list of nodes that may have this message. This list does not need to be complete, is used for best-effort algorithms.
 2. `job.confirmed`: A list of nodes that confirmed reception of ACK by replying with a GOTJOB message.
 3. `job.id`: The job 48 chars ID.
-4. `job.state`: The job state among: `wait-repl`, `active`, `queued`, `acknowledged`.
+4. `job.state`: The job state among: `wait-repl`, `active`, `queued`, `acked`.
 5. `job.replicate`: Replication factor for this job.
 5. `job.qtime`: Time at which we need to re-queue the job.
 
@@ -883,7 +883,7 @@ States are as follows:
 1. `wait-repl`: the job is waiting to be synchronously replicated.
 2. `active`: the job is active, either it reached the replication factor in the originating node, or it was created because the node received an `REPLJOB` message from another node.
 3. `queued`: the job is active and also is pending into a queue in this node.
-4. `acknowledged`: the job is no longer actived since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
+4. `acked`: the job is no longer active since a client confirmed the reception using the `ACKJOB` command or another Disque node sent a `SETACK` message for the job.
 
 Generic functions
 ---
@@ -994,7 +994,7 @@ ON RECV cluster message `QUEUED(string job-id)`:
 
 1. job = Call `LOOKUP-JOB(job-id)`.
 2. IF `job == NULL` THEN return ASAP.
-3. IF `job.state == acknowledged` THEN return ASAP.
+3. IF `job.state == acked` THEN return ASAP.
 4. IF `job.state == queued` THEN if sender node ID is greater than my node ID call DEQUEUE(job).
 5. Update `job.qtime` setting it to NOW + job.retry.
 
@@ -1010,8 +1010,8 @@ acknowledged jobs, when a job finally gets acknowledged by a client.
 
 PROCEDURE `ACK-JOB(job)`:
 
-1. If job state is already `acknowledged`, do nothing and return ASAP.
-2. Change job state to `acknowledged`, dequeue the job if queued, schedule first call to TIMER.
+1. If job state is already `acked`, do nothing and return ASAP.
+2. Change job state to `acked`, dequeue the job if queued, schedule first call to TIMER.
 
 PROCEDURE `START-GC(job)`:
 

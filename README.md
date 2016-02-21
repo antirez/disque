@@ -1139,7 +1139,7 @@ For example imagine a setup with two nodes, A and B.
 
 During step `1` if there was no recent traffic of imported messages for this queue, node A has no idea about who may have messages for the queue `myqueue`. Every other node may have, or none may have. So it starts to broadcast `NEEDJOBS` messages to the whole cluster. However we can't spam the cluster with messages, so if no reply is received after the first broadcast, the next will be sent with a larger delay, and so foth. The delay is exponential, with a maximum value of 30 seconds (this parameters will be configurable in the future, likely).
 
-When there is some traffic instead, nodes send `NEEDJOBS` messages ASAP to other nodes that were recent sources of messages. Even when no reply is received, the next `NEEDJOBS` messages will be sent more aggressively to the subset of nodes that had messages in the mast, with a delay that starts at 25 milliseconds and has a maximum value of two seconds.
+When there is some traffic instead, nodes send `NEEDJOBS` messages ASAP to other nodes that were recent sources of messages. Even when no reply is received, the next `NEEDJOBS` messages will be sent more aggressively to the subset of nodes that had messages in the past, with a delay that starts at 25 milliseconds and has a maximum value of two seconds.
 
 In order to minimize the latency, `NEEDJOBS` messages are not trottled at all when:
 

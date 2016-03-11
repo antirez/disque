@@ -69,6 +69,8 @@ void clusterSendGotJob(clusterNode *node, job *j);
 void clusterSendGotAck(clusterNode *node, char *jobid, int known);
 void clusterBroadcastQueued(job *j, unsigned char flags);
 void clusterBroadcastDelJob(job *j);
+void clusterSendGetQLen(robj *qname, dict *nodes);
+void clusterSendMyQLen(clusterNode *node, robj *qname, uint32_t qlen);
 sds representClusterNodeFlags(sds ci, uint16_t flags);
 
 /* -----------------------------------------------------------------------------
@@ -1493,6 +1495,29 @@ int clusterProcessPacket(clusterLink *link) {
         else
             receivePauseQueue(qname,count);
         decrRefCount(qname);
+    } else if (type == CLUSTERMSG_TYPE_GETQLEN) {
+        if (!sender) return 1;
+        uint32_t qnamelen = ntohl(hdr->data.queueop.about.qnamelen);
+        robj *qname = createStringObject(hdr->data.queueop.about.qname,
+                                         qnamelen);
+
+        serverLog(LL_VERBOSE,"RECEIVED GETQLEN FOR QUEUE %s",
+            (char*)qname->ptr);
+        
+        clusterSendMyQLen(sender, qname, queueNameLength(qname));
+
+    } else if (type == CLUSTERMSG_TYPE_MYQLEN) {
+        if (!sender) return 1;
+        uint32_t qnamelen = ntohl(hdr->data.queueop.about.qnamelen);
+        robj *qname = createStringObject(hdr->data.queueop.about.qname,
+                                         qnamelen);
+        uint32_t myqlen   = ntohl(hdr->data.queueop.about.aux);
+
+        serverLog(LL_VERBOSE,"RECEIVED MYQLEN FOR QUEUE %s FROM %s: %d",
+            (char*)qname->ptr, sender->name, myqlen);
+
+        myQLenForQueueName(qname, myqlen);
+
     } else {
         serverLog(LL_WARNING,"Received unknown packet type: %d", type);
     }
@@ -2090,6 +2115,55 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
     sdsfree(serialized);
     clusterSendMessage(node->link,payload,totlen);
     if (payload != buf) zfree(payload);
+}
+
+/* broadcasts a requst for the qlen to the whole cluster.
+ * Used by GLOBALQLEN. It replies with the loca queue. */
+void clusterSendGetQLen(robj *qname, dict *nodes) {
+    uint32_t totlen, qnamelen = sdslen(qname->ptr);
+    uint32_t alloclen;
+    clusterMsg *hdr;
+
+    serverLog(LL_VERBOSE, "Sending GETQLEN for %s, %d nodes",
+        (char *)qname->ptr, (int)dictSize(nodes));
+
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataQueueOp) - 8 + qnamelen;
+    alloclen = totlen;
+    if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
+    hdr = zmalloc(alloclen);
+
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_GETQLEN);
+    hdr->data.queueop.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);
+    hdr->totlen = htonl(totlen);
+    clusterBroadcastMessage(nodes,hdr,totlen);
+    zfree(hdr);
+}
+
+/* send a reply to a GETQLEN request */
+void clusterSendMyQLen(clusterNode *node, robj *qname, uint32_t qlen) {
+    uint32_t totlen, qnamelen = sdslen(qname->ptr);
+    uint32_t alloclen;
+
+    if (!node->link) return;
+
+    serverLog(LL_VERBOSE, "Sending QLEN for %s of %d items to %s",
+        (char *)qname->ptr, (int)qlen, (char *)node->name);
+
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataQueueOp) - 8 + qnamelen;
+    alloclen = totlen;
+    if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
+    unsigned char buf[alloclen];
+    clusterMsg *hdr = (clusterMsg*) buf;
+
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_MYQLEN);
+    hdr->data.queueop.about.aux = htonl(qlen);
+    hdr->data.queueop.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);
+    hdr->totlen = htonl(totlen);
+    clusterSendMessage(node->link,buf,totlen);
 }
 
 /* -----------------------------------------------------------------------------

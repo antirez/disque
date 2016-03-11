@@ -251,6 +251,7 @@ int GCQueue(queue *q, time_t max_idle_time) {
     time_t idle = server.unixtime - q->atime;
     if (idle < max_idle_time) return C_ERR;
     if (q->clients && listLength(q->clients) != 0) return C_ERR;
+    if (q->qlenclients && listLength(q->qlenclients) != 0) return C_ERR;
     if (skiplistLength(q->sl)) return C_ERR;
     if (q->flags & QUEUE_FLAG_PAUSED_ALL) return C_ERR;
     destroyQueue(q->name);
@@ -334,6 +335,50 @@ void unblockClientBlockedForJobs(client *c) {
         if (listLength(q->clients) == 0) {
             listRelease(q->clients);
             q->clients = NULL;
+            GCQueue(q,QUEUE_MAX_IDLE_TIME);
+        }
+    }
+    dictReleaseIterator(di);
+    dictEmpty(c->bpop.queues,NULL);
+}
+
+/* -------------------------- Blocking on global qlen ---------------------------- */
+
+/* Handle blocking if GLOBALQLEN didn't have fresh information 
+ *
+ * 1) We set q->qlenclients to the list of clients blocking for this queue.
+ * 2) We set client->bpop.queues as well, as a dictionary of queues a client
+ *    is blocked for. So we can resolve queues from clients.
+ * 3) When we get myqlen from all the nodes, we unblock the clients
+ *    waiting for the length. */
+void blockForQLen(client *c, queue *q, mstime_t timeout) {
+    c->bpop.timeout = timeout;
+    c->bpop.flags = 0;
+    dictAdd(c->bpop.queues, q->name, NULL);
+    incrRefCount( q->name );
+    if (q->qlenclients == NULL) q->qlenclients = listCreate();
+    listAddNodeTail(q->qlenclients, c);
+    blockClient(c, BLOCKED_GLOBAL_QLEN);
+}
+
+/* Unblock client waiting for globalqlen in queue.
+ * Never call this directly, call unblockClient() instead. */
+void unblockClientBlockedForQLen(client *c) {
+    dictEntry *de;
+    dictIterator *di;
+
+    di = dictGetIterator(c->bpop.queues);
+    while((de = dictNext(di)) != NULL) {
+        robj *qname = dictGetKey(de);
+        queue *q = lookupQueue(qname);
+        serverAssert(q != NULL);
+        
+        addReplyLongLong(c,q->globalqlen);
+
+        listDelNode(q->qlenclients,listSearchKey(q->qlenclients,c));
+        if (listLength(q->qlenclients) == 0) {
+            listRelease(q->qlenclients);
+            q->qlenclients = NULL;
             GCQueue(q,QUEUE_MAX_IDLE_TIME);
         }
     }
@@ -1228,4 +1273,67 @@ void pauseCommand(client *c) {
     reply = sdscat(reply,queueGetPausedStateString(new_flags));
     reply = sdscatlen(reply,"\r\n",2);
     addReplySds(c,reply);
+}
+
+/* GLOBALQLEN <queuename>
+ *
+ * Returns the size of the queue across the full cluster, by broadcasting
+ * a request for the queue size, and waiting for the reply
+ * 
+ * */
+#define GLOBALQLEN_MAX_AGE 1000
+#define GLOBALQLEN_CLIENT_TIMEOUT 500
+void globalqlenCommand(client *c) {
+    queue *q = lookupQueue(c->argv[1]);
+
+    /* Create the queue if it does not exist. We need the queue structure
+     * to store meta-data needed to broadcast the QLEN request and keep
+     * the replies */
+    if (!q) q = createQueue(c->argv[1]);
+    
+    mstime_t msnow = mstime();
+
+    if (q->last_globalqlen_time<(msnow-GLOBALQLEN_MAX_AGE)) {
+        q->last_globalqlen_time = msnow;
+        q->globalqlen = queueLength(q);
+        q->globalqlen_nodes = 1;
+        if (server.cluster->size > 1)
+            clusterSendGetQLen(q->name, server.cluster->nodes);
+    }
+    
+    if (q->last_globalqlen_time>(msnow-GLOBALQLEN_MAX_AGE)
+            && q->globalqlen_nodes == server.cluster->size ) {
+        addReplyLongLong(c,q->globalqlen);
+        return;
+    }
+    
+    blockForQLen(c, q, msnow + GLOBALQLEN_MAX_AGE);
+}
+
+void myQLenForQueue(queue *q, uint32_t qlen) {
+    if (!q) return;
+    
+    q->globalqlen = q->globalqlen + qlen;
+    q->globalqlen_nodes++;
+
+    if (!q->qlenclients)
+        return;
+
+    if (q->globalqlen_nodes == server.cluster->size) {
+        int numclients = listLength(q->qlenclients);
+        while(numclients--) {
+            listNode *ln = listFirst(q->qlenclients);
+            client *c = ln->value;
+            /* This will remove it from q->qlenclients.
+             * and send the qlen to the client */
+            unblockClient(c);
+        }
+    }
+}
+
+void myQLenForQueueName(robj *qname, uint32_t qlen) {
+    queue *q = lookupQueue(qname);
+    if (!q) return; /* no queue, no need to keep this */
+    
+    myQLenForQueue(q, qlen);
 }

@@ -113,6 +113,8 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_YOURJOBS 13     /* NEEDJOBS reply with jobs. */
 #define CLUSTERMSG_TYPE_WORKING 14      /* Postpone re-queueing & dequeue */
 #define CLUSTERMSG_TYPE_PAUSE 15        /* Change queue paused state. */
+#define CLUSTERMSG_TYPE_GETQLEN 16      /* request the node qlen */
+#define CLUSTERMSG_TYPE_MYQLEN 17       /* reply to node qlen request */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -161,7 +163,10 @@ typedef struct {
  * the PAUSE command to specify the queue to change the paused state. */
 typedef struct {
     uint32_t aux;       /* For NEEDJOB, how many jobs we request.
-                         * FOR PAUSE, the pause flags to set on the queue. */
+                         * FOR PAUSE, the pause flags to set on the queue.
+                         * For MYQLEN, the numer of items in the queue
+                         */
+
     uint32_t qnamelen;  /* Queue name total length. */
     char qname[8];      /* Defined as 8 bytes just for alignment. */
 } clusterMsgDataQueueOp;
@@ -241,5 +246,6 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes);
 void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count);
 void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux, unsigned char flags);
 void clusterBroadcastPause(robj *qname, uint32_t flags);
+void clusterSendGetQLen(robj *qname, dict *nodes);
 
 #endif /* __CLUSTER_H */

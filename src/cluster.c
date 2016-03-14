@@ -31,6 +31,7 @@
 #include "server.h"
 #include "cluster.h"
 #include "endianconv.h"
+#include "queue.h"
 #include "ack.h"
 
 #include <sys/types.h>

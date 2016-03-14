@@ -74,6 +74,7 @@ queue *createQueue(robj *name) {
     q->needjobs_adhoc_attempt = 0;
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
     q->clients = NULL; /* Created on demand to save memory. */
+    q->qlenclients = NULL; /* Created on demand to save memory. */
 
     q->current_import_jobs_time = server.mstime;
     q->current_import_jobs_count = 0;
@@ -1302,7 +1303,7 @@ void globalqlenCommand(client *c) {
     }
     
     if (q->last_globalqlen_time>(msnow-GLOBALQLEN_MAX_AGE)
-            && q->globalqlen_nodes == server.cluster->size ) {
+            && (int)q->globalqlen_nodes == server.cluster->size ) {
         addReplyLongLong(c,q->globalqlen);
         return;
     }
@@ -1319,7 +1320,7 @@ void myQLenForQueue(queue *q, uint32_t qlen) {
     if (!q->qlenclients)
         return;
 
-    if (q->globalqlen_nodes == server.cluster->size) {
+    if ((int)q->globalqlen_nodes == server.cluster->size) {
         int numclients = listLength(q->qlenclients);
         while(numclients--) {
             listNode *ln = listFirst(q->qlenclients);

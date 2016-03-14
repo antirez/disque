@@ -109,5 +109,6 @@ void receiveYourJobs(struct clusterNode *node, uint32_t numjobs, unsigned char *
 void receiveNeedJobs(struct clusterNode *node, robj *qname, uint32_t count);
 void queueChangePausedState(queue *q, int flag, int set);
 void receivePauseQueue(robj *qname, uint32_t flags);
+void myQLenForQueueName(robj *qname, uint32_t qlen);
 
 #endif

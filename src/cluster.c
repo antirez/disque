@@ -2118,8 +2118,8 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
     if (payload != buf) zfree(payload);
 }
 
-/* broadcasts a requst for the qlen to the whole cluster.
- * Used by GLOBALQLEN. It replies with the loca queue. */
+/* broadcasts a request for the qlen to the whole cluster.
+ * Used by GLOBALQLEN. It replies with the local queue size. */
 void clusterSendGetQLen(robj *qname, dict *nodes) {
     uint32_t totlen, qnamelen = sdslen(qname->ptr);
     uint32_t alloclen;

@@ -46,7 +46,7 @@ struct commandHelp {
     { "WORKING", "<jobid>", "Attempt to postpone next delivery of the specified job", 4, "1.0.0" },
     { "NACK", "<jobid> [<jobid> <jobid> ...]", "Negative acknowledge: increment the NACK counter for the job and ask for a next delivery ASAP", 4, "1.0.0" },
     { "QLEN", "<queue>", "Return number of queued jobs in the specified queue in the local node", 3, "1.0.0" },
-    { "GLOBALQLEN", "<queue>", "Return number of queued jobs in the specified queue across the cluster - it's cached for a minute", 3, "1.0.0" },
+    { "GLOBALQLEN", "<queue>", "Return number of queued jobs in the specified queue across the cluster - it's cached for a second", 3, "1.0.0" },
     { "QSTAT", "<queue>", "Return local node queue statistics", 3, "1.0.0" },
     { "QPEEK", "<queue> <count>", "Inspect jobs into a queue without actually fetching them", 3, "1.0.0" },
     { "ENQUEUE", "<jobid> [<jobid> <jobid> ...]", "Force local node to put the specified jobs back into the queue", 3, "1.0.0" },

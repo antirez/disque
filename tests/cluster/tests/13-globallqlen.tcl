@@ -1,6 +1,11 @@
 source "../tests/includes/init-tests.tcl"
 source "../tests/includes/job-utils.tcl"
 
+test "Globalqlen before anything else" {
+  set gqlen [D 2 globalqlen qlenqueue]
+  assert { $gqlen == 0 }
+}
+
 test "Queue jobs into random nodes" {
   for {set j 1} {$j <= 10} {incr j} {
     set target_id [randomInt $::instances_count]

@@ -75,6 +75,10 @@ queue *createQueue(robj *name) {
     q->needjobs_responders = NULL; /* Created on demand to save memory. */
     q->clients = NULL; /* Created on demand to save memory. */
     q->qlenclients = NULL; /* Created on demand to save memory. */
+    
+    q->globalqlen = 0;
+    q->last_globalqlen_time = 0;
+    q->globalqlen_nodes = 0;
 
     q->current_import_jobs_time = server.mstime;
     q->current_import_jobs_count = 0;

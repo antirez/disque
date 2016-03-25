@@ -463,7 +463,18 @@ Disque node.
 
 #### `QLEN <queue-name>`
 
-Return the length of the queue.
+Return the length of the queue in the local node.
+
+#### `GLOBALQLEN <queue-name>`
+
+Return the length of the queue across the cluster.
+
+This is calculated by asking all the nodes their qlen and adding
+all the values together. The values is cached for a second.
+
+The first client to run this command in a node/queue will be blocked
+waiting for the answer. If some node is busy and takes more than .5s
+to reply its items may not be counted.
 
 #### `QSTAT <queue-name>`
 

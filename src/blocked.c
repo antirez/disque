@@ -138,6 +138,8 @@ void unblockClient(client *c) {
         unblockClientWaitingJobRepl(c);
     } else if (c->btype == BLOCKED_GETJOB) {
         unblockClientBlockedForJobs(c);
+    } else if (c->btype == BLOCKED_GLOBAL_QLEN) {
+        unblockClientBlockedForQLen(c);
     } else {
         serverPanic("Unknown btype in unblockClient().");
     }
@@ -164,6 +166,8 @@ void replyToBlockedClientTimedOut(client *c) {
         return;
     } else if (c->btype == BLOCKED_GETJOB) {
         addReply(c,shared.nullmultibulk);
+    } else if (c->btype == BLOCKED_GLOBAL_QLEN) {
+        /* Do nothing - unblock client will send the best value we got */
     } else {
         serverPanic("Unknown btype in replyToBlockedClientTimedOut().");
     }

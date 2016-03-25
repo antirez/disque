@@ -1065,6 +1065,7 @@ void initServerConfig(void) {
     server.assert_line = 0;
     server.bug_report_start = 0;
     server.watchdog_period = 0;
+    server.queue_randomly = 0;
 }
 
 extern char **environ;

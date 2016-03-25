@@ -1141,6 +1141,7 @@ void addjobCommand(client *c) {
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
+    int queue_randomly = server.queue_randomly;
     int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
     int leaving = myselfLeaving();
     static uint64_t prev_ctime = 0;
@@ -1149,6 +1150,7 @@ void addjobCommand(client *c) {
      * if this node is leaving the cluster. In this case we don't want to create
      * new messages here. */
     if (leaving) extrepl = 1;
+
 
     /* Parse args. */
     for (j = 4; j < c->argc; j++) {
@@ -1191,11 +1193,17 @@ void addjobCommand(client *c) {
             j++;
         } else if (!strcasecmp(opt,"async")) {
             async = 1;
+        } else if (!strcasecmp(opt,"queue-randomly")) {
+            queue_randomly = 1;
         } else {
             addReply(c,shared.syntaxerr);
             return;
         }
     }
+
+    /* if we want to queue randomly, it's probably ok to
+       skip the current node altogether */
+    if (queue_randomly) extrepl = 1;
 
     /* Parse the timeout argument. */
     if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,UNIT_MILLISECONDS)

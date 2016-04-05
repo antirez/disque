@@ -912,7 +912,7 @@ int processInlineBuffer(client *c) {
 /* Helper function. Trims query buffer to make the function that processes
  * multi bulk requests idempotent. */
 static void setProtocolError(client *c, int pos) {
-    if (server.verbosity >= LL_VERBOSE) {
+    if (server.verbosity <= LL_VERBOSE) {
         sds client = catClientInfoString(sdsempty(),c);
         serverLog(LL_VERBOSE,
             "Protocol error from client: %s", client);

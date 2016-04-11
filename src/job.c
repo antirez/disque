@@ -1133,7 +1133,8 @@ int clientsCronHandleDelayedJobReplication(client *c) {
  *    selected replication level is achieved or before to returning to
  *    the caller for asynchronous jobs. */
 void addjobCommand(client *c) {
-    long long replicate = server.cluster->size > 3 ? 3 : server.cluster->size;
+    long long cluster_size = server.cluster->size;
+    long long replicate = cluster_size > 3 ? 3 : cluster_size;
     long long ttl = 3600*24;
     long long retry = -1;
     long long delay = 0;
@@ -1141,7 +1142,7 @@ void addjobCommand(client *c) {
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
-    int queue_randomly = server.queue_randomly;
+    int queue_randomly = cluster_size > 1 ? server.queue_randomly : 0;
     int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
     int leaving = myselfLeaving();
     static uint64_t prev_ctime = 0;
@@ -1194,6 +1195,10 @@ void addjobCommand(client *c) {
         } else if (!strcasecmp(opt,"async")) {
             async = 1;
         } else if (!strcasecmp(opt,"queue-randomly")) {
+            if (cluster_size == 1) {
+                addReplyError(c,"no QUEUE-RANDOMLY in single node");
+                return;
+            }
             queue_randomly = 1;
         } else {
             addReply(c,shared.syntaxerr);

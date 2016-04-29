@@ -45,6 +45,7 @@ typedef struct queue {
                         queued or when a new client fetches elements or
                         blocks for elements to arrive. */
     list *clients;   /* Clients blocked here. */
+    list *qlenclients;/* Clients waiting for globalqlen. */
 
     /* === Federation related fields === */
     mstime_t needjobs_bcast_time; /* Last NEEDJOBS cluster broadcast. */
@@ -76,6 +77,10 @@ typedef struct queue {
     uint32_t needjobs_bcast_attempt; /* Num of tries without new nodes. */
     uint32_t needjobs_adhoc_attempt; /* Num of tries without new jobs. */
     uint64_t jobs_in, jobs_out;      /* Num of jobs enqueued and dequeued. */
+    mstime_t last_globalqlen_time;   /* time of last globalqlen request. */
+    uint32_t globalqlen;             /* best guess of the globalqlen */
+    uint32_t globalqlen_nodes;       /* nodes who reported myqlen */
+
     uint32_t flags;                  /* Queue flags. QUEUE_FLAG_* macros. */
     uint32_t padding;                /* Not used. Makes alignment obvious. */
 } queue;
@@ -104,5 +109,6 @@ void receiveYourJobs(struct clusterNode *node, uint32_t numjobs, unsigned char *
 void receiveNeedJobs(struct clusterNode *node, robj *qname, uint32_t count);
 void queueChangePausedState(queue *q, int flag, int set);
 void receivePauseQueue(robj *qname, uint32_t flags);
+void myQLenForQueueName(robj *qname, uint32_t qlen);
 
 #endif

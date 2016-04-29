@@ -410,6 +410,11 @@ void loadServerConfigFromString(char *config) {
             server.client_obuf_limits[class].hard_limit_bytes = hard;
             server.client_obuf_limits[class].soft_limit_bytes = soft;
             server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
+        } else if (!strcasecmp(argv[0],"queue-randomly") && argc == 2) {
+            if ((server.queue_randomly = yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
         }

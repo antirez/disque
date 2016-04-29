@@ -137,6 +137,7 @@ struct serverCommand serverCommandTable[] = {
 
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
+    {"globalqlen",globalqlenCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
     {"qstat",qstatCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"qscan",qscanCommand,-1,"r",0,NULL,0,0,0,0,0},
@@ -1064,6 +1065,7 @@ void initServerConfig(void) {
     server.assert_line = 0;
     server.bug_report_start = 0;
     server.watchdog_period = 0;
+    server.queue_randomly = 0;
 }
 
 extern char **environ;

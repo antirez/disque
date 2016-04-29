@@ -137,6 +137,7 @@ struct serverCommand serverCommandTable[] = {
 
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
+    {"globalqlen",globalqlenCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
     {"qstat",qstatCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"qscan",qscanCommand,-1,"r",0,NULL,0,0,0,0,0},

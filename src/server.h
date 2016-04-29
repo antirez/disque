@@ -201,6 +201,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define BLOCKED_NONE 0    /* Not blocked, no CLIENT_BLOCKED flag set. */
 #define BLOCKED_JOB_REPL 1 /* Wait job synchronous replication. */
 #define BLOCKED_GETJOB 2   /* Wait for new jobs in a set of queues. */
+#define BLOCKED_GLOBAL_QLEN 3 /* Wait for all the nodes to send MYQLEN */
 
 /* Client request types */
 #define PROTO_REQ_INLINE 1
@@ -854,6 +855,7 @@ void commandCommand(client *c);
 void latencyCommand(client *c);
 void addjobCommand(client *c);
 void qlenCommand(client *c);
+void globalqlenCommand(client *c);
 void getjobCommand(client *c);
 void showCommand(client *c);
 void ackjobCommand(client *c);

@@ -2327,7 +2327,7 @@ int linuxOvercommitMemoryValue(void) {
 
 void linuxOvercommitMemoryWarning(void) {
     if (linuxOvercommitMemoryValue() == 0) {
-        serverLog(LL_WARNING,"WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
+        serverLog(LL_WARNING,"WARNING: overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
     }
 }
 #endif /* __linux__ */
@@ -2579,7 +2579,7 @@ int main(int argc, char **argv) {
         loadServerConfig(configfile,options);
         sdsfree(options);
     } else {
-        serverLog(LL_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
+        serverLog(LL_WARNING, "WARNING: No config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
     }
     if (server.daemonize) daemonize();
     initServer();

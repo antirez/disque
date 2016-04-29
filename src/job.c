@@ -534,6 +534,8 @@ void processJob(job *j) {
         logJobsDebugInfo(LL_WARNING, "~~~WARNING~~~ NOT PROCESSABLE JOB", j);
 }
 
+/* Fetch jobs from the server and process them with a 1-100ms interval.
+ * A maximum processing limit of 10M jobs/sec exists. */
 int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int period = 100; /* 100 ms default period. */
     int max = 10000; /* 10k jobs * 1000 milliseconds = 10M jobs/sec max. */

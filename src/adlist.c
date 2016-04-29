@@ -123,6 +123,18 @@ list *listAddNodeTail(list *list, void *value)
     return list;
 }
 
+/* Insert a node to the list, to a specific position, containing the 
+ * specified 'value' pointer as value. The position can be specified
+ * using an after index or the previous node. Using after you need to 
+ * specify which position it will occupy, which is after an existing 
+ * one. Using the previous node, you specify a pointer to the previous
+ * node.
+ *
+ * If after is set to 0, then the previous node is used.
+ *
+ * On error, NULL is returned and no operation is performed (i.e. the
+ * list remains unaltered).
+ * On success the 'list' pointer you pass to the function is returned. */
 list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
     listNode *node;
 

@@ -158,6 +158,7 @@ typedef struct {
 static helpEntry *helpEntries;
 static int helpEntriesLen;
 
+/* Return the version of disque. */
 static sds cliVersion(void) {
     sds version;
     version = sdscatprintf(sdsempty(), "%s", DISQUE_VERSION);
@@ -474,6 +475,7 @@ static sds cliFormatReplyRaw(redisReply *r) {
     return out;
 }
 
+/* Format a reply in CSV format. */
 static sds cliFormatReplyCSV(redisReply *r) {
     unsigned int i;
 

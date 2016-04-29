@@ -33,5 +33,5 @@ char *ascii_logo =
 "        .                               Port: %d\n"
 "        .    o    .                     PID: %ld\n"
 "                 .                                                   \n"
-"               -                              http://disque.io       \n"
+"               -                              https://github.com/antirez/disque\n"
 "                                                                     \n\n";

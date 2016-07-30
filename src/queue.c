@@ -63,6 +63,7 @@ queue *createQueue(robj *name) {
 
     queue *q = zmalloc(sizeof(queue));
     q->name = name;
+    q->flags = 0;
     incrRefCount(name);
     q->sl = skiplistCreate(skiplistCompareJobsInQueue);
     q->ctime = server.unixtime;
@@ -78,6 +79,8 @@ queue *createQueue(robj *name) {
     q->current_import_jobs_count = 0;
     q->prev_import_jobs_time = server.mstime;
     q->prev_import_jobs_count = 0;
+    q->jobs_in = 0;
+    q->jobs_out = 0;
 
     incrRefCount(name); /* Another refernce in the hash table key. */
     dictAdd(server.queues,q->name,q);
@@ -136,16 +139,17 @@ void addReplyJob(client *c, job *j, int flags) {
 /* ------------------------ Queue higher level API -------------------------- */
 
 /* Queue the job and change its state accordingly. If the job is already
- * in QUEUED state, C_ERR is returned, otherwise C_OK is returned
- * and the operation succeeds.
+ * in QUEUED state, or the job has retry set to 0 and the JOB_FLAG_DELIVERED
+ * flat set, C_ERR is returned, otherwise C_OK is returned and the operation
+ * succeeds.
  *
  * The nack argument is set to 1 if the enqueue is the result of a client
  * negative acknowledge. */
 int enqueueJob(job *job, int nack) {
-    if (job->state == JOB_STATE_QUEUED || job->qtime == 0)
-        return C_ERR;
+    if (job->state == JOB_STATE_QUEUED || job->qtime == 0) return C_ERR;
+    if (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED) return C_ERR;
 
-    serverLog(LL_VERBOSE,"QUEUED %.48s", job->id);
+    serverLog(LL_VERBOSE,"QUEUED %.*s", JOB_ID_LEN, job->id);
 
     job->state = JOB_STATE_QUEUED;
 
@@ -163,13 +167,13 @@ int enqueueJob(job *job, int nack) {
      * message, to save bandwidth. But the next times, when the job is
      * re-queued for lack of acknowledge, this is useful to (best effort)
      * avoid multiple nodes to re-queue the same job. */
-    if (job->flags & JOB_FLAG_BCAST_QUEUED) {
+    if (job->flags & JOB_FLAG_BCAST_QUEUED || nack) {
         unsigned char flags = nack ? CLUSTERMSG_FLAG0_INCR_NACKS :
                                      CLUSTERMSG_FLAG0_INCR_DELIV;
         clusterBroadcastQueued(job, flags);
         /* Other nodes will increment their NACKs / additional deliveries
          * counters when they'll receive the QUEUED message. We need to
-         * do teh same for the local copy of the job. */
+         * do the same for the local copy of the job. */
         if (nack)
             job->num_nacks++;
         else
@@ -183,7 +187,8 @@ int enqueueJob(job *job, int nack) {
     if (!q) q = createQueue(job->queue);
     serverAssert(skiplistInsert(q->sl,job) != NULL);
     q->atime = server.unixtime;
-    signalQueueAsReady(q);
+    q->jobs_in++;
+    if (!(q->flags & QUEUE_FLAG_PAUSED_OUT)) signalQueueAsReady(q);
     return C_OK;
 }
 
@@ -196,7 +201,7 @@ int dequeueJob(job *job) {
     if (!q) return C_ERR;
     serverAssert(skiplistDelete(q->sl,job));
     job->state = JOB_STATE_ACTIVE; /* Up to the caller to override this. */
-    serverLog(LL_VERBOSE,"DE-QUEUED %.48s", job->id);
+    serverLog(LL_VERBOSE,"DE-QUEUED %.*s", JOB_ID_LEN, job->id);
     return C_OK;
 }
 
@@ -213,7 +218,9 @@ job *queueFetchJob(queue *q, unsigned long *qlen) {
     if (skiplistLength(q->sl) == 0) return NULL;
     job *j = skiplistPopHead(q->sl);
     j->state = JOB_STATE_ACTIVE;
+    j->flags |= JOB_FLAG_DELIVERED;
     q->atime = server.unixtime;
+    q->jobs_out++;
     if (qlen) *qlen = skiplistLength(q->sl);
     return j;
 }
@@ -240,27 +247,31 @@ unsigned long queueNameLength(robj *qname) {
  * blocked, has no jobs inside. If the queue is removed C_OK is
  * returned, otherwise C_ERR is returned. */
 #define QUEUE_MAX_IDLE_TIME (60*5)
-int GCQueue(queue *q) {
-    time_t elapsed = server.unixtime - q->atime;
-    if (elapsed < QUEUE_MAX_IDLE_TIME) return C_ERR;
+int GCQueue(queue *q, time_t max_idle_time) {
+    time_t idle = server.unixtime - q->atime;
+    if (idle < max_idle_time) return C_ERR;
     if (q->clients && listLength(q->clients) != 0) return C_ERR;
     if (skiplistLength(q->sl)) return C_ERR;
+    if (q->flags & QUEUE_FLAG_PAUSED_ALL) return C_ERR;
     destroyQueue(q->name);
     return C_OK;
 }
 
-/* This function is called form serverCron() in order to incrementally remove
+/* This function is called from serverCron() in order to incrementally remove
  * from memory queues which are found to be idle and empty. */
-void queueCron(void) {
+int evictIdleQueues(void) {
     mstime_t start = mstime();
+    time_t max_idle_time = QUEUE_MAX_IDLE_TIME;
     long sampled = 0, evicted = 0;
 
+    if (getMemoryWarningLevel() > 0) max_idle_time /= 30;
+    if (getMemoryWarningLevel() > 1) max_idle_time = 2;
     while (dictSize(server.queues) != 0) {
         dictEntry *de = dictGetRandomKey(server.queues);
         queue *q = dictGetVal(de);
 
         sampled++;
-        if (GCQueue(q) == C_OK) evicted++;
+        if (GCQueue(q,max_idle_time) == C_OK) evicted++;
 
         /* First exit condition: we are able to expire less than 10% of
          * entries. */
@@ -270,6 +281,7 @@ void queueCron(void) {
          * we are using more than one or two milliseconds of time. */
         if (((sampled+1) % 1000) == 0 && mstime()-start > 1) break;
     }
+    return evicted;
 }
 
 /* -------------------------- Blocking on queues ---------------------------- */
@@ -322,7 +334,7 @@ void unblockClientBlockedForJobs(client *c) {
         if (listLength(q->clients) == 0) {
             listRelease(q->clients);
             q->clients = NULL;
-            GCQueue(q);
+            GCQueue(q,QUEUE_MAX_IDLE_TIME);
         }
     }
     dictReleaseIterator(di);
@@ -473,6 +485,9 @@ void needJobsForQueue(queue *q, int type) {
     mstime_t bcast_delay, adhoc_delay;
     mstime_t now = mstime();
 
+    /* Don't ask for jobs if we are leaving the cluster. */
+    if (myselfLeaving()) return;
+
     import_per_sec = getQueueImportRate(q);
 
     /* When called with NEEDJOBS_REACHED_ZERO, we have to do something only
@@ -615,6 +630,9 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
      * 2) We are actively importing jobs ourselves for this queue. */
     if (qlen == 0 || getQueueImportRate(q) > 0) return;
 
+    /* Ignore request if queue is paused in output. */
+    if (q->flags & QUEUE_FLAG_PAUSED_OUT) return;
+
     /* To avoid that a single node is able to deplete our queue easily,
      * we provide the number of jobs requested only if we have more than
      * 2 times what it requested. Otherwise we provide at max half the jobs
@@ -628,6 +646,75 @@ void receiveNeedJobs(clusterNode *node, robj *qname, uint32_t count) {
         serverAssert(jobs[j] != NULL);
     }
     clusterSendYourJobs(node,jobs,replyjobs);
+
+    /* It's possible that we sent jobs with retry=0. Remove them from
+     * the local node since to take duplicates does not make sense for
+     * jobs having the replication level of 1 by contract. */
+    for (j = 0; j < replyjobs; j++) {
+        job *job = jobs[j];
+        if (job->retry == 0) {
+            unregisterJob(job);
+            freeJob(job);
+        }
+    }
+}
+
+/* ------------------------------ Queue pausing -----------------------------
+ *
+ * There is very little here since pausing a queue is basically just changing
+ * its flags. Then what changing the PAUSE flags means, is up to the different
+ * parts of Disque implementing the behavior of queues. */
+
+/* Changes the paused state of the queue and handles serving again blocked
+ * clients if needed.
+ *
+ * 'flag' must be QUEUE_FLAG_PAUSED_IN or QUEUE_FLAG_PAUSED_OUT
+ * 'set' is true if we have to set this state or 0 if we have
+ * to clear this state. */
+void queueChangePausedState(queue *q, int flag, int set) {
+    uint32_t orig_flags = q->flags;
+
+    if (set) q->flags |= flag;
+    else     q->flags &= ~flag;
+
+    if ((orig_flags & QUEUE_FLAG_PAUSED_OUT) &&
+        !(q->flags & QUEUE_FLAG_PAUSED_OUT))
+    {
+        signalQueueAsReady(q);
+    }
+}
+
+/* Called from cluster.c when a PAUSE message is received. */
+void receivePauseQueue(robj *qname, uint32_t flags) {
+    queue *q = lookupQueue(qname);
+
+    /* If the queue does not exist, and flags are cleared, there is nothing
+     * to do. Otherwise we have to create the queue. */
+    if (!q) {
+        if (flags == 0) return;
+        q = createQueue(qname);
+    }
+
+    /* Replicate the sender pause flag in our queue. */
+    queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,
+        (flags & QUEUE_FLAG_PAUSED_IN) != 0);
+    queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,
+        (flags & QUEUE_FLAG_PAUSED_OUT) != 0);
+}
+
+/* Return the string "in", "out", "all" or "none" depending on the paused
+ * state of the specified queue flags. */
+char *queueGetPausedStateString(uint32_t qflags) {
+    qflags &= QUEUE_FLAG_PAUSED_ALL;
+    if (qflags == QUEUE_FLAG_PAUSED_ALL) {
+        return "all";
+    } else if (qflags == QUEUE_FLAG_PAUSED_IN) {
+        return "in";
+    } else if (qflags == QUEUE_FLAG_PAUSED_OUT) {
+        return "out";
+    } else {
+        return "none";
+    }
 }
 
 /* ------------------------- Queue related commands ------------------------- */
@@ -701,7 +788,8 @@ void getjobCommand(client *c) {
             unsigned long qlen;
             queue *q = lookupQueue(queues[j]);
             job *job = NULL;
-            if (q) job = queueNameFetchJob(queues[j],&qlen);
+            if (q && !(q->flags & QUEUE_FLAG_PAUSED_OUT))
+                job = queueFetchJob(q,&qlen);
 
             if (!job) {
                 if (!q)
@@ -732,6 +820,14 @@ void getjobCommand(client *c) {
     /* If NOHANG was given and there are no jobs, return NULL. */
     if (nohang) {
         addReply(c,shared.nullmultibulk);
+        return;
+    }
+
+    /* If this node is leaving the cluster, we can't block waiting for
+     * jobs: this would trigger the federation with other nodes in order
+     * to import jobs here. Just return a -LEAVING error. */
+    if (myselfLeaving()) {
+        addReply(c,shared.leavingerr);
         return;
     }
 
@@ -851,7 +947,7 @@ void qpeekCommand(client *c) {
     setDeferredMultiBulkLength(c,deflen,returned);
 }
 
-/* QSCAN [<cursor>] [COUNT <count>] [BLOCKING] [MINLEN <len>] [MAXLEN <len>]
+/* QSCAN [<cursor>] [COUNT <count>] [BUSYLOOP] [MINLEN <len>] [MAXLEN <len>]
  * [IMPORTRATE <rate>]
  *
  * The command provides an interface to iterate all the existing queues in
@@ -1024,4 +1120,112 @@ void workingCommand(client *c) {
                          randomTimeError(DISQUE_TIME_ERR));
     clusterBroadcastWorking(job);
     addReplyLongLong(c,job->retry);
+}
+
+/* QSTAT queue-name
+ *
+ * Returns statistics and information about the specified queue. */
+void qstatCommand(client *c) {
+    queue *q = lookupQueue(c->argv[1]);
+    if (!q) {
+        addReply(c,shared.nullmultibulk);
+        return;
+    }
+    time_t idle = time(NULL) - q->atime;
+    time_t age = time(NULL) - q->ctime;
+    if (idle < 0) idle = 0;
+    if (age < 0) age = 0;
+
+    addReplyMultiBulkLen(c,20);
+
+    addReplyBulkCString(c,"name");
+    addReplyBulk(c,q->name);
+
+    addReplyBulkCString(c,"len");
+    addReplyLongLong(c,queueLength(q));
+
+    addReplyBulkCString(c,"age");
+    addReplyLongLong(c,age);
+
+    addReplyBulkCString(c,"idle");
+    addReplyLongLong(c,idle);
+
+    addReplyBulkCString(c,"blocked");
+    addReplyLongLong(c,(q->clients == NULL) ? 0 : listLength(q->clients));
+
+    addReplyBulkCString(c,"import-from");
+    if (q->needjobs_responders) {
+        addReplyMultiBulkLen(c,dictSize(q->needjobs_responders));
+        dictForeach(q->needjobs_responders,de)
+            clusterNode *n = dictGetKey(de);
+            addReplyBulkCBuffer(c,n->name,CLUSTER_NAMELEN);
+        dictEndForeach
+    } else {
+        addReply(c,shared.emptymultibulk);
+    }
+
+    addReplyBulkCString(c,"import-rate");
+    addReplyLongLong(c,getQueueImportRate(q));
+
+    addReplyBulkCString(c,"jobs-in");
+    addReplyLongLong(c,q->jobs_in);
+
+    addReplyBulkCString(c,"jobs-out");
+    addReplyLongLong(c,q->jobs_out);
+
+    addReplyBulkCString(c,"pause");
+    addReplyBulkCString(c,queueGetPausedStateString(q->flags));
+}
+
+/* PAUSE queue option1 [option2 ... optionN]
+ *
+ * Change queue paused state. */
+void pauseCommand(client *c) {
+    int j, bcast = 0, update = 0;
+    uint32_t old_flags = 0, new_flags = 0;
+
+    queue *q = lookupQueue(c->argv[1]);
+    if (q) old_flags = q->flags;
+
+    for (j = 2; j < c->argc; j++) {
+        if (!strcasecmp(c->argv[j]->ptr,"none")) {
+            new_flags = 0;
+            update = 1;
+        } else if (!strcasecmp(c->argv[j]->ptr,"in")) {
+            new_flags |= QUEUE_FLAG_PAUSED_IN; update = 1;
+        } else if (!strcasecmp(c->argv[j]->ptr,"out")) {
+            new_flags |= QUEUE_FLAG_PAUSED_OUT; update = 1;
+        } else if (!strcasecmp(c->argv[j]->ptr,"all")) {
+            new_flags |= QUEUE_FLAG_PAUSED_ALL; update = 1;
+        } else if (!strcasecmp(c->argv[j]->ptr,"state")) {
+            /* Nothing to do, we reply with the state regardless. */
+        } else if (!strcasecmp(c->argv[j]->ptr,"bcast")) {
+            bcast = 1;
+        } else {
+            addReply(c,shared.syntaxerr);
+            return;
+        }
+    }
+
+    /* Update the queue pause state, if needed. */
+    if (!q && update && old_flags != new_flags) q = createQueue(c->argv[1]);
+    if (q && update) {
+        queueChangePausedState(q,QUEUE_FLAG_PAUSED_IN,
+            (new_flags & QUEUE_FLAG_PAUSED_IN) != 0);
+        queueChangePausedState(q,QUEUE_FLAG_PAUSED_OUT,
+            (new_flags & QUEUE_FLAG_PAUSED_OUT) != 0);
+    }
+
+    /* Get the queue flags after the operation. */
+    new_flags = q ? q->flags : 0;
+    new_flags &= QUEUE_FLAG_PAUSED_ALL;
+
+    /* Broadcast a PAUSE command if the user specified BCAST. */
+    if (bcast) clusterBroadcastPause(c->argv[1],new_flags);
+
+    /* Always reply with the current queue state. */
+    sds reply = sdsnewlen("+",1);
+    reply = sdscat(reply,queueGetPausedStateString(new_flags));
+    reply = sdscatlen(reply,"\r\n",2);
+    addReplySds(c,reply);
 }

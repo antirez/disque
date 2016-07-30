@@ -39,3 +39,27 @@ test "Jobs mass expire test" {
         fail "Not every job expired after some time"
     }
 }
+
+test "Queues are expired when system is OOM" {
+    D 0 debug flushall
+
+    # Create empty queues.
+    for {set j 0} {$j < 1000} {incr j} {
+        set qname [randomQueue]
+        D 0 addjob $qname myjob 5000 replicate 1 retry 0
+        D 0 GETJOB FROM $qname
+    }
+    assert {[DI 0 registered_queues] == 1000}
+
+    # Create an OOM condition.
+    D 0 CONFIG SET maxmemory 1
+
+    wait_for_condition {
+        [DI 0 registered_queues] == 0
+    } else {
+        fail "Not all queues are expired. Still in memory: [DI 0 registered_queues]"
+    }
+
+    # Fix the configuration back to default.
+    D 0 CONFIG SET maxmemory [expr 1024*1024*1024]
+}

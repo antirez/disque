@@ -251,9 +251,11 @@ void loadServerConfigFromString(char *config) {
                 err = "Invalid max clients limit"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"maxmemory") && argc == 2) {
-            server.maxmemory = memtoll(argv[1],NULL);
-            if (server.maxmemory <= 0) {
-                err = "You need to specify a memory limit greater than zero";
+            /* To check for negative values, we need a long long first */
+            long long maxmemory = memtoll(argv[1],NULL);
+            server.maxmemory = maxmemory;
+            if (maxmemory <= 0) {
+                err = "You need to specify a memory limit greater than zero"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"maxmemory-policy") && argc == 2) {
             server.maxmemory_policy =
@@ -612,6 +614,8 @@ void configSetCommand(client *c) {
       "activerehashing",server.activerehashing) {
     } config_set_bool_field(
       "tcp-keepalive",server.tcpkeepalive) {
+    } config_set_bool_field(
+      "aof-enqueue-jobs-once",server.aof_enqueue_jobs_once) {
 
     /* Numerical fields.
      * config_set_numerical_field(name,var,min,max) */
@@ -651,7 +655,7 @@ void configSetCommand(client *c) {
     } config_set_memory_field("maxmemory",server.maxmemory) {
         if (server.maxmemory) {
             if (server.maxmemory < zmalloc_used_memory()) {
-                serverLog(LL_WARNING,"WARNING: the new maxmemory value set via CONFIG SET is smaller than the current memory usage. This will result in keys eviction and/or inability to accept new write commands depending on the maxmemory-policy.");
+                serverLog(LL_WARNING,"WARNING: the new maxmemory value set via CONFIG SET is smaller than the current memory usage. This will result in jobs eviction and/or inability to accept new jobs depending on the maxmemory-policy.");
             }
             freeMemoryIfNeeded();
         }

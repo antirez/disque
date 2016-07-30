@@ -149,6 +149,7 @@ proc parse_options {} {
             puts "--single <pattern>      Only runs tests specified by pattern."
             puts "--pause-on-error        Pause for manual inspection on error."
             puts "--fail                  Simulate a test failure."
+            puts "--valgrind              Run with valgrind."
             puts "--timeout <sec>         Max wait time for tested conditions."
             puts "--help                  Shows this help."
             exit 0
@@ -250,6 +251,38 @@ proc test {descr code} {
     }
 }
 
+# Check memory leaks when running on OSX using the "leaks" utility.
+proc check_leaks instance_types {
+    if {[string match {*Darwin*} [exec uname -a]]} {
+        puts -nonewline "Testing for memory leaks..."; flush stdout
+        foreach type $instance_types {
+            foreach_instance_id [set ::${type}_instances] id {
+                if {[instance_is_killed $type $id]} continue
+                set pid [get_instance_attrib $type $id pid]
+                set output {0 leaks}
+                catch {exec leaks $pid} output
+                if {[string match {*process does not exist*} $output] ||
+                    [string match {*cannot examine*} $output]} {
+                    # In a few tests we kill the server process.
+                    set output "0 leaks"
+                } else {
+                    puts -nonewline "$type/$pid "
+                    flush stdout
+                }
+                if {![string match {*0 leaks*} $output]} {
+                    puts [colorstr red "=== MEMORY LEAK DETECTED ==="]
+                    puts "Instance type $type, ID $id:"
+                    puts $output
+                    puts "==="
+                    incr ::failed
+                }
+            }
+        }
+        puts ""
+    }
+}
+
+# Execute all the units inside the 'tests' directory.
 proc run_tests {} {
     set tests [lsort [glob ../tests/*]]
     foreach test $tests {
@@ -259,6 +292,7 @@ proc run_tests {} {
         if {[file isdirectory $test]} continue
         puts [colorstr yellow "Testing unit: [lindex [file split $test] end]"]
         source $test
+        check_leaks {disque}
     }
 }
 

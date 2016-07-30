@@ -27,8 +27,8 @@ test "Cluster nodes are reachable" {
 
 test "Cluster nodes hard reset" {
     foreach_disque_id id {
-        catch {D $id flushall} ; # May fail for readonly slaves.
         D $id cluster reset hard
+        D $id cluster leaving no
         D $id config set cluster-node-timeout 3000
         D $id config rewrite
     }

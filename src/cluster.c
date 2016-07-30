@@ -173,6 +173,8 @@ int clusterLoadConfig(char *filename) {
                 n->flags |= CLUSTER_NODE_HANDSHAKE;
             } else if (!strcasecmp(s,"noaddr")) {
                 n->flags |= CLUSTER_NODE_NOADDR;
+            } else if (!strcasecmp(s,"leaving")) {
+                n->flags |= CLUSTER_NODE_LEAVING;
             } else if (!strcasecmp(s,"noflags")) {
                 /* nothing to do */
             } else {
@@ -1075,7 +1077,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         explen += sizeof(clusterMsgDataFail);
         if (totlen != explen) return 1;
-    } else if (type == CLUSTERMSG_TYPE_ADDJOB ||
+    } else if (type == CLUSTERMSG_TYPE_REPLJOB ||
                type == CLUSTERMSG_TYPE_YOURJOBS) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
@@ -1096,11 +1098,13 @@ int clusterProcessPacket(clusterLink *link) {
 
         explen += sizeof(clusterMsgDataJobID);
         if (totlen != explen) return 1;
-    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
+    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS ||
+               type == CLUSTERMSG_TYPE_PAUSE)
+    {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-        explen += sizeof(clusterMsgDataNeedJobs) - 8;
+        explen += sizeof(clusterMsgDataQueueOp) - 8;
         if (totlen < explen) return 1;
-        explen += ntohl(hdr->data.jobsreq.about.qnamelen);
+        explen += ntohl(hdr->data.queueop.about.qnamelen);
         if (totlen != explen) return 1;
     }
 
@@ -1238,6 +1242,21 @@ int clusterProcessPacket(clusterLink *link) {
             }
         }
 
+        /* Copy certain flags from what the node publishes. */
+        if (sender) {
+            int old_flags = sender->flags;
+            int reported_flags = ntohs(hdr->flags);
+            int flags_to_copy = CLUSTER_NODE_LEAVING;
+            sender->flags &= ~flags_to_copy;
+            sender->flags |= (reported_flags & flags_to_copy);
+
+            /* Currently we just save the config without FSYNC nor
+             * update of the cluster state, since the only flag we update
+             * here is LEAVING which is non critical to persist. */
+            if (sender->flags != old_flags)
+                clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
+        }
+
         /* Get info from the gossip section */
         if (sender) clusterProcessGossipSection(hdr,link);
     } else if (type == CLUSTERMSG_TYPE_FAIL) {
@@ -1257,7 +1276,7 @@ int clusterProcessPacket(clusterLink *link) {
             clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
                                  CLUSTER_TODO_UPDATE_STATE);
         }
-    } else if (type == CLUSTERMSG_TYPE_ADDJOB) {
+    } else if (type == CLUSTERMSG_TYPE_REPLJOB) {
         uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
         uint32_t datasize = ntohl(hdr->data.jobs.serialized.datasize);
         job *j;
@@ -1265,8 +1284,9 @@ int clusterProcessPacket(clusterLink *link) {
         /* Only replicate jobs by known nodes. */
         if (!sender || numjobs != 1) return 1;
 
-        /* Don't replicate jobs if we got already memory issues. */
-        if (getMemoryWarningLevel() > 0) return 1;
+        /* Don't replicate jobs if we got already memory issues or if we
+         * are leaving the cluster. */
+        if (getMemoryWarningLevel() > 0 || myselfLeaving()) return 1;
 
         j = deserializeJob(hdr->data.jobs.serialized.jobs_data,datasize,NULL,SER_MESSAGE);
         if (j == NULL) {
@@ -1274,18 +1294,29 @@ int clusterProcessPacket(clusterLink *link) {
                 "Received corrupted job description from node %.40s",
                 hdr->sender);
         } else {
+            /* Don't replicate jobs about queues paused in input. */
+            queue *q = lookupQueue(j->queue);
+            if (q && q->flags & QUEUE_FLAG_PAUSED_IN) {
+                freeJob(j);
+                return 1;
+            }
             j->flags |= JOB_FLAG_BCAST_QUEUED;
             j->state = JOB_STATE_ACTIVE;
-            if (registerJob(j) == C_ERR) {
+            int retval = registerJob(j);
+            if (retval == C_ERR) {
                 /* The job already exists. Just update the list of nodes
                  * that may have a copy. */
                 updateJobNodes(j);
-                freeJob(j);
             } else {
                 AOFLoadJob(j);
-                if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
-                    clusterSendGotJob(sender,j);
             }
+            /* Reply with a GOTJOB message, even if we already did in the past.
+             * The node receiving ADDJOB may try multiple times, and our
+             * GOTJOB messages may get lost. */
+            if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
+                clusterSendGotJob(sender,j);
+            /* Release the job if we already had it. */
+            if (retval == C_ERR) freeJob(j);
         }
     } else if (type == CLUSTERMSG_TYPE_YOURJOBS) {
         uint32_t numjobs = ntohl(hdr->data.jobs.serialized.numjobs);
@@ -1306,9 +1337,9 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         uint32_t mayhave = ntohl(hdr->data.jobid.job.aux);
 
-        serverLog(LL_VERBOSE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.48s",
+        serverLog(LL_VERBOSE,"RECEIVED SETACK(%d) FROM %.40s FOR JOB %.*s",
             (int) mayhave,
-            sender->name, hdr->data.jobid.job.id);
+            sender->name, JOB_ID_LEN, hdr->data.jobid.job.id);
 
         job *j = lookupJob(hdr->data.jobid.job.id);
 
@@ -1360,7 +1391,7 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j) {
-            serverLog(LL_VERBOSE,"RECEIVED DELJOB FOR JOB %.48s", j->id);
+            serverLog(LL_VERBOSE,"RECEIVED DELJOB FOR JOB %.*s",JOB_ID_LEN,j->id);
             unregisterJob(j);
             freeJob(j);
         }
@@ -1370,15 +1401,20 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state < JOB_STATE_QUEUED) {
-            /* We received an ENQUEUE message: consider this node as the
-             * first to queue the job, so no need to broadcast a QUEUED
-             * message the first time we queue it. */
-            j->flags &= ~JOB_FLAG_BCAST_QUEUED;
-            serverLog(LL_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.48s", j->id);
-            if (delay == 0) {
-                enqueueJob(j,0);
-            } else {
-                updateJobRequeueTime(j,server.mstime+delay*1000);
+            /* Discard this message if the queue is paused in input. */
+            queue *q = lookupQueue(j->queue);
+            if (q == NULL || !(q->flags & QUEUE_FLAG_PAUSED_IN)) {
+                /* We received an ENQUEUE message: consider this node as the
+                 * first to queue the job, so no need to broadcast a QUEUED
+                 * message the first time we queue it. */
+                j->flags &= ~JOB_FLAG_BCAST_QUEUED;
+                serverLog(LL_VERBOSE,"RECEIVED ENQUEUE FOR JOB %.*s",
+                          JOB_ID_LEN,j->id);
+                if (delay == 0) {
+                    enqueueJob(j,0);
+                } else {
+                    updateJobRequeueTime(j,server.mstime+delay*1000);
+                }
             }
         }
     } else if (type == CLUSTERMSG_TYPE_QUEUED ||
@@ -1387,18 +1423,21 @@ int clusterProcessPacket(clusterLink *link) {
 
         job *j = lookupJob(hdr->data.jobid.job.id);
         if (j && j->state <= JOB_STATE_QUEUED) {
-            serverLog(LL_VERBOSE,"UPDATING QTIME FOR JOB %.48s", j->id);
+            serverLog(LL_VERBOSE,"UPDATING QTIME FOR JOB %.*s",JOB_ID_LEN,j->id);
             /* Move the time we'll re-queue this job in the future. Moreover
-             * if the sender has a Node ID greate than our node ID, and we
+             * if the sender has a Node ID greater than our node ID, and we
              * have the message queued as well, dequeue it, to avoid an
              * useless multiple delivery.
+             *
+             * The message is always dequeued in case the message is of
+             * type WORKING, since this is the explicit semantics of WORKING.
              *
              * If the message is WORKING always dequeue regardless of the
              * sender name, since there is a client claiming to work on the
              * message. */
             if (j->state == JOB_STATE_QUEUED &&
                 (type == CLUSTERMSG_TYPE_WORKING ||
-                 memcmp(sender->name,myself->name,CLUSTER_NAMELEN) > 0))
+                 compareNodeIDsByJob(sender,myself,j) > 0))
             {
                 dequeueJob(j);
             }
@@ -1438,15 +1477,21 @@ int clusterProcessPacket(clusterLink *link) {
                 clusterBroadcastQueued(j,CLUSTERMSG_NOFLAGS);
             else if (j->state == JOB_STATE_ACKED) clusterSendSetAck(sender,j);
         }
-    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS) {
+    } else if (type == CLUSTERMSG_TYPE_NEEDJOBS ||
+               type == CLUSTERMSG_TYPE_PAUSE)
+    {
         if (!sender) return 1;
-        uint32_t qnamelen = ntohl(hdr->data.jobsreq.about.qnamelen);
-        uint32_t count = ntohl(hdr->data.jobsreq.about.count);
-        robj *qname = createStringObject(hdr->data.jobsreq.about.qname,
+        uint32_t qnamelen = ntohl(hdr->data.queueop.about.qnamelen);
+        uint32_t count = ntohl(hdr->data.queueop.about.aux);
+        robj *qname = createStringObject(hdr->data.queueop.about.qname,
                                          qnamelen);
-        serverLog(LL_VERBOSE,"RECEIVED NEEDJOBS FOR QUEUE %s (%d)",
+        serverLog(LL_VERBOSE,"RECEIVED %s FOR QUEUE %s (%d)",
+            (type == CLUSTERMSG_TYPE_NEEDJOBS) ? "NEEDJOBS" : "PAUSE",
             (char*)qname->ptr,count);
-        receiveNeedJobs(sender,qname,count);
+        if (type == CLUSTERMSG_TYPE_NEEDJOBS)
+            receiveNeedJobs(sender,qname,count);
+        else
+            receivePauseQueue(qname,count);
         decrRefCount(qname);
     } else {
         serverLog(LL_WARNING,"Received unknown packet type: %d", type);
@@ -1766,22 +1811,28 @@ void clusterSendFail(char *nodename) {
  * CLUSTER job related messages
  * -------------------------------------------------------------------------- */
 
-/* Broadcast an ADDJOB message to 'repl' nodes, and populates the list of jobs
+/* Broadcast a REPLJOB message to 'repl' nodes, and populates the list of jobs
  * that may have the job.
  *
  * If there are already nodes that received the message, additional
  * 'repl' nodes will be added to the list (if possible), and the message
- * broadcasted again to all the nodes that may already have the message
+ * broadcasted again to all the nodes that may already have the message,
  * plus the new ones.
  *
+ * However for nodes for which we already have the GOTJOB reply, we flag
+ * the message with the NOREPLY flag. If the 'noreply' argument of the function
+ * is true we also flag the message with NOREPLY regardless of the fact the
+ * node we are sending REPLJOB to already replied or not.
+ *
  * Nodes are selected from server.cluster->reachable_nodes list.
- * The function returns the number of new nodes that MAY have received
- * the message. */
+ * The function returns the number of new (additional) nodes that MAY have
+ * received the message. */
 int clusterReplicateJob(job *j, int repl, int noreply) {
     int i, added = 0;
 
     if (repl <= 0) return 0;
 
+    /* Add the specified number of nodes to the list of receivers. */
     clusterShuffleReachableNodes();
     for (i = 0; i < server.cluster->reachable_nodes_count; i++) {
         clusterNode *node = server.cluster->reachable_nodes[i];
@@ -1794,48 +1845,59 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         }
     }
 
-    /* Resend the message if we have at least one new node in the list. */
-    if (added > 0) {
-        unsigned char buf[sizeof(clusterMsg)], *payload;
-        clusterMsg *hdr = (clusterMsg*) buf;
-        uint32_t totlen;
+    /* Resend the message to all the past and new nodes. */
+    unsigned char buf[sizeof(clusterMsg)], *payload;
+    clusterMsg *hdr = (clusterMsg*) buf;
+    uint32_t totlen;
 
-        sds serialized = serializeJob(sdsempty(),j,SER_MESSAGE);
+    sds serialized = serializeJob(sdsempty(),j,SER_MESSAGE);
 
-        totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-        totlen += sizeof(clusterMsgDataJob) -
-                  sizeof(hdr->data.jobs.serialized.jobs_data) +
-                  sdslen(serialized);
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataJob) -
+              sizeof(hdr->data.jobs.serialized.jobs_data) +
+              sdslen(serialized);
 
-        clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_ADDJOB);
-        if (noreply) hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;
-        hdr->data.jobs.serialized.numjobs = htonl(1);
-        hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
-        hdr->totlen = htonl(totlen);
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_REPLJOB);
+    hdr->data.jobs.serialized.numjobs = htonl(1);
+    hdr->data.jobs.serialized.datasize = htonl(sdslen(serialized));
+    hdr->totlen = htonl(totlen);
 
-        if (totlen < sizeof(buf)) {
-            payload = buf;
-        } else {
-            payload = zmalloc(totlen);
-            memcpy(payload,buf,sizeof(clusterMsg));
-            hdr = (clusterMsg*) payload;
-        }
-        memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
-        sdsfree(serialized);
-
-        /* Actual delivery of the message to the list of nodes. */
-        dictIterator *di = dictGetIterator(j->nodes_delivered);
-        dictEntry *de;
-
-        while((de = dictNext(di)) != NULL) {
-            clusterNode *node = dictGetVal(de);
-            if (node == myself) continue;
-            if (node->link) clusterSendMessage(node->link,payload,totlen);
-        }
-        dictReleaseIterator(di);
-
-        if (payload != buf) zfree(payload);
+    if (totlen < sizeof(buf)) {
+        payload = buf;
+    } else {
+        payload = zmalloc(totlen);
+        memcpy(payload,buf,sizeof(clusterMsg));
+        hdr = (clusterMsg*) payload;
     }
+    memcpy(hdr->data.jobs.serialized.jobs_data,serialized,sdslen(serialized));
+    sdsfree(serialized);
+
+    /* Actual delivery of the message to the list of nodes. */
+    dictIterator *di = dictGetIterator(j->nodes_delivered);
+    dictEntry *de;
+
+    while((de = dictNext(di)) != NULL) {
+        clusterNode *node = dictGetVal(de);
+        if (node == myself) continue;
+
+        /* We ask for reply only if 'noreply' is false and the target node
+         * did not already replied with GOTJOB. */
+        int acked = j->nodes_confirmed && dictFind(j->nodes_confirmed,node);
+        if (noreply || acked) {
+            hdr->mflags[0] |= CLUSTERMSG_FLAG0_NOREPLY;
+        } else {
+            hdr->mflags[0] &= ~CLUSTERMSG_FLAG0_NOREPLY;
+        }
+
+        /* If the target node acknowledged the message already, send it again
+         * only if there are additional nodes. We want the target node to refresh
+         * its list of receivers. */
+        if (node->link && !(acked && added == 0))
+            clusterSendMessage(node->link,payload,totlen);
+    }
+    dictReleaseIterator(di);
+
+    if (payload != buf) zfree(payload);
     return added;
 }
 
@@ -1899,21 +1961,21 @@ void clusterSendEnqueue(clusterNode *node, job *j, uint32_t delay) {
  * This message is sent to all the nodes we believe may have a copy
  * of the message and are reachable. */
 void clusterBroadcastQueued(job *j, unsigned char flags) {
-    serverLog(LL_VERBOSE,"BCAST QUEUED: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST QUEUED: %.*s",JOB_ID_LEN,j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_QUEUED,0,flags);
 }
 
 /* WORKING is like QUEUED, but will always force the receiver to dequeue. */
 void clusterBroadcastWorking(job *j) {
-    serverLog(LL_VERBOSE,"BCAST WORKING: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST WORKING: %.*s",JOB_ID_LEN,j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_WORKING,0,CLUSTERMSG_NOFLAGS);
 }
 
 /* Send a DELJOB message to all the nodes that may have a copy. */
 void clusterBroadcastDelJob(job *j) {
-    serverLog(LL_VERBOSE,"BCAST DELJOB: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST DELJOB: %.*s",JOB_ID_LEN,j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_DELJOB,0,CLUSTERMSG_NOFLAGS);
 }
@@ -1922,7 +1984,7 @@ void clusterBroadcastDelJob(job *j) {
  * already queued, to prevent us from queueing it in the next few
  * milliseconds. */
 void clusterSendWillQueue(job *j) {
-    serverLog(LL_VERBOSE,"BCAST WILLQUEUE: %.48s",j->id);
+    serverLog(LL_VERBOSE,"BCAST WILLQUEUE: %.*s",JOB_ID_LEN,j->id);
     clusterBroadcastJobIDMessage(j->nodes_delivered,j->id,
                                  CLUSTERMSG_TYPE_WILLQUEUE,0,CLUSTERMSG_NOFLAGS);
 }
@@ -1948,18 +2010,48 @@ void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes) {
         (char*)qname->ptr, (int)numjobs, (int)dictSize(nodes));
 
     totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
-    totlen += sizeof(clusterMsgDataNeedJobs) - 8 + qnamelen;
+    totlen += sizeof(clusterMsgDataQueueOp) - 8 + qnamelen;
     alloclen = totlen;
     if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
     hdr = zmalloc(alloclen);
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_NEEDJOBS);
-    hdr->data.jobsreq.about.count = htonl(numjobs);
-    hdr->data.jobsreq.about.qnamelen = htonl(qnamelen);
-    memcpy(hdr->data.jobsreq.about.qname, qname->ptr, qnamelen);
+    hdr->data.queueop.about.aux = htonl(numjobs);
+    hdr->data.queueop.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);
     hdr->totlen = htonl(totlen);
     clusterBroadcastMessage(nodes,hdr,totlen);
     zfree(hdr);
+}
+
+/* Send a PAUSE message to the specified set of nodes. */
+void clusterSendPause(robj *qname, uint32_t flags, dict *nodes) {
+    uint32_t totlen, qnamelen = sdslen(qname->ptr);
+    uint32_t alloclen;
+    clusterMsg *hdr;
+
+    serverLog(LL_VERBOSE,"Sending PAUSE for %s flags=%d, %d nodes",
+        (char*)qname->ptr, (int)flags, (int)dictSize(nodes));
+
+    totlen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
+    totlen += sizeof(clusterMsgDataQueueOp) - 8 + qnamelen;
+    alloclen = totlen;
+    if (alloclen < (int)sizeof(clusterMsg)) alloclen = sizeof(clusterMsg);
+    hdr = zmalloc(alloclen);
+
+    clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_PAUSE);
+    hdr->data.queueop.about.aux = htonl(flags);
+    hdr->data.queueop.about.qnamelen = htonl(qnamelen);
+    memcpy(hdr->data.queueop.about.qname, qname->ptr, qnamelen);
+    hdr->totlen = htonl(totlen);
+    clusterBroadcastMessage(nodes,hdr,totlen);
+    zfree(hdr);
+}
+
+/* Same as clusterSendPause() but broadcasts the message to the
+ * whole cluster. */
+void clusterBroadcastPause(robj *qname, uint32_t flags) {
+    clusterSendPause(qname,flags,server.cluster->nodes);
 }
 
 /* Send a YOURJOBS message to the specified node, with a serialized copy of
@@ -2267,7 +2359,8 @@ static struct disqueNodeFlags disqueNodeFlagsTable[] = {
     {CLUSTER_NODE_PFAIL,     "fail?,"},
     {CLUSTER_NODE_FAIL,      "fail,"},
     {CLUSTER_NODE_HANDSHAKE, "handshake,"},
-    {CLUSTER_NODE_NOADDR,    "noaddr,"}
+    {CLUSTER_NODE_NOADDR,    "noaddr,"},
+    {CLUSTER_NODE_LEAVING,   "leaving,"}
 };
 
 /* Concatenate the comma separated list of node flags to the given SDS
@@ -2367,6 +2460,7 @@ void clusterUpdateReachableNodes(void) {
 
         if (node->flags & (CLUSTER_NODE_MYSELF|
                            CLUSTER_NODE_HANDSHAKE|
+                           CLUSTER_NODE_LEAVING|
                            CLUSTER_NODE_PFAIL|
                            CLUSTER_NODE_FAIL)) continue;
         server.cluster->reachable_nodes[server.cluster->reachable_nodes_count++]
@@ -2469,6 +2563,7 @@ void clusterCommand(client *c) {
         }
         clusterBlacklistAddNode(n);
         clusterDelNode(n);
+        clusterUpdateReachableNodes();
         clusterDoBeforeSleep(CLUSTER_TODO_UPDATE_STATE|
                              CLUSTER_TODO_SAVE_CONFIG);
         addReply(c,shared.ok);
@@ -2492,6 +2587,30 @@ void clusterCommand(client *c) {
 
         clusterReset(hard);
         addReply(c,shared.ok);
+    } else if (!strcasecmp(c->argv[1]->ptr,"leaving") &&
+               (c->argc == 2 || c->argc == 3))
+    {
+        /* CLUSTER LEAVING [yes|no] */
+        if (c->argc == 3) {
+            int oldflags = myself->flags;
+            if (!strcasecmp(c->argv[2]->ptr,"yes")) {
+                myself->flags |= CLUSTER_NODE_LEAVING;
+                addReply(c,shared.ok);
+            } else if (!strcasecmp(c->argv[2]->ptr,"no")) {
+                myself->flags &= ~CLUSTER_NODE_LEAVING;
+                addReply(c,shared.ok);
+            } else {
+                addReplyError(c,
+                    "Wrong argument for CLUSTER LEAVING. Use 'yes' or 'no'");
+            }
+            if (oldflags != myself->flags)
+                clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
+        } else {
+            addReplySds(c,
+                (myself->flags & CLUSTER_NODE_LEAVING) ?
+                sdsnew("+yes\r\n") : sdsnew("+no\r\n")
+            );
+        }
     } else {
         addReplyError(c,"Wrong CLUSTER subcommand or number of arguments");
     }
@@ -2510,8 +2629,10 @@ void helloCommand(client *c) {
     dictForeach(server.cluster->nodes,de)
         clusterNode *node = dictGetVal(de);
         int priority = 1;
+        if (node->link == NULL && node != server.cluster->myself) priority = 5;
         if (node->flags & CLUSTER_NODE_PFAIL) priority = 10;
-        if (node->flags & CLUSTER_NODE_FAIL) priority = 100;
+        if (node->flags & (CLUSTER_NODE_FAIL|CLUSTER_NODE_LEAVING))
+            priority = 100;
         addReplyMultiBulkLen(c,4);
         addReplyBulkCBuffer(c,node->name,CLUSTER_NAMELEN); /* ID. */
         addReplyBulkCString(c,node->ip); /* IP address. */

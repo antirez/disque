@@ -54,6 +54,20 @@
 void debugCommand(client *c) {
     if (!strcasecmp(c->argv[1]->ptr,"segfault")) {
         *((char*)-1) = 'x';
+    } else if (!strcasecmp(c->argv[1]->ptr,"restart") ||
+               !strcasecmp(c->argv[1]->ptr,"crash-and-recover"))
+    {
+        long long delay = 0;
+        if (c->argc >= 3) {
+            if (getLongLongFromObjectOrReply(c, c->argv[2], &delay, NULL)
+                != C_OK) return;
+            if (delay < 0) delay = 0;
+        }
+        int flags = !strcasecmp(c->argv[1]->ptr,"restart") ?
+            (RESTART_SERVER_GRACEFULLY|RESTART_SERVER_CONFIG_REWRITE) :
+             RESTART_SERVER_NONE;
+        restartServer(flags,delay);
+        addReplyError(c,"failed to restart the server. Check server logs.");
     } else if (!strcasecmp(c->argv[1]->ptr,"oom")) {
         void *ptr = zmalloc(ULONG_MAX); /* Should trigger an out of memory. */
         zfree(ptr);
@@ -65,6 +79,7 @@ void debugCommand(client *c) {
         flushServerData();
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"loadaof")) {
+        if (server.aof_state == AOF_ON) flushAppendOnlyFile(1);
         flushServerData();
         if (loadAppendOnlyFile(server.aof_filename) != C_OK) {
             addReply(c,shared.err);
@@ -137,7 +152,7 @@ void _serverAssertPrintClientInfo(client *c) {
         if (c->argv[j]->type == OBJ_STRING && sdsEncodedObject(c->argv[j])) {
             arg = (char*) c->argv[j]->ptr;
         } else {
-            snprintf(buf,sizeof(buf),"Object type: %d, encoding: %d",
+            snprintf(buf,sizeof(buf),"Object type: %u, encoding: %u",
                 c->argv[j]->type, c->argv[j]->encoding);
             arg = buf;
         }
@@ -153,8 +168,8 @@ void _serverAssertPrintObject(robj *o) {
 }
 
 void serverLogObjectDebugInfo(robj *o) {
-    serverLog(LL_WARNING,"Object type: %d", o->type);
-    serverLog(LL_WARNING,"Object encoding: %d", o->encoding);
+    serverLog(LL_WARNING,"Object type: %u", o->type);
+    serverLog(LL_WARNING,"Object encoding: %u", o->encoding);
     serverLog(LL_WARNING,"Object refcount: %d", o->refcount);
     if (o->type == OBJ_STRING && sdsEncodedObject(o)) {
         serverLog(LL_WARNING,"Object raw string len: %zu", sdslen(o->ptr));

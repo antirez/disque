@@ -43,13 +43,13 @@
 /* Generate a new Job ID and writes it to the string pointed by 'id'
  * (NOT including a null term), that must be JOB_ID_LEN or more.
  *
- * An ID is composed as such:
+ * An ID is 40 bytes string composed as such:
  *
- * +--+--------------------------+------------------------------+----+--+
- * |DI| Node ID prefix (8 bytes) | 128-bit rand (hex: 32 bytes) |TTL |SQ|
- * +--+--------------------------+------------------------------+----+--+
+ * +--+-----------------+-+--------------------- --------+-+-----+
+ * |D-| 8 bytes Node ID |-| 144-bit ID (base64: 24 bytes)|-| TTL |
+ * +--+-----------------+-+------------------------------+-+-----+
  *
- * "DI" is just a fixed string. All Disque job IDs start with this
+ * "D-" is just a fixed string. All Disque job IDs start with this
  * two bytes.
  *
  * Node ID is the first 8 bytes of the hexadecimal Node ID where the
@@ -57,7 +57,8 @@
  * messages from a given queue can collect stats about where the producers
  * are connected, and switch to improve the cluster efficiency.
  *
- * 128 bit rand (in hex format) is 32 random chars.
+ * The 144 bit ID is the unique message ID, encoded in base 64 with
+ * the standard charset "A-Za-z0-9+/".
  *
  * The TTL is a big endian 16 bit unsigned number ceiled to 2^16-1
  * if greater than that, and is only used in order to expire ACKs
@@ -65,12 +66,18 @@
  * original job in *minutes*, not seconds, and is encoded in as a
  * 4 digits hexadecimal number.
  *
- * "SQ" is just a fixed string. All Disque job IDs end with this two bytes.
+ * The TTL is even if the job retry value is 0 (at most once jobs),
+ * otherwise is odd, so the actual precision of the value is 2 minutes.
+ * This is useful since the receiver of an ACKJOB command can avoid
+ * creating a "dummy ack" for unknown job IDs for at most once jobs.
  */
-void generateJobID(char *id, int ttl) {
-    char *charset = "0123456789abcdef";
+void generateJobID(char *id, int ttl, int retry) {
+    char *b64cset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    "abcdefghijklmnopqrstuvwxyz"
+                    "0123456789+/";
+    char *hexcset = "0123456789abcdef";
     SHA1_CTX ctx;
-    unsigned char hash[22]; /* 16 + 2 bytes for TTL. */
+    unsigned char ttlbytes[2], hash[20];
     int j;
     static uint64_t counter;
 
@@ -83,27 +90,44 @@ void generateJobID(char *id, int ttl) {
 
     ttl /= 60; /* Store TTL in minutes. */
     if (ttl > 65535) ttl = 65535;
-    hash[16] = (ttl&0xff00)>>8;
-    hash[17] = ttl&0xff;
+    if (ttl < 0) ttl = 1;
+
+    /* Force the TTL to be odd if retry > 0, even if retry == 0. */
+    ttl = (retry > 0) ? (ttl|1) : (ttl & ~1);
+
+    ttlbytes[0] = (ttl&0xff00)>>8;
+    ttlbytes[1] = ttl&0xff;
 
     *id++ = 'D';
-    *id++ = 'I';
+    *id++ = '-';
 
-    /* 8 bytes from Node ID */
+    /* 8 bytes from Node ID + separator */
     for (j = 0; j < 8; j++) *id++ = server.cluster->myself->name[j];
+    *id++ = '-';
 
-    /* Convert 18 bytes (16 pseudorandom + 2 TTL in minutes) to hex. */
-    for (j = 0; j < 18; j++) {
-        id[0] = charset[(hash[j]&0xf0)>>4];
-        id[1] = charset[hash[j]&0xf];
-        id += 2;
+    /* Pseudorandom Message ID + separator. We encode 4 base64 chars
+     * per loop (3 digest bytes), and each char encodes 6 bits, so we have
+     * to loop 6 times to encode all the 144 bits into 24 destination chars. */
+    unsigned char *h = hash;
+    for (j = 0; j < 6; j++) {
+        id[0] = b64cset[h[0]>>2];
+        id[1] = b64cset[(h[0]<<4|h[1]>>4)&63];
+        id[2] = b64cset[(h[1]<<2|h[2]>>6)&63];
+        id[3] = b64cset[h[3]&63];
+        id += 4;
+        h += 3;
     }
+    *id++ = '-';
 
-    *id++ = 'S';
-    *id++ = 'Q';
+    /* 4 TTL bytes in hex. */
+    id[0] = hexcset[(ttlbytes[0]&0xf0)>>4];
+    id[1] = hexcset[ttlbytes[0]&0xf];
+    id[2] = hexcset[(ttlbytes[1]&0xf0)>>4];
+    id[3] = hexcset[ttlbytes[1]&0xf];
+    id += 4;
 }
 
-/* Helper function for setJobTtlFromId() in order to extract the TTL stored
+/* Helper function for setJobTTLFromID() in order to extract the TTL stored
  * as hex big endian number in the Job ID. The function is only used for this
  * but is more generic. 'p' points to the first digit for 'count' hex digits.
  * The number is assumed to be stored in big endian format. For each byte
@@ -129,12 +153,45 @@ uint64_t hexToInt(char *p, size_t count) {
     return value;
 }
 
+/* Disque aims to avoid to deliver duplicated message whenever possible, so
+ * it is always desirable that a given message is not queued by multiple owners
+ * at the same time. This cannot be guaranteed because of partitions, but one
+ * of the best-effort things we do is that, when a QUEUED message is received
+ * by a node about a job, the node IDs of the sender and the receiver are
+ * compared: If the sender has a greater node ID, we drop the message from our
+ * queue (but retain a copy of the message to retry again later).
+ *
+ * However comparing nodes just by node ID means that a given node is always
+ * greater than the other. So before comparing the node IDs, we mix the IDs
+ * with the pseudorandom part of the Job ID, using the XOR function. This way
+ * the comparision depends on the job. */
+int compareNodeIDsByJob(clusterNode *nodea, clusterNode *nodeb, job *j) {
+    int i;
+    char ida[CLUSTER_NAMELEN], idb[CLUSTER_NAMELEN];
+    memcpy(ida,nodea->name,CLUSTER_NAMELEN);
+    memcpy(idb,nodeb->name,CLUSTER_NAMELEN);
+    for (i = 0; i < CLUSTER_NAMELEN; i++) {
+        /* The Job ID has 24 bytes of pseudo random bits starting at
+         * offset 11. */
+        ida[i] ^= j->id[11 + i%24];
+        idb[i] ^= j->id[11 + i%24];
+    }
+    return memcmp(ida,idb,CLUSTER_NAMELEN);
+}
+
+/* Return the raw TTL (in minutes) from a well-formed Job ID.
+ * The caller should do sanity check on the job ID before calling this
+ * function. Note that the 'id' field of a a job structure is always valid. */
+int getRawTTLFromJobID(char *id) {
+    return hexToInt(id+36,4);
+}
+
 /* Set the job ttl from the encoded ttl in its ID. This is useful when we
  * create a new job just to store the fact it's acknowledged. Thanks to
  * the TTL encoded in the ID we are able to set the expire time for the job
  * regardless of the fact we have no info about the job. */
-void setJobTtlFromId(job *job) {
-    int expire_minutes = hexToInt(job->id+42,4);
+void setJobTTLFromID(job *job) {
+    int expire_minutes = getRawTTLFromJobID(job->id);
     /* Convert back to absolute unix time. */
     job->etime = server.unixtime + expire_minutes*60;
 }
@@ -143,35 +200,36 @@ void setJobTtlFromId(job *job) {
  * string is composed of. The function just checks length and prefix/suffix.
  * It's pretty pointless to use more CPU to validate it better since anyway
  * the lookup will fail. */
-int validateJobId(char *id, size_t len) {
+int validateJobID(char *id, size_t len) {
     if (len != JOB_ID_LEN) return C_ERR;
     if (id[0] != 'D' ||
-        id[1] != 'I' ||
-        id[JOB_ID_LEN-2] != 'S' ||
-        id[JOB_ID_LEN-1] != 'Q') return C_ERR;
+        id[1] != '-' ||
+        id[10] != '-' ||
+        id[35] != '-') return C_ERR;
     return C_OK;
 }
 
-/* Like validateJobId() but if the ID is invalid an error message is sent
+/* Like validateJobID() but if the ID is invalid an error message is sent
  * to the client 'c' if not NULL. */
 int validateJobIdOrReply(client *c, char *id, size_t len) {
-    int retval = validateJobId(id,len);
+    int retval = validateJobID(id,len);
     if (retval == C_ERR && c)
         addReplySds(c,sdsnew("-BADID Invalid Job ID format.\r\n"));
     return retval;
 }
 
-/* Create a new job in a given state. If "ID" is NULL, a new ID will be
- * created as assigned.
+/* Create a new job in a given state. If 'id' is NULL, a new ID will be
+ * created as assigned, otherwise the specified ID is used.
+ * The 'ttl' and 'retry' arguments are only used if 'id' is not NULL.
  *
  * This function only creates the job without any body, the only populated
  * fields are the ID and the state. */
-job *createJob(char *id, int state, int ttl) {
+job *createJob(char *id, int state, int ttl, int retry) {
     job *j = zmalloc(sizeof(job));
 
     /* Generate a new Job ID if not specified by the caller. */
     if (id == NULL)
-        generateJobID(j->id,ttl);
+        generateJobID(j->id,ttl,retry);
     else
         memcpy(j->id,id,JOB_ID_LEN);
 
@@ -379,45 +437,80 @@ int skiplistCompareJobsToAwake(const void *a, const void *b) {
     return memcmp(ja->id,jb->id,JOB_ID_LEN);
 }
 
+/* Used to show jobs info for debugging or under unexpected conditions. */
+void logJobsDebugInfo(int level, char *msg, job *j) {
+    serverLog(level,
+        "%s %.*s: state=%d retry=%d delay=%d replicate=%d flags=%d now=%lld cached_now=%lld awake=%lld (%lld) qtime=%lld etime=%lld",
+        msg,
+        JOB_ID_LEN, j->id,
+        (int)j->state,
+        (int)j->retry,
+        (int)j->delay,
+        (int)j->repl,
+        (int)j->flags,
+        (long long)mstime(),
+        (long long)server.mstime,
+        (long long)j->awakeme-mstime(),
+        (long long)j->awakeme,
+        (long long)j->qtime-mstime(),
+        (long long)j->etime*1000-mstime()
+        );
+}
+
 /* Process the specified job to perform asynchronous operations on it.
  * Check processJobs() for more info. */
 void processJob(job *j) {
     mstime_t old_awakeme = j->awakeme;
 
-    serverLog(LL_VERBOSE,
-        "PROCESS %.48s: state=%d now=%lld awake=%lld (%lld) qtime=%lld etime=%lld delay=%d",
-        j->id,
-        (int)j->state,
-        (long long)mstime(),
-        (long long)j->awakeme-mstime(),
-        (long long)j->awakeme,
-        (long long)j->qtime-mstime(),
-        (long long)j->etime*1000-mstime(),
-        (int)j->delay
-        );
+    logJobsDebugInfo(LL_VERBOSE,"PROCESSING",j);
 
     /* Remove expired jobs. */
     if (j->etime <= server.unixtime) {
-        serverLog(LL_VERBOSE,"EVICT %.48s", j->id);
+        serverLog(LL_VERBOSE,"EVICT %.*s", JOB_ID_LEN, j->id);
         unregisterJob(j);
         freeJob(j);
         return;
     }
 
-    /* Inform other nodes we are going to requeue the job. */
+    /* Broadcast WILLQUEUE to inform other nodes we are going to re-queue
+     * the job shortly. */
     if ((j->state == JOB_STATE_ACTIVE ||
          j->state == JOB_STATE_QUEUED) &&
          j->flags & JOB_FLAG_BCAST_WILLQUEUE &&
          j->qtime-JOB_WILLQUEUE_ADVANCE <= server.mstime)
     {
         if (j->state != JOB_STATE_QUEUED) clusterSendWillQueue(j);
+        /* Clear the WILLQUEUE flag, so that the job will be rescheduled
+         * for when we need to queue it (otherwise it is scheduled
+         * JOB_WILLQUEUE_ADVANCE milliseconds before). */
         j->flags &= ~JOB_FLAG_BCAST_WILLQUEUE;
         updateJobAwakeTime(j,0);
     }
 
-    /* Requeue job if needed. */
+    /* Requeue job if needed. This will also care about putting the job
+     * into the queue for the first time for delayed jobs, including the
+     * ones with retry=0. */
     if (j->state == JOB_STATE_ACTIVE && j->qtime <= server.mstime) {
-        enqueueJob(j,0);
+        queue *q;
+
+        /* We need to check if the queue is paused in input. If that's
+         * the case, we do:
+         *
+         * If retry != 0, postpone the enqueue-time of "retry" time.
+         *
+         * If retry == 0 (at most once job), this is a job with a delay that
+         * will never be queued again, and we are the only owner.
+         * In such a case, put it into the queue, or the job will be leaked. */
+        if (j->retry != 0 &&
+            (q = lookupQueue(j->queue)) != NULL &&
+            q->flags & QUEUE_FLAG_PAUSED_IN)
+        {
+            updateJobRequeueTime(j,server.mstime+
+                                 j->retry*1000+
+                                 randomTimeError(DISQUE_TIME_ERR));
+        } else {
+            enqueueJob(j,0);
+        }
     }
 
     /* Update job re-queue time if job is already queued. */
@@ -438,7 +531,7 @@ void processJob(job *j) {
     }
 
     if (old_awakeme == j->awakeme)
-        serverLog(LL_WARNING,"Warning: not processed job %.48s", j->id);
+        logJobsDebugInfo(LL_WARNING, "~~~WARNING~~~ NOT PROCESSABLE JOB", j);
 }
 
 int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
@@ -470,8 +563,8 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
 #ifdef DEBUG_SCHEDULER
         if (canlog) {
-            printf("%.48s %d (in %d) [%s]\n",
-                j->id,
+            printf("%.*s %d (in %d) [%s]\n",
+                JOB_ID_LEN, j->id,
                 (int) j->awakeme,
                 (int) (j->awakeme-server.mstime),
                 jobStateToString(j->state));
@@ -533,6 +626,10 @@ char *serializeSdsString(char *p, sds s) {
  * in the job structure representation). This makes the job suitable to be
  * loaded at a latter time from disk, and is used in order to emit
  * LOADJOB commands in the AOF file.
+ *
+ * Moreover if SER_MESSAGE is used, the JOB_FLAG_DELIVERED is cleared before
+ * the serialization, since this is a local node flag and should not be
+ * propagated.
  *
  * When the job is deserialized with deserializeJob() function call, the
  * appropriate type must be passed, depending on how the job was serialized.
@@ -604,6 +701,7 @@ sds serializeJob(sds jobs, job *j, int sertype) {
             sj->etime = sj->etime - server.unixtime + 1;
         else
             sj->etime = 1;
+        sj->flags &= ~JOB_FLAG_DELIVERED;
     }
     memrev32ifbe(&sj->etime);
     memrev32ifbe(&sj->delay);
@@ -944,19 +1042,11 @@ void addReplyJobID(client *c, job *j) {
  * replicated, C_ERR is returned, in order to signal the client further
  * accesses to the job are not allowed. */
 int jobReplicationAchieved(job *j) {
-    serverLog(LL_VERBOSE,"Replication ACHIEVED %.48s",j->id);
+    serverLog(LL_VERBOSE,"Replication ACHIEVED %.*s",JOB_ID_LEN,j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */
     j->state = JOB_STATE_ACTIVE;
-
-    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
-     * hash table again for ACKs tracking in order to garbage collect the
-     * job once processed. */
-    if (j->nodes_confirmed) {
-        dictRelease(j->nodes_confirmed);
-        j->nodes_confirmed = NULL;
-    }
 
     /* Reply to the blocked client with the Job ID and unblock the client. */
     client *c = jobGetAssociatedValue(j);
@@ -975,6 +1065,14 @@ int jobReplicationAchieved(job *j) {
         unregisterJob(j);
         freeJob(j);
         return C_ERR;
+    }
+
+    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
+     * hash table again for ACKs tracking in order to garbage collect the
+     * job once processed. */
+    if (j->nodes_confirmed) {
+        dictRelease(j->nodes_confirmed);
+        j->nodes_confirmed = NULL;
     }
 
     /* Queue the job locally. */
@@ -1002,9 +1100,15 @@ int clientsCronHandleDelayedJobReplication(client *c) {
     if (!(c->flags & CLIENT_BLOCKED) || c->btype != BLOCKED_JOB_REPL)
         return 0;
 
+    /* Note that clientsCronHandleDelayedJobReplication() is called after
+     * refreshing server.mstime, so no need to call mstime() again here,
+     * we can use the cached value. However we use a fresh timestamp if
+     * we have to set added_node_time again. */
     mstime_t elapsed = server.mstime - c->bpop.added_node_time;
-    if (elapsed >= DELAYED_JOB_ADD_NODE_MIN_PERIOD)
-        clusterReplicateJob(c->bpop.job, 1, 0);
+    if (elapsed >= DELAYED_JOB_ADD_NODE_MIN_PERIOD) {
+        if (clusterReplicateJob(c->bpop.job, 1, 0) > 0)
+            c->bpop.added_node_time = mstime();
+    }
     return 0;
 }
 
@@ -1038,7 +1142,13 @@ void addjobCommand(client *c) {
     int j, retval;
     int async = 0;  /* Asynchronous request? */
     int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
+    int leaving = myselfLeaving();
     static uint64_t prev_ctime = 0;
+
+    /* Another case for external replication, other than memory pressure, is
+     * if this node is leaving the cluster. In this case we don't want to create
+     * new messages here. */
+    if (leaving) extrepl = 1;
 
     /* Parse args. */
     for (j = 4; j < c->argc; j++) {
@@ -1107,9 +1217,11 @@ void addjobCommand(client *c) {
         return;
     }
 
-    /* When retry is not specified, it defaults to 1/10 of the TTL. */
+    /* When retry is not specified, it defaults to 1/10 of the TTL, with
+     * an hard limit of JOB_DEFAULT_RETRY_MAX seconds (5 minutes normally). */
     if (retry == -1) {
         retry = ttl/10;
+        if (retry > JOB_DEFAULT_RETRY_MAX) retry = JOB_DEFAULT_RETRY_MAX;
         if (retry == 0) retry = 1;
     }
 
@@ -1121,10 +1233,13 @@ void addjobCommand(client *c) {
             additional_nodes-1 == server.cluster->reachable_nodes_count)
         {
             addReplySds(c,
-                sdsnew("-NOREPL Not enough reachable nodes "
+                sdscatprintf(sdsempty(),
+                       "-NOREPL Not enough reachable nodes "
                        "for the requested replication level, since I'm unable "
-                       "to hold a copy of the message for memory usage "
-                       "problems.\r\n"));
+                       "to hold a copy of the message for the following "
+                       "reason: %s\r\n",
+                       leaving ? "I'm leaving the cluster" :
+                                 "I'm out of memory"));
         } else {
             addReplySds(c,
                 sdsnew("-NOREPL Not enough reachable nodes "
@@ -1133,12 +1248,23 @@ void addjobCommand(client *c) {
         return;
     }
 
+    /* Lookup the queue by the name, in order to perform checks for
+     * MAXLEN and to check for paused queue. */
+    queue *q = lookupQueue(c->argv[1]);
+
     /* If maxlen was specified, check that the local queue len is
      * within the requested limits. */
-    if (maxlen && queueNameLength(c->argv[1]) > (unsigned long) maxlen) {
+    if (maxlen && q && queueLength(q) >= (unsigned long) maxlen) {
         addReplySds(c,
             sdsnew("-MAXLEN Queue is already longer than "
                    "the specified MAXLEN count\r\n"));
+        return;
+    }
+
+    /* If the queue is paused in input, refuse the job. */
+    if (q && q->flags & QUEUE_FLAG_PAUSED_IN) {
+        addReplySds(c,
+            sdsnew("-PAUSED Queue paused in input, try later\r\n"));
         return;
     }
 
@@ -1149,7 +1275,7 @@ void addjobCommand(client *c) {
     int discard_local_copy = async && extrepl;
 
     /* Create a new job. */
-    job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl);
+    job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl,retry);
     job->queue = c->argv[1];
     incrRefCount(c->argv[1]);
     job->repl = replicate;
@@ -1195,15 +1321,15 @@ void addjobCommand(client *c) {
 
     /* For replicated messages where ASYNC option was not asked, block
      * the client, and wait for acks. Otherwise if no synchronous replication
-     * is used, or ASYNC option was enabled, we just queue the job and
-     * return to the client ASAP.
+     * is used or if we don't have additional copies to deliver, we just queue
+     * the job and return to the client ASAP.
      *
      * Note that for REPLICATE > 1 and ASYNC the replication process is
      * best effort. */
-    if (replicate > 1 && !async) {
+    if ((replicate > 1 || extrepl) && !async) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
-        c->bpop.added_node_time = server.mstime;
+        c->bpop.added_node_time = mstime();
         blockClient(c,BLOCKED_JOB_REPL);
         setJobAssociatedValue(job,c);
         /* Create the nodes_confirmed dictionary only if we actually need
@@ -1233,7 +1359,7 @@ void addjobCommand(client *c) {
         clusterReplicateJob(job, additional_nodes, async);
 
     /* If the job is asynchronously and externally replicated at the same time,
-     * send a QUEUE message ASAP to one random node, and delete the job from
+     * send an ENQUEUE message ASAP to one random node, and delete the job from
      * this node right now. */
     if (discard_local_copy) {
         dictEntry *de = dictGetRandomKey(job->nodes_delivered);
@@ -1367,7 +1493,7 @@ void deljobCommand(client *c) {
     addReplyLongLong(c,evicted);
 }
 
-/* JSCAN [<cursor>] [COUNT <count>] [BLOCKING] [QUEUE <queue>]
+/* JSCAN [<cursor>] [COUNT <count>] [BUSYLOOP] [QUEUE <queue>]
  * [STATE <state1> STATE <state2> ... STATE <stateN>]
  * [REPLY all|id]
  *
@@ -1411,6 +1537,9 @@ void jscanCallback(void *privdata, const dictEntry *de) {
     list *list = pd[0];
     struct jscanFilter *filter = pd[1];
     job *job = dictGetKey(de);
+
+    /* Skip dummy jobs created by ACK command when job ID is unknown. */
+    if (dictSize(job->nodes_delivered) == 0) return;
 
     /* Don't add the item if it does not satisfies our filter. */
     if (filter->queue && !equalStringObjects(job->queue,filter->queue)) return;

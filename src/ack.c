@@ -68,7 +68,9 @@ mstime_t getNextGCRetryTime(job *job) {
 /* Try to garbage collect the job. */
 void tryJobGC(job *job) {
     if (job->state != JOB_STATE_ACKED) return;
-    serverLog(LL_VERBOSE,"GC %.48s", job->id);
+
+    int dummy_ack = dictSize(job->nodes_delivered) == 0;
+    serverLog(LL_VERBOSE,"GC %.*s",JOB_ID_LEN,job->id);
 
     /* Don't overflow the count, it's only useful for the exponential delay.
      * Actually we'll keep trying forever. */
@@ -84,10 +86,19 @@ void tryJobGC(job *job) {
 
     /* Check ASAP if we already reached all the nodes. This special case
      * here is mainly useful when the job replication factor is 1, so
-     * there is no SETACK to send, nor GOTCAK to receive. */
-    if (dictSize(job->nodes_delivered) != 0 &&
-        dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed))
-    {
+     * there is no SETACK to send, nor GOTCAK to receive.
+     *
+     * Also check if this is a dummy ACK but the cluster size is now 1:
+     * in such a case we don't have other nodes to send SETACK to, we can
+     * just remove the ACK. Note that dummy ACKs are not created at all
+     * if the cluster size is 1, but this code path may be entered as a result
+     * of the cluster getting resized to a single node. */
+    int all_nodes_reached =
+        (!dummy_ack) &&
+        (dictSize(job->nodes_delivered) == dictSize(job->nodes_confirmed));
+    int dummy_ack_single_node = dummy_ack && server.cluster->size == 1;
+
+    if (all_nodes_reached || dummy_ack_single_node) {
         serverLog(LL_VERBOSE,
             "Deleting %.48s: all nodes reached in tryJobGC()",
             job->id);
@@ -98,7 +109,7 @@ void tryJobGC(job *job) {
 
     /* Send a SETACK message to all the nodes that may have a message but are
      * still not listed in the nodes_confirmed hash table. However if this
-     * is a dumb ACK (created by ACKJOB command acknowledging a job we don't
+     * is a dummy ACK (created by ACKJOB command acknowledging a job we don't
      * know) we have to broadcast the SETACK to everybody in search of the
      * owner. */
     dict *targets = dictSize(job->nodes_delivered) == 0 ?
@@ -212,20 +223,30 @@ void ackjobCommand(client *c) {
     /* Perform the appropriate action for each job. */
     for (j = 1; j < c->argc; j++) {
         job *job = lookupJob(c->argv[j]->ptr);
-        /* Case 1: No such job. Create one just to hold the ACK. */
-        if (job == NULL) {
-            job = createJob(c->argv[j]->ptr,JOB_STATE_ACKED,0);
-            setJobTtlFromId(job);
-            serverAssert(registerJob(job) == C_OK);
+        /* Case 1: No such job. Create one just to hold the ACK. However
+         * if the cluster is composed by a single node we are sure the job
+         * does not exist in the whole cluster, so do this only if the
+         * cluster size is greater than one. */
+        if (job == NULL && server.cluster->size > 1 && !myselfLeaving()) {
+            char *id = c->argv[j]->ptr;
+            int ttl = getRawTTLFromJobID(id);
+
+            /* TTL is even for "at most once" jobs. In this case we
+             * don't need to create a dummy hack. */
+            if (ttl & 1) {
+                job = createJob(id,JOB_STATE_ACKED,0,0);
+                setJobTTLFromID(job);
+                serverAssert(registerJob(job) == C_OK);
+            }
         }
         /* Case 2: Job exists and is not acknowledged. Change state. */
-        if (job && job->state != JOB_STATE_ACKED) {
+        else if (job && job->state != JOB_STATE_ACKED) {
             dequeueJob(job); /* Safe to call if job is not queued. */
             acknowledgeJob(job);
             known++;
         }
         /* Anyway... start a GC attempt on the acked job. */
-        tryJobGC(job);
+        if (job) tryJobGC(job);
     }
     addReplyLongLong(c,known);
 }

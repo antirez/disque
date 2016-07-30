@@ -190,6 +190,11 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CLIENT_CLOSE_ASAP (1<<4)  /* Close this client ASAP */
 #define CLIENT_UNIX_SOCKET (1<<5) /* Client connected via Unix domain socket */
 #define CLIENT_AOF_CLIENT (1<<6)  /* AOF loading client. */
+#define CLIENT_PENDING_WRITE (1<<7) /* Client has output to send but a write
+                                       handler is yet not installed. */
+#define CLIENT_REPLY_OFF (1<<8)   /* Don't send replies to client. */
+#define CLIENT_REPLY_SKIP_NEXT (1<<9)  /* Set CLIENT_REPLY_SKIP for next cmd */
+#define CLIENT_REPLY_SKIP (1<<10)  /* Don't send just this reply. */
 
 /* Client block type (btype field in client structure)
  * if CLIENT_BLOCKED flag is set. */
@@ -324,8 +329,8 @@ typedef struct client {
     int multibulklen;       /* number of multi bulk arguments left to read */
     long bulklen;           /* length of bulk argument in multi bulk request */
     list *reply;
-    unsigned long reply_bytes; /* Tot bytes of objects in reply list */
-    int sentlen;            /* Amount of bytes already sent in the current
+    size_t reply_bytes;     /* Tot bytes of objects in reply list */
+    size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
     time_t ctime;           /* Client creation time */
     time_t lastinteraction; /* time of the last interaction, used for timeout */
@@ -337,14 +342,14 @@ typedef struct client {
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */
-    int bufpos;
+    size_t bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;
 
 struct sharedObjectsStruct {
     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
     *colon, *nullbulk, *nullmultibulk, *queued,
-    *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
+    *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *leavingerr,
     *outofrangeerr, *noscripterr, *loadingerr, *slowscripterr,
     *masterdownerr, *roslaveerr, *execaborterr, *noautherr, *noreplicaserr,
     *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk, *subscribebulk,
@@ -401,6 +406,8 @@ struct disqueServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
     char *configfile;           /* Absolute config file path, or NULL */
+    char *executable;           /* Absolute executable file path. */
+    char **exec_argv;           /* Executable argv vector (copy). */
     int hz;                     /* serverCron() calls frequency in hertz */
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
@@ -427,6 +434,7 @@ struct disqueServer {
     int cfd_count;              /* Used slots in cfd[] */
     list *clients;              /* List of active clients */
     list *clients_to_close;     /* Clients to close asynchronously */
+    list *clients_pending_write; /* There is to write or install handler. */
     list *monitors;             /* List of MONITORs */
     client *current_client; /* Current client, only used on crash report */
     int clients_paused;         /* True if clients are currently paused */
@@ -692,6 +700,9 @@ int listenToPort(int port, int *fds, int *count);
 void pauseClients(mstime_t duration);
 int clientsArePaused(void);
 int processEventsWhileBlocked(void);
+int handleClientsWithPendingWrites(void);
+int clientHasPendingReplies(client *c);
+void unlinkClient(client *c);
 
 #ifdef __GNUC__
 void addReplyErrorFormat(client *c, const char *fmt, ...)
@@ -782,6 +793,7 @@ void serverLog(int level, const char *fmt, ...);
 #endif
 void serverLogRaw(int level, const char *msg);
 void serverLogFromHandler(int level, const char *msg);
+void serverDebug(const char *fmt, ...);
 void usage(void);
 void updateDictResizePolicy(void);
 int htNeedsResize(dict *dict);
@@ -793,7 +805,12 @@ void closeListeningSockets(int unlink_unix_socket);
 void updateCachedTime(void);
 void resetServerStats(void);
 unsigned int getLRUClock(void);
-void queueCron(void);
+int evictIdleQueues(void);
+
+#define RESTART_SERVER_NONE 0
+#define RESTART_SERVER_GRACEFULLY (1<<0)     /* Do proper shutdown. */
+#define RESTART_SERVER_CONFIG_REWRITE (1<<1) /* CONFIG REWRITE before restart.*/
+int restartServer(int flags, mstime_t delay);
 
 /* Configuration */
 void loadServerConfig(char *filename, char *options);
@@ -852,6 +869,8 @@ void qpeekCommand(client *c);
 void qscanCommand(client *c);
 void jscanCommand(client *c);
 void workingCommand(client *c);
+void qstatCommand(client *c);
+void pauseCommand(client *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

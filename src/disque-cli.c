@@ -418,7 +418,7 @@ static sds cliFormatReplyTTY(redisReply *r, char *prefix) {
             _prefix = sdscat(sdsnew(prefix),_prefixlen);
 
             /* Setup prefix format for every entry */
-            snprintf(_prefixfmt,sizeof(_prefixfmt),"%%s%%%dd) ",idxlen);
+            snprintf(_prefixfmt,sizeof(_prefixfmt),"%%s%%%ud) ",idxlen);
 
             for (i = 0; i < r->elements; i++) {
                 /* Don't use the prefix for the first element, as the parent
@@ -1461,15 +1461,15 @@ static void getKeySizes(redisReply *keys, int *types,
             keys->element[i]->str);
     }
 
-    /* Retreive sizes */
+    /* Retrieve sizes */
     for(i=0;i<keys->elements;i++) {
-        /* Skip keys that dissapeared between SCAN and TYPE */
+        /* Skip keys that disappeared between SCAN and TYPE */
         if(types[i] == TYPE_NONE) {
             sizes[i] = 0;
             continue;
         }
 
-        /* Retreive size */
+        /* Retrieve size */
         if(redisGetReply(context, (void**)&reply)!=REDIS_OK) {
             fprintf(stderr, "Error getting size for key '%s' (%d: %s)\n",
                 keys->element[i]->str, context->err, context->errstr);
@@ -1539,7 +1539,7 @@ static void findBigKeys(void) {
             arrsize = keys->elements;
         }
 
-        /* Retreive types and then sizes */
+        /* Retrieve types and then sizes */
         getKeyTypes(keys, types);
         getKeySizes(keys, types, sizes);
 
@@ -1667,7 +1667,7 @@ void bytesToHuman(char *s, long long n) {
     }
     if (n < 1024) {
         /* Bytes */
-        sprintf(s,"%lluB",n);
+        sprintf(s,"%lldB",n);
         return;
     } else if (n < (1024*1024)) {
         d = (double)n/(1024);

@@ -31,13 +31,10 @@
 #ifndef __DISQUE_JOB_H
 #define __DISQUE_JOB_H
 
-/* A Job ID is 48 bytes:
- * "DISQ" + 40 bytes random hex (160 bits) + 4 bytes TTL.
- * The TTL is encoded inside the Job ID so that nodes without info about
- * the Job can correctly expire ACKs if they can't be garbage collected. */
-#define JOB_ID_LEN 48
+/* A Job ID is 42 bytes, check generateJobID() inside job.c for more info. */
+#define JOB_ID_LEN 40
 
-/* This represent a Job across the system.
+/* This represents a Job across the system.
  *
  * The Job ID is the unique identifier of the job, both in the client
  * protocol and in the cluster messages between nodes.
@@ -84,10 +81,12 @@
 
 #define JOB_FLAG_BCAST_QUEUED (1<<0) /* Broadcast msg when re-queued. */
 #define JOB_FLAG_BCAST_WILLQUEUE (1<<1) /* Broadcast msg before re-quequeing. */
+#define JOB_FLAG_DELIVERED (1<<2) /* This node delivered this job >= 1 times. */
 
 #define JOB_WILLQUEUE_ADVANCE 500   /* Milliseconds of WILLQUEUE advance. */
 #define JOB_GC_RETRY_MIN_PERIOD 1000 /* Initial GC retry time is 1 seconds. */
 #define JOB_GC_RETRY_MAX_PERIOD (60000*3) /* Exponentially up to 3 minutes... */
+#define JOB_DEFAULT_RETRY_MAX (60*5) /* Maximum default retry value. */
 
 /* In the job structure we have a counter for the GC attempt. The only use
  * for this is to calcualte an exponential time for the retry, starting from
@@ -144,13 +143,16 @@ typedef struct job {
 } job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
-#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4+4)
+#define JOB_STRUCT_SER_LEN (JOB_ID_LEN+1+1+2+4+8+4+4+2+2)
 
 /* Serialization types for serializeJob() deserializejob(). */
 #define SER_MESSAGE 0
 #define SER_STORAGE 1
 
-job *createJob(char *id, int state, int ttl);
+struct clusterNode;
+
+job *createJob(char *id, int state, int ttl, int retry);
+int compareNodeIDsByJob(struct clusterNode *nodea, struct clusterNode *nodeb, job *j);
 void deleteJobFromCluster(job *j);
 sds serializeJob(sds msg, job *j, int sertype);
 job *deserializeJob(unsigned char *p, size_t len, unsigned char **next, int sertype);
@@ -163,7 +165,8 @@ int jobReplicationAchieved(job *j);
 job *lookupJob(char *id);
 void updateJobAwakeTime(job *j, mstime_t at);
 void updateJobRequeueTime(job *j, mstime_t qtime);
-void setJobTtlFromId(job *job);
+int getRawTTLFromJobID(char *id);
+void setJobTTLFromID(job *job);
 int validateJobIdOrReply(client *c, char *id, size_t len);
 void setJobAssociatedValue(job *j, void *val);
 void *jobGetAssociatedValue(job *j);

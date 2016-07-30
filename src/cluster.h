@@ -38,6 +38,7 @@ typedef struct clusterLink {
 #define CLUSTER_NODE_NOADDR    (1<<4) /* Node address unknown */
 #define CLUSTER_NODE_MEET      (1<<5) /* Send a MEET message to this node */
 #define CLUSTER_NODE_DELETED   (1<<6) /* Node no longer part of the cluster */
+#define CLUSTER_NODE_LEAVING   (1<<7) /* Node is leaving the cluster. */
 #define CLUSTER_NODE_NULL_NAME "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
 
 #define nodeInHandshake(n) ((n)->flags & CLUSTER_NODE_HANDSHAKE)
@@ -45,6 +46,8 @@ typedef struct clusterLink {
 #define nodeWithoutAddr(n) ((n)->flags & CLUSTER_NODE_NOADDR)
 #define nodeTimedOut(n) ((n)->flags & CLUSTER_NODE_PFAIL)
 #define nodeFailed(n) ((n)->flags & CLUSTER_NODE_FAIL)
+#define nodeLeaving(n) ((n)->flags & CLUSTER_NODE_LEAVING)
+#define myselfLeaving() nodeLeaving(server.cluster->myself)
 
 /* This structure represent elements of node->fail_reports. */
 typedef struct clusterNodeFailReport {
@@ -98,9 +101,9 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_PONG 1          /* Reply to Ping. */
 #define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message. */
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing. */
-#define CLUSTERMSG_TYPE_ADDJOB 4        /* Add a job to receiver. */
-#define CLUSTERMSG_TYPE_GOTJOB 5        /* Job received acknowledge. */
-#define CLUSTERMSG_TYPE_ENQUEUE 6      /* Enaueue the specified job. */
+#define CLUSTERMSG_TYPE_REPLJOB 4       /* Add a job to receiver. */
+#define CLUSTERMSG_TYPE_GOTJOB 5        /* REPLJOB received acknowledge. */
+#define CLUSTERMSG_TYPE_ENQUEUE 6       /* Enqueue the specified job. */
 #define CLUSTERMSG_TYPE_QUEUED 7        /* Update your job qtime. */
 #define CLUSTERMSG_TYPE_SETACK 8        /* Move job state as ACKed. */
 #define CLUSTERMSG_TYPE_WILLQUEUE 9     /* I'll queue this job, ok? */
@@ -109,6 +112,7 @@ typedef struct clusterState {
 #define CLUSTERMSG_TYPE_NEEDJOBS 12     /* I need jobs for some queue. */
 #define CLUSTERMSG_TYPE_YOURJOBS 13     /* NEEDJOBS reply with jobs. */
 #define CLUSTERMSG_TYPE_WORKING 14      /* Postpone re-queueing & dequeue */
+#define CLUSTERMSG_TYPE_PAUSE 15        /* Change queue paused state. */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
@@ -153,12 +157,14 @@ typedef struct {
 } clusterMsgDataJobID;
 
 /* This data section is used by NEEDJOBS to specify in what queue we need
- * a job, and how many jobs we request. */
+ * a job, and how many jobs we request. The same format is also used by
+ * the PAUSE command to specify the queue to change the paused state. */
 typedef struct {
-    uint32_t count;     /* How many jobs we request. */
+    uint32_t aux;       /* For NEEDJOB, how many jobs we request.
+                         * FOR PAUSE, the pause flags to set on the queue. */
     uint32_t qnamelen;  /* Queue name total length. */
     char qname[8];      /* Defined as 8 bytes just for alignment. */
-} clusterMsgDataNeedJobs;
+} clusterMsgDataQueueOp;
 
 union clusterMsgData {
     /* PING, MEET and PONG. */
@@ -184,11 +190,11 @@ union clusterMsgData {
 
     /* Messages requesting jobs (NEEDJOBS). */
     struct {
-        clusterMsgDataNeedJobs about;
-    } jobsreq;
+        clusterMsgDataQueueOp about;
+    } queueop;
 };
 
-#define CLUSTER_PROTO_VER 0 /* Cluster bus protocol version. */
+#define CLUSTER_PROTO_VER 1 /* Cluster bus protocol version. */
 
 typedef struct {
     char sig[4];        /* Siganture "DbuZ" (Disque Cluster message bus). */
@@ -198,7 +204,8 @@ typedef struct {
     uint16_t type;      /* Message type */
     uint16_t count;     /* Only used for some kind of messages. */
     char sender[CLUSTER_NAMELEN]; /* Name of the sender node */
-    char notused1[32];  /* 32 bytes reserved for future usage. */
+    char myip[NET_IP_STR_LEN];    /* My IP, if not all zeroed. */
+    char notused1[34];  /* 34 bytes reserved for future usage. */
     uint16_t port;      /* Sender TCP base port */
     uint16_t flags;     /* Sender node flags */
     unsigned char state; /* Cluster state from the POV of the sender */
@@ -233,5 +240,6 @@ void clusterSendSetAck(clusterNode *node, job *j);
 void clusterSendNeedJobs(robj *qname, int numjobs, dict *nodes);
 void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count);
 void clusterBroadcastJobIDMessage(dict *nodes, char *id, int type, uint32_t aux, unsigned char flags);
+void clusterBroadcastPause(robj *qname, uint32_t flags);
 
 #endif /* __CLUSTER_H */

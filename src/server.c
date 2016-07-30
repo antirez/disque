@@ -138,12 +138,14 @@ struct serverCommand serverCommandTable[] = {
     /* Queues */
     {"qlen",qlenCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"qpeek",qpeekCommand,3,"r",0,NULL,0,0,0,0,0},
+    {"qstat",qstatCommand,2,"rF",0,NULL,0,0,0,0,0},
     {"qscan",qscanCommand,-1,"r",0,NULL,0,0,0,0,0},
     {"jscan",jscanCommand,-1,"r",0,NULL,0,0,0,0,0},
     {"enqueue",enqueueCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"nack",nackCommand,-1,"mwF",0,NULL,0,0,0,0,0},
     {"dequeue",dequeueCommand,-1,"wF",0,NULL,0,0,0,0,0},
-    {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0}
+    {"working",workingCommand,2,"wF",0,NULL,0,0,0,0,0},
+    {"pause",pauseCommand,-3,"rF",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */
@@ -203,6 +205,30 @@ void serverLog(int level, const char *fmt, ...) {
     va_end(ap);
 
     serverLogRaw(level,msg);
+}
+
+/* Log stuff to /tmp/disque.dbg. For debugging purposes during development. */
+void serverDebug(const char *fmt, ...) {
+    va_list ap;
+    char buf[LOG_MAX_LEN];
+    struct timeval tv;
+    int off;
+    FILE *fp = fopen("/tmp/disque.dbg","a");
+
+    if (!fp) return;
+
+    gettimeofday(&tv,NULL);
+    off = strftime(buf,sizeof(buf),"%d %b %H:%M:%S.",localtime(&tv.tv_sec));
+    snprintf(buf+off,sizeof(buf)-off,"%03d:%03d",(int)tv.tv_usec/1000,
+                                                 (int)tv.tv_usec%1000);
+    fprintf(fp,"%s %.40s> ",buf,server.cluster->myself->name);
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    fprintf(fp,"%s\n",buf);
+    fclose(fp);
 }
 
 /* Log a fixed message without printf-alike capabilities, in a way that is
@@ -600,6 +626,9 @@ int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
         if (c->bpop.timeout != 0 && c->bpop.timeout < now_ms) {
             replyToBlockedClientTimedOut(c);
             unblockClient(c);
+        } else if (myselfLeaving()) {
+            addReply(c,shared.leavingerr);
+            unblockClient(c);
         }
     }
     return 0;
@@ -643,7 +672,7 @@ void clientsCron(void) {
      * second. */
     int numclients = listLength(server.clients);
     int iterations = numclients/server.hz;
-    mstime_t now = mstime();
+    server.mstime = mstime(); /* Refresh the global time. */
 
     /* Process at least a few clients while we are at it, even if we need
      * to process less than CLIENTS_CRON_MIN_ITERATIONS to meet our contract
@@ -665,7 +694,7 @@ void clientsCron(void) {
         /* The following functions do different service checks on the client.
          * The protocol is that they return non-zero if the client was
          * terminated. */
-        if (clientsCronHandleTimeout(c,now)) continue;
+        if (clientsCronHandleTimeout(c,server.mstime)) continue;
         if (clientsCronResizeQueryBuffer(c)) continue;
         if (clientsCronHandleDelayedJobReplication(c)) continue;
         if (clientsCronSendNeedJobs(c)) continue;
@@ -752,14 +781,6 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         server.shutdown_asap = 0;
     }
 
-    /* Show information about connected clients */
-    run_with_period(5000) {
-        serverLog(LL_VERBOSE,
-            "%lu clients connected, %zu bytes in use",
-            listLength(server.clients),
-            zmalloc_used_memory());
-    }
-
     /* We need to do a few operations on clients asynchronously. */
     clientsCron();
 
@@ -811,7 +832,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Queue cron function: deletes idle empty queues that are just using
      * memory. */
     run_with_period(100) {
-        queueCron();
+        evictIdleQueues();
     }
 
     /* AOF postponed flush: Try at every cron cycle if the slow fsync
@@ -864,6 +885,9 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
     /* Write the AOF buffer on disk */
     flushAppendOnlyFile(0);
+
+    /* Handle writes with pending output buffers. */
+    handleClientsWithPendingWrites();
 }
 
 /* =========================== Server initialization ======================== */
@@ -889,8 +913,9 @@ void createSharedObjects(void) {
         "-ERR no such key\r\n"));
     shared.syntaxerr = createObject(OBJ_STRING,sdsnew(
         "-ERR syntax error\r\n"));
-    shared.sameobjecterr = createObject(OBJ_STRING,sdsnew(
-        "-ERR source and destination objects are the same\r\n"));
+    shared.leavingerr = createObject(OBJ_STRING,sdsnew(
+        "-LEAVING This node is leaving the cluster, "
+        "please connect to a different one\r\n"));
     shared.outofrangeerr = createObject(OBJ_STRING,sdsnew(
         "-ERR index out of range\r\n"));
     shared.noscripterr = createObject(OBJ_STRING,sdsnew(
@@ -948,6 +973,7 @@ void initServerConfig(void) {
     getRandomHexChars(server.runid,CONFIG_RUN_ID_SIZE);
     getRandomHexChars(server.jobid_seed,CONFIG_RUN_ID_SIZE);
     server.configfile = NULL;
+    server.executable = NULL;
     server.hz = CONFIG_DEFAULT_HZ;
     server.runid[CONFIG_RUN_ID_SIZE] = '\0';
     server.arch_bits = (sizeof(long) == 8) ? 64 : 32;
@@ -1038,6 +1064,53 @@ void initServerConfig(void) {
     server.assert_line = 0;
     server.bug_report_start = 0;
     server.watchdog_period = 0;
+}
+
+extern char **environ;
+
+/* Restart the server, executing the same executable that started this
+ * instance, with the same arguments and configuration file.
+ *
+ * The function is designed to directly call execve() so that the new
+ * server instance will retain the PID of the previous one.
+ *
+ * The list of flags, that may be bitwise ORed together, alter the
+ * behavior of this function:
+ *
+ * RESTART_SERVER_NONE              No flags.
+ * RESTART_SERVER_GRACEFULLY        Do a proper shutdown before restarting.
+ * RESTART_SERVER_CONFIG_REWRITE    Rewrite the config file before restarting.
+ *
+ * On success the function does not return, because the process turns into
+ * a different process. On error C_ERR is returned. */
+int restartServer(int flags, mstime_t delay) {
+    int j;
+
+    /* Check if we still have accesses to the executable that started this
+     * server instance. */
+    if (access(server.executable,X_OK) == -1) return C_ERR;
+
+    /* Config rewriting. */
+    if (flags & RESTART_SERVER_CONFIG_REWRITE &&
+        server.configfile &&
+        rewriteConfig(server.configfile) == -1) return C_ERR;
+
+    /* Perform a proper shutdown. */
+    if (flags & RESTART_SERVER_GRACEFULLY &&
+        prepareForShutdown(SHUTDOWN_NOFLAGS) != C_OK) return C_ERR;
+
+    /* Close all file descriptors, with the exception of stdin, stdout, strerr
+     * which are useful if we restart a Redis server which is not daemonized. */
+    for (j = 3; j < (int)server.maxclients + 1024; j++) close(j);
+
+    /* Execute the server with the original command line. */
+    if (delay) usleep(delay*1000);
+    execve(server.executable,server.exec_argv,environ);
+
+    /* If an error occurred here, there is nothing we can do, but exit. */
+    _exit(1);
+
+    return C_ERR; /* Never reached. */
 }
 
 /* This function will try to raise the max number of open files accordingly to
@@ -1246,6 +1319,7 @@ void initServer(void) {
     server.clients = listCreate();
     server.clients_to_close = listCreate();
     server.monitors = listCreate();
+    server.clients_pending_write = listCreate();
     server.unblocked_clients = listCreate();
     server.ready_keys = listCreate();
     server.clients_paused = 0;
@@ -1699,10 +1773,6 @@ void pingCommand(client *c) {
         addReplyBulk(c,c->argv[1]);
 }
 
-void echoCommand(client *c) {
-    addReplyBulk(c,c->argv[1]);
-}
-
 void timeCommand(client *c) {
     struct timeval tv;
 
@@ -1880,6 +1950,7 @@ sds genDisqueInfoString(char *section) {
             "uptime_in_seconds:%jd\r\n"
             "uptime_in_days:%jd\r\n"
             "hz:%d\r\n"
+            "executable:%s\r\n"
             "config_file:%s\r\n",
             DISQUE_VERSION,
             disqueGitSHA1(),
@@ -1899,6 +1970,7 @@ sds genDisqueInfoString(char *section) {
             (intmax_t)uptime,
             (intmax_t)(uptime/(3600*24)),
             server.hz,
+            server.executable ? server.executable : "",
             server.configfile ? server.configfile : "");
     }
 
@@ -2158,7 +2230,7 @@ int freeMemoryIfNeeded(void) {
 
     /* The following check is not actaully needed since we already checked
      * that getMemoryWarningLevel() returned 2 or greater, but it is safer
-     * to have given that we are workign with unsigned integers to compute
+     * to have given that we are working with unsigned integers to compute
      * mem_tofree. */
     if (mem_used <= mem_target) return C_OK;
 
@@ -2173,19 +2245,32 @@ int freeMemoryIfNeeded(void) {
         long long delta;
         dictEntry *de;
 
-        /* Get a random job, check if it is an ACK, release it in that
-         * case, otherwise keep counting the number of iterations we failed
-         * to free jobs. */
+        /* Get a random job, check if it is a job we can evict safely,
+         * whic happens in the following two cases:
+         * 1) Acknowledged jobs.
+         * 2) Jobs with retry set to 0 which were already delivered.
+         * Release it in the above two cases, otherwise keep counting the
+         * number of iterations we failed to free jobs. */
         de = dictGetRandomKey(server.jobs);
         delta = (long long) zmalloc_used_memory();
-        job *job = dictGetKey(de);
-        if (job->state == JOB_STATE_ACKED) {
-            unregisterJob(job);
-            freeJob(job);
-            not_freed = 0;
+
+        /* If there are no jobs at all, try with idle queues. Otherwise
+         * there is nothing we can release. */
+        if (de == NULL) {
+            if (evictIdleQueues() == 0) return C_ERR;
         } else {
-            not_freed++;
+            job *job = dictGetKey(de);
+            if ((job->state == JOB_STATE_ACKED) ||
+                (job->retry == 0 && job->flags & JOB_FLAG_DELIVERED))
+            {
+                unregisterJob(job);
+                freeJob(job);
+                not_freed = 0;
+            } else {
+                not_freed++;
+            }
         }
+
         delta -= (long long) zmalloc_used_memory();
         mem_freed += delta;
 
@@ -2242,7 +2327,7 @@ int linuxOvercommitMemoryValue(void) {
 
 void linuxOvercommitMemoryWarning(void) {
     if (linuxOvercommitMemoryValue() == 0) {
-        serverLog(LL_WARNING,"WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
+        serverLog(LL_WARNING,"WARNING: overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
     }
 }
 #endif /* __linux__ */
@@ -2421,6 +2506,7 @@ void serverSetProcTitle(char *title) {
 
 int main(int argc, char **argv) {
     struct timeval tv;
+    int j;
 
     /* We need to initialize our libraries, and the server configuration. */
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
@@ -2434,8 +2520,15 @@ int main(int argc, char **argv) {
     dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
     initServerConfig();
 
+    /* Store the executable path and arguments in a safe place in order
+     * to be able to restart the server later. */
+    server.executable = getAbsolutePath(argv[0]);
+    server.exec_argv = zmalloc(sizeof(char*)*(argc+1));
+    server.exec_argv[argc] = NULL;
+    for (j = 0; j < argc; j++) server.exec_argv[j] = zstrdup(argv[j]);
+
     if (argc >= 2) {
-        int j = 1; /* First option to parse in argv[] */
+        j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
         char *configfile = NULL;
 
@@ -2456,8 +2549,16 @@ int main(int argc, char **argv) {
         }
 
         /* First argument is the config file name? */
-        if (argv[j][0] != '-' || argv[j][1] != '-')
-            configfile = argv[j++];
+        if (argv[j][0] != '-' || argv[j][1] != '-') {
+            configfile = argv[j];
+            server.configfile = getAbsolutePath(configfile);
+            /* Replace the config file in server.exec_argv with
+             * its absoulte path. */
+            zfree(server.exec_argv[j]);
+            server.exec_argv[j] = zstrdup(server.configfile);
+            j++;
+        }
+
         /* All the other options are parsed and conceptually appended to the
          * configuration file. For instance --port 6380 will generate the
          * string "port 6380\n" to be parsed after the actual file name
@@ -2475,11 +2576,10 @@ int main(int argc, char **argv) {
             }
             j++;
         }
-        if (configfile) server.configfile = getAbsolutePath(configfile);
         loadServerConfig(configfile,options);
         sdsfree(options);
     } else {
-        serverLog(LL_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
+        serverLog(LL_WARNING, "WARNING: No config file specified, using the default config. In order to specify a config file use %s /path/to/disque.conf", argv[0]);
     }
     if (server.daemonize) daemonize();
     initServer();

@@ -798,6 +798,10 @@ API on top of Disque:
 
 - [Disque.Net](https://github.com/ziyasal/Disque.Net)
 
+*Java*
+
+- [jedisque](https://github.com/xetorthio/jedisque)
+
 Implementation details
 ===
 

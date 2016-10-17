@@ -17,6 +17,19 @@ encouraged to start evaluating it and report bugs and experiences.
 
 **WARNING: This is beta code and may not be suitable for production usage. The API is considered to be stable if not for details that may change in the next release candidates, however it's new code, so handle with care!**
 
+- [Setup](#setup)
+- [Main API](#main-api)
+- [Other commands](#other-commands)
+- [Special handling of messages with RETRY set to 0](#special-handling-of-messages-with-retry-set-to-0)
+- [Adding and removing nodes at runtime](#adding-and-removing-nodes-at-runtime)
+- [Gracefully removal of nodes](#gracefully-removal-of-nodes)
+- [Client libraries](#client-libraries)
+- [Implementation details](#implementation-details)
+- [Limitations](#limitations)
+- [FAQ](#faq)
+- [Community: how to get help and how to help](#community-how-to-get-help-and-how-to-help)
+- [Thanks](#thanks)
+
 What is a message queue?
 ---
 

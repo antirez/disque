@@ -794,6 +794,10 @@ API on top of Disque:
 
 - [disque-rs](https://github.com/seppo0010/disque-rs)
 
+*Tcl*
+
+- [disque](https://github.com/efrecon/disque)
+
 *.NET*
 
 - [Disque.Net](https://github.com/ziyasal/Disque.Net)

@@ -584,7 +584,7 @@ int processJobs(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     current = server.awakeme->header->level[0].forward;
     if (current) {
         job *j = current->obj;
-        period = server.mstime-j->awakeme;
+        period = j->awakeme - server.mstime;
         if (period < 1) period = 1;
         else if (period > 100) period = 100;
     }

@@ -487,6 +487,21 @@ void processJob(job *j) {
         updateJobAwakeTime(j,0);
     }
 
+    /* Send job to more nodes if not enough confirmed nodes. */
+    if ((j->state == JOB_STATE_ACTIVE ||
+	 j->state == JOB_STATE_QUEUED) &&
+	j->nodes_confirmed)
+    {
+        int more_nodes;
+	/*
+	more_nodes = (server.cluster->reachable_nodes_count < j->repl ? 
+		      server.cluster->reachable_nodes_count :
+		      j->repl) - dictSize(j->nodes_confirmed); 
+	*/
+	more_nodes = j->repl - dictSize(j->nodes_confirmed);
+        if (more_nodes > 0) clusterReplicateJob(j, more_nodes, 0);
+    }
+
     /* Requeue job if needed. This will also care about putting the job
      * into the queue for the first time for delayed jobs, including the
      * ones with retry=0. */
@@ -1041,8 +1056,10 @@ void addReplyJobID(client *c, job *j) {
  * function removes the job from the node, since the job is externally
  * replicated, C_ERR is returned, in order to signal the client further
  * accesses to the job are not allowed. */
-int jobReplicationAchieved(job *j) {
-    serverLog(LL_VERBOSE,"Replication ACHIEVED %.*s",JOB_ID_LEN,j->id);
+int jobSyncReplicationAchieved(job *j) {
+    serverLog(LL_VERBOSE,"Sync Replication ACHIEVED (%lu/%d/%d) %.*s",
+	      dictSize(j->nodes_confirmed), j->repl_sync, j->repl,
+	      JOB_ID_LEN,j->id);
 
     /* Change the job state to active. This is critical to avoid the job
      * will be freed by unblockClient() if found still in the old state. */
@@ -1067,14 +1084,6 @@ int jobReplicationAchieved(job *j) {
         return C_ERR;
     }
 
-    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
-     * hash table again for ACKs tracking in order to garbage collect the
-     * job once processed. */
-    if (j->nodes_confirmed) {
-        dictRelease(j->nodes_confirmed);
-        j->nodes_confirmed = NULL;
-    }
-
     /* Queue the job locally. */
     if (j->delay == 0)
         enqueueJob(j,0); /* Will change the job state. */
@@ -1082,6 +1091,23 @@ int jobReplicationAchieved(job *j) {
         updateJobAwakeTime(j,0); /* Queue with delay. */
 
     AOFLoadJob(j);
+    return C_OK;
+}
+
+int jobFullReplicationAchieved(job *j) {
+    serverLog(LL_VERBOSE,"Full Replication ACHIEVED (%lu/%d/%d) %.*s",
+	      dictSize(j->nodes_confirmed), j->repl_sync, j->repl,
+	      JOB_ID_LEN,j->id);
+
+    /* If set, cleanup nodes_confirmed to free memory. We'll reuse this
+     * hash table again for ACKs tracking in order to garbage collect the
+     * job once processed. */
+
+    if (j->nodes_confirmed) {
+        dictRelease(j->nodes_confirmed);
+        j->nodes_confirmed = NULL;
+    }
+
     return C_OK;
 }
 
@@ -1112,7 +1138,7 @@ int clientsCronHandleDelayedJobReplication(client *c) {
     return 0;
 }
 
-/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [ASYNC]
+/* ADDJOB queue job timeout [REPLICATE <n>] [TTL <sec>] [RETRY <sec>] [SYNC <n>] [ASYNC]
  *
  * The function changes replication strategy if the memory warning level
  * is greater than zero.
@@ -1127,13 +1153,14 @@ int clientsCronHandleDelayedJobReplication(client *c) {
  * 1) The job is replicated only to W external nodes.
  * 2) The job is queued to a random external node sending a QUEUE message.
  * 3) QUEUE is sent ASAP for asynchronous jobs, for synchronous jobs instead
- *    QUEUE is sent by jobReplicationAchieved to one of the nodes that
+ *    QUEUE is sent by jobSyncReplicationAchieved to one of the nodes that
  *    acknowledged to have a copy of the job.
  * 4) The job is discareded by the local node ASAP, that is, when the
  *    selected replication level is achieved or before to returning to
  *    the caller for asynchronous jobs. */
 void addjobCommand(client *c) {
     long long replicate = server.cluster->size > 3 ? 3 : server.cluster->size;
+    long long sync = 0xFFFF; /* syncs needed for succesful replicate */
     long long ttl = 3600*24;
     long long retry = -1;
     long long delay = 0;
@@ -1141,7 +1168,7 @@ void addjobCommand(client *c) {
     mstime_t timeout;
     int j, retval;
     int async = 0;  /* Asynchronous request? */
-    int extrepl = getMemoryWarningLevel() > 0; /* Replicate externally? */
+    int extrepl = getMemoryWarningLevel() > 0; /* Replicate only externally? */
     int leaving = myselfLeaving();
     static uint64_t prev_ctime = 0;
 
@@ -1158,6 +1185,13 @@ void addjobCommand(client *c) {
             retval = getLongLongFromObject(c->argv[j+1],&replicate);
             if (retval != C_OK || replicate <= 0 || replicate > 65535) {
                 addReplyError(c,"REPLICATE must be between 1 and 65535");
+                return;
+            }
+            j++;
+        } else if (!strcasecmp(opt,"sync") && !lastarg) {
+            retval = getLongLongFromObject(c->argv[j+1],&sync);
+            if (retval != C_OK) {
+                addReplyError(c,"SYNC must be a number");
                 return;
             }
             j++;
@@ -1209,7 +1243,28 @@ void addjobCommand(client *c) {
                         "REPLICATE to 1 (at-most-once delivery)");
         return;
     }
+    
+    if (sync == 0xFFFF) 
+        if (async) 
+  	    sync = 0;
+	else
+	    sync = replicate;
+    else if (async) {
+        addReplyError(c,"Cannot use SYNC and ASYNC in the same ADDJOB");
+	return;
+    }
 
+    if (sync < 0) {
+        /* Require sync confirmation from all but N replicating nodes */
+        sync = replicate + sync;
+	/* Check that we are going to end up with at least 1 sync */
+	if (sync < 1) {
+  	    addReplyError(c,"The specified SYNC -N leads to 0 replications, "
+			    "use SYNC 0 if you really want this");
+	    return;
+        }
+    }
+  
     /* DELAY greater or equal to TTL is silly. */
     if (delay >= ttl) {
         addReplyError(c,"The specified DELAY is greater than TTL. Job refused "
@@ -1225,17 +1280,26 @@ void addjobCommand(client *c) {
         if (retry == 0) retry = 1;
     }
 
-    /* Check if REPLICATE can't be honoured at all. */
+    /* Check if REPLICATE and/or SYNC can't be honoured at all. */
     int additional_nodes = extrepl ? replicate : replicate-1;
+    int additional_confirms = async ? 0 : (extrepl ? sync : (sync > 0 ? sync-1 : 0));
 
-    if (additional_nodes > server.cluster->reachable_nodes_count) {
+    if (additional_nodes >= server.cluster->size) {
+        addReplySds(c,
+		    sdsnew("-NOREPL Not enough nodes in cluster "
+			   "for the requested replication\r\n"));
+	return;
+    }
+
+    if (additional_confirms > server.cluster->reachable_nodes_count) {
         if (extrepl &&
-            additional_nodes-1 == server.cluster->reachable_nodes_count)
+            additional_confirms-1 == server.cluster->reachable_nodes_count)
         {
             addReplySds(c,
                 sdscatprintf(sdsempty(),
                        "-NOREPL Not enough reachable nodes "
-                       "for the requested replication level, since I'm unable "
+                       "for the requested synchronous replications, since "
+  		       "I'm unable "
                        "to hold a copy of the message for the following "
                        "reason: %s\r\n",
                        leaving ? "I'm leaving the cluster" :
@@ -1243,7 +1307,7 @@ void addjobCommand(client *c) {
         } else {
             addReplySds(c,
                 sdsnew("-NOREPL Not enough reachable nodes "
-                       "for the requested replication level\r\n"));
+                       "for the requested synchronous replications\r\n"));
         }
         return;
     }
@@ -1272,13 +1336,14 @@ void addjobCommand(client *c) {
      * This happens when the job is at the same type asynchronously
      * replicated AND because of memory warning level we are going to
      * replicate externally without taking a copy. */
-    int discard_local_copy = async && extrepl;
+    int discard_local_copy = (async || !sync) && extrepl;
 
     /* Create a new job. */
     job *job = createJob(NULL,JOB_STATE_WAIT_REPL,ttl,retry);
     job->queue = c->argv[1];
     incrRefCount(c->argv[1]);
     job->repl = replicate;
+    job->repl_sync = sync;
 
     /* If no external replication is used, add myself to the list of nodes
      * that have a copy of the job. */
@@ -1319,6 +1384,16 @@ void addjobCommand(client *c) {
         return;
     }
 
+    /* Create the nodes_confirmed dictionary only if we actually need
+     * it for synchronous (or SYNC 0 eventual) replication. */
+    if (!async) {
+        job->nodes_confirmed = dictCreate(&clusterNodesDictType,NULL);
+
+	/* Confirm itself as an acknowledged receiver if this node will
+	 * retain a copy of the job. */
+	if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
+    }
+
     /* For replicated messages where ASYNC option was not asked, block
      * the client, and wait for acks. Otherwise if no synchronous replication
      * is used or if we don't have additional copies to deliver, we just queue
@@ -1326,19 +1401,12 @@ void addjobCommand(client *c) {
      *
      * Note that for REPLICATE > 1 and ASYNC the replication process is
      * best effort. */
-    if ((replicate > 1 || extrepl) && !async) {
+    if (additional_confirms > 0) {
         c->bpop.timeout = timeout;
         c->bpop.job = job;
         c->bpop.added_node_time = mstime();
         blockClient(c,BLOCKED_JOB_REPL);
         setJobAssociatedValue(job,c);
-        /* Create the nodes_confirmed dictionary only if we actually need
-         * it for synchronous replication. It will be released later
-         * when we move away from JOB_STATE_WAIT_REPL. */
-        job->nodes_confirmed = dictCreate(&clusterNodesDictType,NULL);
-        /* Confirm itself as an acknowledged receiver if this node will
-         * retain a copy of the job. */
-        if (!extrepl) dictAdd(job->nodes_confirmed,myself->name,myself);
     } else {
         if (job->delay == 0) {
             if (!extrepl) enqueueJob(job,0); /* Will change the job state. */

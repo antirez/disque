@@ -1306,15 +1306,22 @@ int clusterProcessPacket(clusterLink *link) {
             if (retval == C_ERR) {
                 /* The job already exists. Just update the list of nodes
                  * that may have a copy. */
+	        serverLog(LL_VERBOSE,"RECEIVED REPLJOB %.*s FROM %.40s (UPD)",
+			  JOB_ID_LEN, j->id, sender->name);
                 updateJobNodes(j);
             } else {
+	        serverLog(LL_VERBOSE,"RECEIVED REPLJOB %.*s FROM %.40s (NEW)",
+			  JOB_ID_LEN, j->id, sender->name);
                 AOFLoadJob(j);
             }
             /* Reply with a GOTJOB message, even if we already did in the past.
              * The node receiving ADDJOB may try multiple times, and our
              * GOTJOB messages may get lost. */
-            if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY))
+            if (!(hdr->mflags[0] & CLUSTERMSG_FLAG0_NOREPLY)) {
+	        serverLog(LL_VERBOSE,"Sending GOTJOB %.*s TO %.40s (UPD)",
+			  JOB_ID_LEN, j->id, sender->name);
                 clusterSendGotJob(sender,j);
+	    }
             /* Release the job if we already had it. */
             if (retval == C_ERR) freeJob(j);
         }
@@ -1328,10 +1335,23 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender) return 1;
 
         job *j = lookupJob(hdr->data.jobid.job.id);
-        if (j && j->state == JOB_STATE_WAIT_REPL) {
+        serverLog(LL_VERBOSE,"RECEIVED GOTJOB FROM %.40s",
+		  sender->name);
+		  
+        if (j && j->nodes_confirmed) {
             dictAdd(j->nodes_confirmed,sender->name,sender);
-            if (dictSize(j->nodes_confirmed) == j->repl)
-                jobReplicationAchieved(j);
+	    serverLog(LL_VERBOSE,"Replication now at (%lu/%d/%d)",
+		      dictSize(j->nodes_confirmed), j->repl_sync, j->repl );
+            if (j->state == JOB_STATE_WAIT_REPL && 
+		dictSize(j->nodes_confirmed) == j->repl_sync)
+                jobSyncReplicationAchieved(j);
+
+	    if ((j->state == JOB_STATE_ACTIVE ||
+		 j->state == JOB_STATE_QUEUED) &&
+		dictSize(j->nodes_confirmed) == j->repl)
+	    {
+	        jobFullReplicationAchieved(j);
+	    }
         }
     } else if (type == CLUSTERMSG_TYPE_SETACK) {
         if (!sender) return 1;
@@ -1349,7 +1369,7 @@ int clusterProcessPacket(clusterLink *link) {
                 /* The job was acknowledged before ADDJOB achieved the
                  * replication level requested! Unblock the client and
                  * change the job state to active. */
-                if (jobReplicationAchieved(j) == C_ERR) {
+                if (jobSyncReplicationAchieved(j) == C_ERR) {
                     /* The job was externally replicated and deleted from
                      * this node. Nothing to do... */
                     return 1;
@@ -1892,8 +1912,11 @@ int clusterReplicateJob(job *j, int repl, int noreply) {
         /* If the target node acknowledged the message already, send it again
          * only if there are additional nodes. We want the target node to refresh
          * its list of receivers. */
-        if (node->link && !(acked && added == 0))
-            clusterSendMessage(node->link,payload,totlen);
+        if (node->link && !(acked && added == 0)) {
+	  serverLog(LL_VERBOSE,"Sending REPLJOB(%d) %.*s to %.40s",
+		    noreply, JOB_ID_LEN,j->id, node->name);
+	  clusterSendMessage(node->link,payload,totlen);
+	}
     }
     dictReleaseIterator(di);
 
@@ -2070,8 +2093,11 @@ void clusterSendYourJobs(clusterNode *node, job **jobs, uint32_t count) {
               sizeof(hdr->data.jobs.serialized.jobs_data);
 
     sds serialized = sdsempty();
-    for (j = 0; j < count; j++)
+    for (j = 0; j < count; j++) {
         serialized = serializeJob(serialized,jobs[j],SER_MESSAGE);
+	/* Make a note that this job was delivered to a node */
+        dictAdd(jobs[j]->nodes_delivered,node->name,node);
+    }
     totlen += sdslen(serialized);
 
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_YOURJOBS);

@@ -127,6 +127,7 @@ typedef struct job {
                                state is ACKED, this is a list of nodes that
                                confirmed to have the job in acknowledged
                                state. */
+
     /* Note: qtime and awakeme are in milliseconds because we need to
      * desync different nodes in an effective way to avoid useless multiple
      * deliveries when jobs are re-queued. */
@@ -140,6 +141,9 @@ typedef struct job {
                                job in this node. All the registered jobs are
                                ordered by awakeme time in the server.awakeme
                                skip list, unless awakeme is set to zero. */
+
+    uint16_t repl_sync;     /* How many nodes need to confirm replication */ 
+
 } job;
 
 /* Number of bytes of directly serializable fields in the job structure. */
@@ -161,7 +165,8 @@ void updateJobNodes(job *j);
 int registerJob(job *j);
 int unregisterJob(job *j);
 void freeJob(job *j);
-int jobReplicationAchieved(job *j);
+int jobSyncReplicationAchieved(job *j);
+int jobFullReplicationAchieved(job *j);
 job *lookupJob(char *id);
 void updateJobAwakeTime(job *j, mstime_t at);
 void updateJobRequeueTime(job *j, mstime_t qtime);

@@ -42,7 +42,8 @@ void acknowledgeJob(job *job) {
 
     dequeueJob(job);
     job->state = JOB_STATE_ACKED;
-    /* Remove the nodes_confirmed hash table if it exists.
+    /* Remove the nodes_confirmed hash table if it exists. For example
+     * when full replication has not been yet achieved.
      * tryJobGC() will take care to create a new one used for the GC
      * process. */
     if (job->nodes_confirmed) {
@@ -111,8 +112,8 @@ void tryJobGC(job *job) {
      * still not listed in the nodes_confirmed hash table. However if this
      * is a dummy ACK (created by ACKJOB command acknowledging a job we don't
      * know) we have to broadcast the SETACK to everybody in search of the
-     * owner. */
-    dict *targets = dictSize(job->nodes_delivered) == 0 ?
+     * owner. Broadcast also if this is an eventually replicated job. */
+    dict *targets = dictSize(job->nodes_delivered) < job->repl ?
                     server.cluster->nodes : job->nodes_delivered;
     dictForeach(targets,de)
         clusterNode *node = dictGetVal(de);

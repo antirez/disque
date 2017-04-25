@@ -71,8 +71,103 @@ test "ADDJOB, asynchronous replication to multiple nodes" {
     }
 }
 
+test "ADDJOB, partially sync replication to multiple nodes" {
+    set job_id [D 0 addjob myqueue myjob 5000 replicate 5 sync 3]
+    assert {$job_id ne {}}
+    set job [D 0 show $job_id]
+    assert {$job ne {}}
+    assert {[llength [dict get $job nodes-delivered]] >= 3}
+    assert {[dict get $job state] eq "queued"}
+
+    # We expect at least 3 nodes to have an immediate copy of our job.
+    assert {[count_job_copies $job] >= 3}
+
+    # Asynchronous replication does not guarantees the specified number
+    # of copies, but here in the test environment no node should fail
+    # unless we kill one, so we expect 5 copies.
+    wait_for_condition {
+        [count_job_copies $job] >= 5
+    } else {
+        fail "Not enough nodes reached via asynchronous replication"
+    }
+}
+
+test "Partially sync REPLJOB messages arrive to all reachable nodes" {
+    # Take down 3 instances
+    kill_instance disque 1
+    kill_instance disque 2
+    kill_instance disque 3
+    # We replicate to all nodes, in sync to 3
+    set repl [expr {$::instances_count}]
+    set job_id [D 0 addjob myqueue myjob 5000 replicate $repl sync 3 retry 2]
+    assert {$job_id ne {}}
+    set job [D 0 show $job_id]
+    assert {$job ne {}}
+    assert {[llength [dict get $job nodes-delivered]] >= 3}
+    assert {[dict get $job state] eq "queued"}
+
+    # We expect at least 3 nodes to have an immediate copy of our job.
+    assert {[count_job_copies $job] >= 3}
+
+    # Check that at least 4 got it (3 sync + 1 async)
+    wait_for_condition {
+        [count_job_copies $job] >= 4
+    } else {
+        fail "Not enough nodes reached via async replication"
+    }
+    restart_instance disque 1
+    restart_instance disque 2
+    restart_instance disque 3
+}
+
+test "Partially sync REPLJOB messages arrive to restarted nodes" {
+    # Wait for eventual replication to happen to all enough nodes
+    wait_for_condition {
+        [count_job_copies_everywhere $job] >= $repl
+    } else {
+        fail "Not enough nodes reached via eventual replication"
+    }
+}
+
+test "Async REPLJOB messages arrive to all reachable nodes" {
+    # Take down 3 instances
+    kill_instance disque 1
+    kill_instance disque 2
+    kill_instance disque 3
+    # We replicate to all nodes, all async
+    set repl [expr {$::instances_count}]
+    set job_id [D 0 addjob myqueue myjob 5000 replicate $repl retry 2 async]
+    assert {$job_id ne {}}
+    set job [D 0 show $job_id]
+    assert {$job ne {}}
+    assert {[llength [dict get $job nodes-delivered]] >= 3}
+    assert {[dict get $job state] eq "queued"}
+
+    # Check that at least 4 got it (all async)
+    wait_for_condition {
+        [count_job_copies $job] == 4
+    } else {
+        fail "Not enough nodes reached via async replication"
+    }
+    restart_instance disque 1
+    restart_instance disque 2
+    restart_instance disque 3
+}
+
+test "Async REPLJOB messages DON'T arrive to restarted nodes" {
+    # Wait for possible eventual replication to happen to all enough nodes
+    # Retry = 2 so 5 sec wait should be enough
+    after 5000
+    assert {[count_job_copies_everywhere $job] == 4}
+}
+
 test "Sync ADDJOB fails if not enough nodes are available" {
     catch {D 0 addjob myqueue myjob 5000 replicate 100} job_id
+    assert_match {NOREPL*} $job_id
+}
+
+test "Partially async ADDJOB fails if not enough nodes are available" {
+    catch {D 0 addjob myqueue myjob 5000 replicate 100 sync 1} job_id
     assert_match {NOREPL*} $job_id
 }
 
@@ -84,6 +179,20 @@ test "Sync ADDJOB fails if not enough nodes are reachable" {
     kill_instance disque 3
     set impossible_repl [expr {$::instances_count-3+1}]
     catch {D 0 addjob myqueue myjob 5000 replicate $impossible_repl} job_id
+    assert_match {NOREPL*} $job_id
+    restart_instance disque 1
+    restart_instance disque 2
+    restart_instance disque 3
+}
+
+test "Partially async ADDJOB fails if not enough nodes are reachable" {
+    # We kill three instances and send ADDJOB ASAP before the nodes
+    # are marked as not reachable.
+    kill_instance disque 1
+    kill_instance disque 2
+    kill_instance disque 3
+    set impossible_repl [expr {$::instances_count-3+1}]
+    catch {D 0 addjob myqueue myjob 5000 replicate $::instances_count sync $impossible_repl} job_id
     assert_match {NOREPL*} $job_id
     restart_instance disque 1
     restart_instance disque 2
@@ -142,4 +251,5 @@ test "Sync REPLJOB messages are retried against old nodes" {
     set job_id [D 0 read]
     assert_match {D-*} $job_id
 }
+
 

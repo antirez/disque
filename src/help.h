@@ -39,7 +39,7 @@ struct commandHelp {
     { "QUIT", "-", "Close the connection", 0, "1.0.0" },
     { "LATENCY", "<subcommnad>]", "Latency monitoring", 1, "1.0.0" },
     { "HELLO", "-", "Get list of nodes for clients connection management", 2, "1.0.0" },
-    { "ADDJOB", "<queue> <job> <ms-timeout> [REPLICATE <count>] [DELAY <sec>] [RETRY <sec>] [TTL <sec>] [MAXLEN <count>] [ASYNC]", "Create a new job", 4, "1.0.0" },
+    { "ADDJOB", "<queue> <job> <ms-timeout> [REPLICATE <count>] [DELAY <sec>] [RETRY <sec>] [TTL <sec>] [MAXLEN <count>] [SYNC <count>] [ASYNC]", "Create a new job", 4, "1.0.0" },
     { "GETJOB", "[NOHANG] [TIMEOUT <ms-timeout>] [COUNT <count>] [WITHCOUNTERS] FROM queue1 queue2 ... queueN", "Fetch jobs from queues", 4, "1.0.0" },
     { "ACKJOB", "<jobid> [<jobid> <jobid> ...]", "Acknowledge jobs as delivered", 4, "1.0.0" },
     { "FASTACK", "<jobid> [<jobid> <jobid> ...]", "Acknowledge jobs as delivered deleting the job from the reachable nodes ASAP", 4, "1.0.0" },

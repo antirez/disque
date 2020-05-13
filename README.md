@@ -5,6 +5,7 @@ Disque, an in-memory, distributed job queue
 
 Disque is an ongoing experiment to build a distributed, in-memory, message
 broker.
+
 Its goal is to capture the essence of the "Redis as a jobs queue" use case,
 which is usually implemented using blocking list operations, and move
 it into an ad-hoc, self-contained, scalable, and fault tolerant design, with
@@ -12,10 +13,9 @@ simple to understand properties and guarantees, but still resembling Redis
 in terms of simplicity, performance, and implementation as a C non-blocking
 networked server.
 
-Currently (2 Jan 2016) the project is in release candidate state. People are
-encouraged to start evaluating it and report bugs and experiences.
+*WARNING: This is beta code and may not be suitable for production usage. The API is considered to be stable if not for details that may change in the next release candidates, however it's new code, so handle with care!*
 
-**WARNING: This is beta code and may not be suitable for production usage. The API is considered to be stable if not for details that may change in the next release candidates, however it's new code, so handle with care!**
+**NOTE: Disque has been transformed into a Redis module (https://github.com/antirez/disque-module), which will supersede this project.**
 
 What is a message queue?
 ---

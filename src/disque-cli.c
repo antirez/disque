@@ -122,20 +122,23 @@ static long long mstime(void) {
 }
 
 static void cliRefreshPrompt(void) {
-    int len;
+    sds prompt = sdsempty();
+    if (config.hostsocket != NULL) {
+        prompt = sdscatfmt(prompt,"disque %s",config.hostsocket);
+    } else {
+        char addr[256];
+        anetFormatAddr(addr, sizeof(addr), config.hostip, config.hostport);
+        prompt = sdscatlen(prompt,addr,strlen(addr));
+    }
 
-    if (config.hostsocket != NULL)
-        len = snprintf(config.prompt,sizeof(config.prompt),"disque %s",
-                       config.hostsocket);
-    else
-        len = snprintf(config.prompt,sizeof(config.prompt),
-                       strchr(config.hostip,':') ? "[%s]:%d" : "%s:%d",
-                       config.hostip, config.hostport);
     /* Add [dbnum] if needed */
     if (config.dbnum != 0 && config.last_cmd_type != REDIS_REPLY_ERROR)
-        len += snprintf(config.prompt+len,sizeof(config.prompt)-len,"[%d]",
-            config.dbnum);
-    snprintf(config.prompt+len,sizeof(config.prompt)-len,"> ");
+        prompt = sdscatfmt(prompt,"[%i]",config.dbnum);
+
+    /* Copy the prompt in the static buffer. */
+    prompt = sdscatlen(prompt,"> ",2);
+    snprintf(config.prompt,sizeof(config.prompt),"%s",prompt);
+    sdsfree(prompt);
 }
 
 /*------------------------------------------------------------------------------
